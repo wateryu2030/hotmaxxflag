@@ -1,0 +1,1373 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>好特卖沈阳超级仓运营看板</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; padding: 4px 8px; font-size: 0.85rem; }
+    h1 { font-size: 1.05rem; margin-bottom: 1px; color: #f8fafc; }
+    .subtitle { color: #64748b; font-size: 0.72rem; margin-bottom: 4px; }
+    .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-bottom: 4px; }
+    .kpi-card { background: linear-gradient(135deg, #1e293b 0%, #334155 100%); border-radius: 6px; padding: 8px 10px; border: 1px solid #334155; }
+    .kpi-card .label { font-size: 0.7rem; color: #94a3b8; margin-bottom: 2px; }
+    .kpi-card .value { font-size: 1.2rem; font-weight: 700; color: #38bdf8; }
+    .kpi-card .value.warn { color: #fbbf24; }
+    .kpi-card .value.danger { color: #f87171; }
+    .section { background: #1e293b; border-radius: 6px; padding: 6px 8px; margin-bottom: 4px; border: 1px solid #334155; }
+    .section h2 { font-size: 0.88rem; color: #94a3b8; margin-bottom: 4px; }
+    .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 4px; }
+    .chart-box { background: #1e293b; border-radius: 6px; padding: 6px 8px; border: 1px solid #334155; height: 280px; }
+    .chart-box.chart-box-trend { height: 300px; }
+    .chart-box h3 { font-size: 0.85rem; margin-bottom: 4px; color: #94a3b8; }
+    .chart-box .chart { width: 100%; height: calc(100% - 22px); }
+    .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; }
+    .section.scroll-table { overflow: hidden; }
+    .section.scroll-table .table-wrap { max-height: 180px; overflow-y: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    th, td { padding: 4px 8px; text-align: left; border-bottom: 1px solid #334155; }
+    th { color: #94a3b8; font-weight: 600; }
+    td { color: #e2e8f0; }
+    tr:hover { background: #334155; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .loading { text-align: center; padding: 40px; color: #64748b; }
+    .error { color: #f87171; padding: 12px; }
+    .period-tabs { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; flex-wrap: wrap; }
+    .tab-label { color: #94a3b8; font-size: 0.9rem; }
+    .tab-btn { padding: 4px 10px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: #94a3b8; cursor: pointer; font-size: 0.8rem; }
+    .tab-btn:hover { background: #334155; color: #e2e8f0; }
+    .tab-btn.active { background: #38bdf8; color: #0f172a; border-color: #38bdf8; }
+    .trend-section { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; margin-bottom: 4px; }
+    .trend-card { background: linear-gradient(135deg, #1e293b 0%, #334155 100%); border-radius: 6px; padding: 8px 10px; border: 1px solid #334155; }
+    .trend-card h3 { font-size: 0.8rem; color: #94a3b8; margin-bottom: 4px; }
+    .trend-item { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid #334155; font-size: 0.75rem; }
+    .trend-item:last-child { border-bottom: none; }
+    .trend-up { color: #34d399; }
+    .trend-down { color: #f87171; }
+    .trend-neutral { color: #94a3b8; }
+    .chart-tabs { display: flex; gap: 6px; margin-bottom: 6px; }
+    .chart-tabs .tab-btn { padding: 4px 12px; font-size: 0.85rem; }
+    .filter-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; flex-wrap: wrap; }
+    .filter-bar .period-tabs { display: flex; align-items: center; gap: 4px; margin: 0; }
+    .filter-bar .date-range-inline { display: flex; align-items: center; gap: 4px; }
+    .filter-sep { color: #475569; margin: 0 4px; font-size: 0.9rem; }
+    .filter-bar label { color: #94a3b8; font-size: 0.9rem; }
+    .filter-bar input[type="date"], .filter-bar select { padding: 6px 10px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; font-size: 0.85rem; }
+    .filter-bar select { min-width: 110px; cursor: pointer; }
+    .filter-bar .btn-query { padding: 8px 20px; border-radius: 8px; border: none; background: #38bdf8; color: #0f172a; font-weight: 600; cursor: pointer; font-size: 0.9rem; }
+    .filter-bar .btn-query:hover { background: #7dd3fc; }
+    .export-btns { display: flex; gap: 8px; margin-left: auto; }
+    .btn-export { padding: 6px 12px; border-radius: 6px; background: #334155; color: #38bdf8; text-decoration: none; font-size: 0.8rem; border: 1px solid #475569; }
+    .btn-export:hover { background: #475569; color: #7dd3fc; }
+    .data-status-bar { padding: 4px 8px; background: #1e293b; border-radius: 4px; margin-bottom: 6px; font-size: 0.75rem; color: #94a3b8; border: 1px solid #334155; }
+    .data-status-bar strong { color: #e2e8f0; }
+    .detail-tabs { display: flex; gap: 6px; margin-bottom: 6px; }
+    .detail-tabs .tab-btn { padding: 6px 14px; font-size: 0.9rem; }
+    .pagination { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 0.8rem; color: #94a3b8; }
+    .pagination button { padding: 6px 12px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: #94a3b8; cursor: pointer; }
+    .pagination button:hover:not(:disabled) { background: #334155; color: #e2e8f0; }
+    .pagination button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .filter-bar select { min-width: 120px; }
+    .summary-row { cursor: pointer; }
+    .sortable-th { cursor: pointer; user-select: none; }
+    .sortable-th:hover { color: #38bdf8; }
+    .sortable-th .sort-arrow { font-size: 0.7rem; margin-left: 2px; opacity: 0.6; }
+    .summary-row:hover { background: #334155; }
+    .expand-icon { display: inline-block; width: 18px; color: #38bdf8; font-size: 0.75rem; transition: transform 0.2s; }
+    .summary-row.expanded .expand-icon { transform: rotate(90deg); }
+    .detail-row td { padding-left: 24px; background: #0f172a; font-size: 0.75rem; color: #94a3b8; }
+    .detail-row td:first-child { padding-left: 10px; }
+    .btn-ai { display: flex; align-items: center; gap: 4px; padding: 6px 12px; border-radius: 6px; border: 1px solid #38bdf8; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #38bdf8; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+    .btn-view-report { color: #38bdf8; text-decoration: none; font-size: 0.8rem; }
+    .btn-view-report:hover { text-decoration: underline; }
+    .btn-ai:hover { background: linear-gradient(135deg, #1e293b 0%, #334155 100%); color: #7dd3fc; border-color: #7dd3fc; }
+    .btn-ai-icon { font-size: 1.1rem; }
+    .insight-card { padding: 8px 10px; margin-bottom: 6px; border-radius: 6px; border-left: 4px solid #38bdf8; background: #1e293b; }
+    .insight-card.warning { border-left-color: #fbbf24; }
+    .insight-card.success { border-left-color: #34d399; }
+    .insight-card .title { font-weight: 600; color: #e2e8f0; margin-bottom: 4px; }
+    .insight-card .desc { font-size: 0.9rem; color: #94a3b8; margin-bottom: 4px; }
+    .insight-card .action { font-size: 0.85rem; color: #38bdf8; }
+    .sticky-top { position: sticky; top: 0; z-index: 10; background: #0f172a; padding-bottom: 2px; }
+    .nav-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; padding: 4px 0; flex-wrap: wrap; }
+    .nav-row .export-btns { display: flex; gap: 6px; margin-left: auto; }
+    .nav-row .page-nav { display: flex; gap: 4px; margin: 0; padding: 0; border: none; }
+    .page-nav .nav-tab { padding: 8px 18px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: #94a3b8; cursor: pointer; font-size: 0.9rem; font-weight: 500; transition: all 0.2s; }
+    .page-nav .nav-tab:hover { background: #334155; color: #e2e8f0; }
+    .page-nav .nav-tab.active { background: #38bdf8; color: #0f172a; border-color: #38bdf8; }
+    .page-panel { display: none; }
+    .page-panel.active { display: block; }
+    .section.scroll-table .table-wrap { max-height: 50vh; overflow-y: auto; }
+    @media (max-width: 768px) { .kpi-row { grid-template-columns: 1fr 1fr; } .chart-row { grid-template-columns: 1fr; } .trend-section { grid-template-columns: 1fr; } .dashboard-grid { grid-template-columns: 1fr; } .filter-bar { flex-direction: column; align-items: stretch; } .nav-row { flex-direction: column; align-items: stretch; } }
+  </style>
+</head>
+<body>
+  <div class="sticky-top">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+    <div>
+      <h1>好特卖沈阳超级仓运营看板</h1>
+      <p class="subtitle">临期折扣零售 · 数据来自 MySQL htma_dashboard · <a href="/import" style="color:#38bdf8;">数据导入</a></p>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button id="btnAiInsight" class="btn-ai" title="基于当前数据生成智能分析建议">
+        <span class="btn-ai-icon">✨</span> AI 分析建议
+      </button>
+      <button id="btnMarketingReport" class="btn-ai" title="生成进销存营销报告并发送给余为军">
+        <span class="btn-ai-icon">📤</span> 生成营销报告
+      </button>
+    </div>
+  </div>
+
+  <div class="filter-bar">
+    <div class="period-tabs">
+      <span class="tab-label">KPI 周期：</span>
+      <button class="tab-btn" data-period="custom" id="tabCustom">自定义</button>
+      <button class="tab-btn" data-period="recent30">近30天</button>
+      <button class="tab-btn" data-period="month">本月</button>
+      <button class="tab-btn" data-period="week">本周</button>
+      <button class="tab-btn" data-period="day">今日</button>
+    </div>
+    <div class="date-range-inline" id="dateRangeInline" style="display:none;">
+      <label>起止日期：</label>
+      <input type="date" id="startDate" />
+      <span style="color:#64748b;">至</span>
+      <input type="date" id="endDate" />
+    </div>
+    <span class="filter-sep">|</span>
+    <label>大类：</label>
+    <select id="categoryLargeSelect">
+      <option value="">全部大类</option>
+    </select>
+    <label>中类：</label>
+    <select id="categoryMidSelect">
+      <option value="">全部中类</option>
+    </select>
+    <label>小类：</label>
+    <select id="categorySmallSelect">
+      <option value="">全部小类</option>
+    </select>
+    <label>商品：</label>
+    <select id="productSelect">
+      <option value="">全部商品</option>
+    </select>
+    <button class="btn-query" id="btnQuery">查询</button>
+  </div>
+
+  <div class="nav-row">
+    <div class="page-nav">
+      <button class="nav-tab active" data-page="overview">📊 概览</button>
+      <button class="nav-tab" data-page="category">📈 品类排行</button>
+      <button class="nav-tab" data-page="detail">📋 销售明细</button>
+      <button class="nav-tab" data-page="inventory">⚠️ 库存预警</button>
+    </div>
+    <div class="export-btns">
+      <a class="btn-export" id="btnExportProduct" href="#" download="htma_商品明细.csv">导出商品</a>
+      <a class="btn-export" id="btnExportCategory" href="#" download="htma_品类明细.csv">导出品类</a>
+    </div>
+  </div>
+  </div>
+
+  <div id="aiInsightSection" style="display:none; margin-bottom:6px;">
+    <div class="section">
+      <h2>✨ AI 智能分析建议</h2>
+      <div id="aiInsightContent"></div>
+    </div>
+    <div class="section" style="margin-top:8px;">
+      <h2>📤 营销报告（发送给余为军，结果已存 MySQL）</h2>
+      <div style="margin-bottom:8px;">
+        <button id="btnGenReport" class="btn-query" style="padding:6px 14px;">生成并发送营销报告</button>
+      </div>
+      <div id="reportHistoryWrap">
+        <h3 style="font-size:0.85rem;color:#94a3b8;margin-bottom:4px;">历史报告</h3>
+        <div id="reportHistoryList" class="table-wrap" style="max-height:200px;overflow-y:auto;"></div>
+        <div id="reportDetailWrap" style="display:none;margin-top:8px;padding:8px;background:#0f172a;border-radius:6px;white-space:pre-wrap;font-size:0.8rem;max-height:300px;overflow-y:auto;"></div>
+      </div>
+    </div>
+    <div class="section" style="margin-top:8px;">
+      <h2>💬 AI 对话（可操作洞察）</h2>
+      <p style="font-size:0.8rem;color:#94a3b8;margin-bottom:8px;">针对报告提问，获取可执行建议。可问：负毛利怎么诊断？高毛利如何做 SOP？断货优先级？移动异业合作怎么落地？验证闭环怎么设计？</p>
+      <div id="aiChatWrap" style="background:#0f172a;border-radius:8px;padding:8px;border:1px solid #334155;">
+        <div id="aiChatMessages" style="max-height:180px;overflow-y:auto;min-height:60px;font-size:0.85rem;white-space:pre-wrap;margin-bottom:8px;"></div>
+        <div style="display:flex;gap:8px;">
+          <input type="text" id="aiChatInput" placeholder="输入您的问题，如：负毛利怎么验证？" style="flex:1;padding:8px 12px;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#e2e8f0;font-size:0.9rem;" />
+          <button id="btnAiChatSend" class="btn-query" style="padding:8px 16px;">发送</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="page-panel active" id="pageOverview" data-page="overview">
+  <div class="kpi-row" id="kpiRow">
+    <div class="kpi-card"><div class="label">总销售额</div><div class="value" id="kpiSale">-</div></div>
+    <div class="kpi-card"><div class="label">总毛利</div><div class="value" id="kpiProfit">-</div></div>
+    <div class="kpi-card"><div class="label">平均毛利率</div><div class="value" id="kpiRate">-</div></div>
+    <div class="kpi-card"><div class="label">库存总额</div><div class="value" id="kpiStock">-</div></div>
+  </div>
+
+  <div class="trend-section" id="trendSection">
+    <div class="trend-card">
+      <h3>环比分析（本期 vs 上期）</h3>
+      <div id="popContent">加载中...</div>
+    </div>
+    <div class="trend-card">
+      <h3>走势与同比</h3>
+      <div id="yoyContent">加载中...</div>
+    </div>
+    <div class="trend-card">
+      <h3>周几对比（周一 vs 周五等）</h3>
+      <div id="dowChart" class="chart" style="height:180px;"></div>
+    </div>
+  </div>
+
+  <div class="chart-row">
+    <div class="chart-box chart-box-trend">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <h3 style="margin:0;">品类销售额占比</h3>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:0.85rem;color:#94a3b8;">
+          <input type="checkbox" id="pieShowData" />
+          <span>显示具体数据</span>
+        </label>
+      </div>
+      <div id="pieChart" class="chart"></div>
+    </div>
+    <div class="chart-box chart-box-trend">
+      <h3>销售与毛利趋势</h3>
+      <div class="chart-tabs">
+        <button class="tab-btn active" data-granularity="day">按日</button>
+        <button class="tab-btn" data-granularity="week">按周</button>
+        <button class="tab-btn" data-granularity="month">按月</button>
+      </div>
+      <div id="barChart" class="chart"></div>
+    </div>
+  </div>
+  </div>
+
+  <div class="page-panel" id="pageCategory" data-page="category">
+  <div class="section scroll-table">
+    <h2>品类排行（按大类展示，点击行展开中类/小类；点击列标题可重排）</h2>
+    <div class="table-wrap">
+    <table id="categoryRankTable">
+      <thead><tr>
+        <th style="width:28px;"></th><th>排名</th><th>大类名称</th>
+        <th class="num sortable-th" data-sort="sale_amount">销售额 <span class="sort-arrow">↕</span></th>
+        <th class="num sortable-th" data-sort="profit_amount">毛利 <span class="sort-arrow">↕</span></th>
+        <th class="num sortable-th" data-sort="margin_pct">毛利率 <span class="sort-arrow">↕</span></th>
+        <th class="num sortable-th" data-sort="sale_contrib_pct">销售贡献 <span class="sort-arrow">↕</span></th>
+        <th class="num sortable-th" data-sort="profit_contrib_pct">毛利贡献 <span class="sort-arrow">↕</span></th>
+      </tr></thead>
+      <tbody id="categoryRankBody"></tbody>
+    </table>
+    <div id="categoryRankDetailWrap" style="display:none; margin-top:8px;">
+      <h3 style="font-size:0.85rem;color:#94a3b8;margin-bottom:4px;" id="categoryRankDetailTitle">— 中类/小类明细</h3>
+      <table><thead><tr><th>排名</th><th>中类</th><th>小类/品类</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">毛利率</th></tr></thead>
+      <tbody id="categoryRankDetailBody"></tbody></table>
+    </div>
+    </div>
+  </div>
+  </div>
+
+  <div class="page-panel" id="pageDetail" data-page="detail">
+  <div class="section scroll-table">
+    <h2>销售与毛利明细</h2>
+    <div class="detail-tabs" style="margin-bottom:6px;">
+      <button class="tab-btn active" data-detail="category">按品类</button>
+      <button class="tab-btn" data-detail="product">按商品</button>
+    </div>
+    <div id="profitTableWrap" class="table-wrap">
+      <table id="profitTable">
+        <thead><tr>
+          <th style="width:28px;"></th><th>日期</th>
+          <th class="sortable-th" data-sort="category_large">大类 <span class="sort-arrow">↕</span></th>
+          <th class="sortable-th" data-sort="category_mid">中类 <span class="sort-arrow">↕</span></th>
+          <th class="sortable-th" data-sort="category">小类/品类 <span class="sort-arrow">↕</span></th>
+          <th class="num sortable-th" data-sort="total_sale">销售额 <span class="sort-arrow">↕</span></th>
+          <th class="num sortable-th" data-sort="total_profit">毛利 <span class="sort-arrow">↕</span></th>
+          <th class="num sortable-th" data-sort="profit_rate">毛利率 <span class="sort-arrow">↕</span></th>
+        </tr></thead>
+        <tbody id="profitTableBody"></tbody>
+      </table>
+      <table id="productTable" style="display:none;">
+        <thead><tr>
+          <th style="width:28px;"></th><th>日期</th>
+          <th class="sortable-th" data-sort="sku_code">商品编码 <span class="sort-arrow">↕</span></th>
+          <th class="sortable-th" data-sort="product_name">品名 <span class="sort-arrow">↕</span></th>
+          <th class="sortable-th" data-sort="category_large">大类 <span class="sort-arrow">↕</span></th>
+          <th class="sortable-th" data-sort="category_mid">中类 <span class="sort-arrow">↕</span></th>
+          <th class="sortable-th" data-sort="category">小类/品类 <span class="sort-arrow">↕</span></th>
+          <th class="num sortable-th" data-sort="sale_qty">销量 <span class="sort-arrow">↕</span></th>
+          <th class="num sortable-th" data-sort="sale_amount">销售额 <span class="sort-arrow">↕</span></th>
+          <th class="num sortable-th" data-sort="sale_cost">成本 <span class="sort-arrow">↕</span></th>
+          <th class="num sortable-th" data-sort="gross_profit">毛利 <span class="sort-arrow">↕</span></th>
+          <th class="num sortable-th" data-sort="profit_rate_pct">毛利率 <span class="sort-arrow">↕</span></th>
+        </tr></thead>
+        <tbody id="productTableBody"></tbody>
+      </table>
+      <div id="productPagination" class="pagination" style="display:none;"></div>
+    </div>
+  </div>
+  </div>
+
+  <div class="page-panel" id="pageInventory" data-page="inventory">
+  <div class="section scroll-table">
+    <h2>低库存预警（库存&lt;50 的 SKU）</h2>
+    <p style="margin-bottom:6px;color:#94a3b8;font-size:0.75rem;">共 <strong id="alertCount" style="color:#f87171;">-</strong> 个 SKU 需关注 · 按大类展示，点击展开查看明细</p>
+    <div class="table-wrap">
+    <table id="invCategoryTable">
+      <thead><tr><th style="width:28px;"></th><th>大类名称</th><th class="num">低库存SKU数</th><th class="num">库存金额</th></tr></thead>
+      <tbody id="invCategoryBody"></tbody>
+    </table>
+    <div id="invDetailWrap" style="display:none; margin-top:8px;">
+      <h3 style="font-size:0.85rem;color:#94a3b8;margin-bottom:4px;" id="invDetailTitle">— 明细</h3>
+      <table>
+        <thead><tr><th>商品编码</th><th>品名</th><th>品类</th><th class="num">库存数量</th><th class="num">库存金额</th><th>库存日期</th></tr></thead>
+        <tbody id="invTableBody"></tbody>
+      </table>
+      <div id="invPagination" class="pagination" style="display:none;"></div>
+    </div>
+    </div>
+  </div>
+  </div>
+
+  <script>
+    // 同源优先；若在 Cursor 预览/iframe 等环境，回退到本地 API
+    const API = (function(){
+      const o = window.location.origin;
+      if (o && (o.includes('127.0.0.1') || o.includes('localhost'))) return o;
+      return 'http://127.0.0.1:5002';
+    })();
+    let currentPeriod = 'recent30';
+    let currentGranularity = 'day';
+    let currentStartDate = '';
+    let currentEndDate = '';
+    let currentCategoryLargeCode = '';
+    let currentCategoryMidCode = '';
+    let currentCategorySmallCode = '';
+    let currentSkuCode = '';
+    let currentDetailPage = { category: 1, product: 1 };
+    let currentInvPage = 1;
+    const PAGE_SIZE = 50;
+
+    function queryParams(overrides) {
+      const p = new URLSearchParams();
+      if (currentStartDate && currentEndDate) {
+        p.set('start_date', currentStartDate);
+        p.set('end_date', currentEndDate);
+      } else {
+        p.set('period', currentPeriod);
+      }
+      if (currentCategoryLargeCode) p.set('category_large_code', currentCategoryLargeCode);
+      if (currentCategoryMidCode) p.set('category_mid_code', currentCategoryMidCode);
+      if (currentCategorySmallCode) p.set('category_small_code', currentCategorySmallCode);
+      if (currentSkuCode) p.set('sku_code', currentSkuCode);
+      if (overrides) { for (const [k, v] of Object.entries(overrides)) { if (v != null) p.set(k, String(v)); } }
+      return p.toString();
+    }
+
+    function updateExportLinks() {
+      const base = API || window.location.origin || '';
+      if (!base) return;
+      const q = queryParams();
+      const productEl = document.getElementById('btnExportProduct');
+      const categoryEl = document.getElementById('btnExportCategory');
+      if (productEl) productEl.href = base + '/api/export?export_type=product&' + q;
+      if (categoryEl) categoryEl.href = base + '/api/export?export_type=category&' + q;
+    }
+
+    function fmtNum(v) { return v >= 10000 ? (v/10000).toFixed(1) + '万' : Number(v).toLocaleString(); }
+    function fmtMoney(v) { return Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2 }); }
+
+    async function loadKpi() {
+      try {
+        const r = await fetch(API + '/api/kpi?' + queryParams());
+        const d = await r.json();
+        document.getElementById('kpiSale').textContent = fmtNum(d.total_sale_amount);
+        document.getElementById('kpiProfit').textContent = fmtNum(d.total_gross_profit);
+        const rateEl = document.getElementById('kpiRate');
+        rateEl.textContent = d.avg_profit_rate_pct + '%';
+        rateEl.className = 'value' + (d.avg_profit_rate_pct >= 35 ? '' : d.avg_profit_rate_pct >= 20 ? ' warn' : ' danger');
+        document.getElementById('kpiStock').textContent = fmtNum(d.total_stock_amount);
+      } catch (e) { document.getElementById('kpiRow').innerHTML = '<div class="error">KPI 加载失败: ' + e.message + '</div>'; }
+    }
+
+    let pieChartInstance = null;
+    let pieChartData = [];
+    let categoryRankData = [];
+    let categoryRankSort = { key: 'sale_amount', asc: false };
+    let profitDetailData = [];
+    let profitDetailSort = { key: 'total_sale', asc: false };
+    let productDetailData = [];
+    let productDetailSort = { key: 'sale_amount', asc: false };
+
+    async function loadPie() {
+      const el = document.getElementById('pieChart');
+      const showData = document.getElementById('pieShowData');
+      try {
+        const r = await fetch(API + '/api/category_pie?' + queryParams());
+        const data = await r.json();
+        pieChartData = data.map(x => ({ name: String(x.category || ''), value: Number(x.sale_amount) || 0 }));
+        pieChartInstance = echarts.init(el);
+        const showLabels = showData && showData.checked;
+        pieChartInstance.setOption(_pieOption(showLabels));
+        if (showData) {
+          showData.onchange = () => {
+            if (pieChartInstance) pieChartInstance.setOption(_pieOption(showData.checked));
+          };
+        }
+      } catch (e) { el.innerHTML = '<div class="loading">加载失败: ' + e.message + '</div>'; }
+    }
+
+    function _pieOption(showData) {
+      return {
+        tooltip: { trigger: 'item', formatter: p => (p.name || '') + ': ' + (p.value != null ? Number(p.value).toLocaleString() : '') + (p.percent != null ? ' (' + p.percent.toFixed(1) + '%)' : '') },
+        legend: { bottom: 0, left: 'center', textStyle: { color: '#94a3b8', fontSize: 11 }, type: 'scroll', itemGap: 8 },
+        color: ['#38bdf8','#34d399','#fbbf24','#f87171','#a78bfa','#64748b','#22d3ee','#fb923c','#c084fc','#4ade80'],
+        series: [{
+          type: 'pie',
+          radius: ['42%','72%'],
+          center: ['50%','45%'],
+          data: pieChartData,
+          label: {
+            show: true,
+            position: 'outside',
+            color: '#e2e8f0',
+            fontSize: 11,
+            formatter: function(p) {
+              const name = p.name || '';
+              if (!showData) return name;
+              const v = p.value != null ? Number(p.value).toLocaleString() : '';
+              const d = p.percent != null ? p.percent.toFixed(1) : '';
+              return name + '\n' + v + ' (' + d + '%)';
+            }
+          },
+          labelLine: { show: true, length: 10, length2: 12, lineStyle: { color: '#64748b' } },
+          emphasis: { scale: true, itemStyle: { shadowBlur: 12, shadowOffsetX: 0 } }
+        }]
+      };
+    }
+
+    async function loadBar() {
+      const el = document.getElementById('barChart');
+      try {
+        const r = await fetch(API + '/api/sales_trend?granularity=' + currentGranularity + '&' + queryParams());
+        if (!r.ok) {
+          const errText = await r.text();
+          let errMsg = r.status + ' ' + r.statusText;
+          try { const j = JSON.parse(errText); errMsg = j.error || j.message || errMsg; } catch (_) {}
+          throw new Error(errMsg);
+        }
+        const data = await r.json();
+        const chart = echarts.init(el);
+        const xData = data.map(x => x.x_date);
+        chart.setOption({
+          tooltip: {
+            trigger: 'axis',
+            formatter: function(params) {
+              const idx = params[0].dataIndex;
+              const row = data[idx];
+              return row.week_start ? row.x_date + ' (' + row.week_start + '起)<br/>销售额: ' + fmtMoney(row.sale_amount) + '<br/>毛利: ' + fmtMoney(row.profit_amount)
+                : row.x_date + '<br/>销售额: ' + fmtMoney(row.sale_amount) + '<br/>毛利: ' + fmtMoney(row.profit_amount);
+            }
+          },
+          legend: { data: ['销售额', '毛利'], bottom: 0, textStyle: { color: '#94a3b8' } },
+          grid: { left: 55, right: 25, top: 45, bottom: 75 },
+          xAxis: { type: 'category', data: xData, axisLabel: { color: '#94a3b8', rotate: 40, fontSize: 10, interval: 0 } },
+          yAxis: { type: 'value', axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: '#334155' } } },
+          series: [
+            { name: '销售额', type: 'bar', data: data.map(x => x.sale_amount), itemStyle: { color: '#38bdf8' } },
+            { name: '毛利', type: 'line', data: data.map(x => x.profit_amount), itemStyle: { color: '#34d399' }, lineStyle: { color: '#34d399' } }
+          ]
+        });
+      } catch (e) { el.innerHTML = '<div class="loading">加载失败: ' + e.message + '</div>'; }
+    }
+
+    function safeArray(data) {
+      if (Array.isArray(data)) return data;
+      if (data && Array.isArray(data.items)) return data.items;
+      if (data && Array.isArray(data.data)) return data.data;
+      return [];
+    }
+
+    async function loadProfitDetail() {
+      const tbody = document.getElementById('profitTableBody');
+      try {
+        const r = await fetch(API + '/api/profit_summary?' + queryParams());
+        if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+        const data = await r.json();
+        profitDetailData = safeArray(data);
+        renderProfitDetail();
+        bindProfitExpand();
+        bindProfitDetailSort();
+      } catch (e) { tbody.innerHTML = '<tr><td colspan="8" class="error">加载失败: ' + e.message + '</td></tr>'; }
+    }
+
+    function renderProfitDetail() {
+      const tbody = document.getElementById('profitTableBody');
+      const key = profitDetailSort.key;
+      const asc = profitDetailSort.asc;
+      const sorted = [...profitDetailData].sort((a, b) => {
+        const va = a[key];
+        const vb = b[key];
+        if (typeof va === 'number' && typeof vb === 'number') return asc ? va - vb : vb - va;
+        const sa = String(va || '').localeCompare(String(vb || ''), 'zh-CN');
+        return asc ? sa : -sa;
+      });
+      tbody.innerHTML = sorted.length === 0
+        ? '<tr><td colspan="8" class="loading">暂无数据</td></tr>'
+        : sorted.map(row => {
+            const cat = (row.category || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+            return `<tr class="summary-row" data-category="${cat}" data-expanded="0">
+              <td><span class="expand-icon">▶</span></td>
+              <td>—</td>
+              <td>${(row.category_large || '').replace(/</g,'&lt;')}</td>
+              <td>${(row.category_mid || '').replace(/</g,'&lt;')}</td>
+              <td>${(row.category || '').replace(/</g,'&lt;')}</td>
+              <td class="num">${fmtMoney(row.total_sale)}</td>
+              <td class="num">${fmtMoney(row.total_profit)}</td>
+              <td class="num">${(row.profit_rate != null ? row.profit_rate : 0).toFixed(2)}%</td>
+            </tr>`;
+          }).join('');
+      bindProfitExpand();
+    }
+
+    function bindProfitDetailSort() {
+      document.querySelectorAll('#profitTable .sortable-th').forEach(th => {
+        th.onclick = (e) => {
+          e.stopPropagation();
+          const key = th.dataset.sort;
+          if (!key) return;
+          profitDetailSort.asc = profitDetailSort.key === key ? !profitDetailSort.asc : false;
+          profitDetailSort.key = key;
+          renderProfitDetail();
+        };
+      });
+    }
+
+    function bindProfitExpand() {
+      document.querySelectorAll('#profitTableBody .summary-row').forEach(tr => {
+        tr.onclick = async () => {
+          const cat = tr.dataset.category;
+          const expanded = tr.dataset.expanded === '1';
+          if (expanded) {
+            tr.classList.remove('expanded');
+            tr.dataset.expanded = '0';
+            tr.nextElementSibling?.remove();
+            return;
+          }
+          try {
+            const q = queryParams({ expand_category: cat });
+            const r = await fetch(API + '/api/profit_detail?' + q + '&page_size=365');
+            const d = await r.json();
+            const items = d.items || [];
+            const detailHtml = items.map(row => `<tr class="detail-row">
+              <td></td>
+              <td>${row.data_date}</td>
+              <td>${(row.category_large || '').replace(/</g,'&lt;')}</td>
+              <td>${(row.category_mid || '').replace(/</g,'&lt;')}</td>
+              <td>${(row.category || '').replace(/</g,'&lt;')}</td>
+              <td class="num">${fmtMoney(row.total_sale)}</td>
+              <td class="num">${fmtMoney(row.total_profit)}</td>
+              <td class="num">${(row.profit_rate != null ? row.profit_rate : 0).toFixed(2)}%</td>
+            </tr>`).join('');
+            const frag = document.createElement('tbody');
+            frag.innerHTML = detailHtml;
+          tr.classList.add('expanded');
+          tr.dataset.expanded = '1';
+          while (tr.nextElementSibling && tr.nextElementSibling.classList.contains('detail-row')) tr.nextElementSibling.remove();
+          Array.from(frag.children).forEach(ch => tr.parentNode.insertBefore(ch, tr.nextSibling));
+          } catch (err) { console.warn('展开失败', err); }
+        };
+      });
+    }
+
+    async function loadProductDetail(page) {
+      const tbody = document.getElementById('productTableBody');
+      const pagEl = document.getElementById('productPagination');
+      try {
+        const q = queryParams({ page: page || currentDetailPage.product, page_size: PAGE_SIZE });
+        const r = await fetch(API + '/api/sale_summary?' + q);
+        if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+        const d = await r.json();
+        const rows = safeArray(d);
+        productDetailData = rows;
+        const total = d.total != null ? d.total : productDetailData.length;
+        const curPage = d.page != null ? d.page : 1;
+        currentDetailPage.product = curPage;
+        renderProductDetail();
+        renderPagination(pagEl, total, curPage, PAGE_SIZE, (p) => loadProductDetail(p));
+        bindProductExpand();
+        bindProductDetailSort();
+      } catch (e) { tbody.innerHTML = '<tr><td colspan="12" class="error">加载失败: ' + e.message + '</td></tr>'; pagEl.style.display = 'none'; }
+    }
+
+    function renderProductDetail() {
+      const tbody = document.getElementById('productTableBody');
+      const key = productDetailSort.key;
+      const asc = productDetailSort.asc;
+      const sorted = [...productDetailData].sort((a, b) => {
+        const va = a[key];
+        const vb = b[key];
+        if (typeof va === 'number' && typeof vb === 'number') return asc ? va - vb : vb - va;
+        const sa = String(va || '').localeCompare(String(vb || ''), 'zh-CN');
+        return asc ? sa : -sa;
+      });
+      tbody.innerHTML = sorted.length === 0
+        ? '<tr><td colspan="12" class="loading">暂无数据</td></tr>'
+        : sorted.map(row => {
+            const sku = (row.sku_code || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+            return `<tr class="summary-row" data-sku="${sku}" data-expanded="0">
+              <td><span class="expand-icon">▶</span></td>
+              <td>—</td>
+              <td>${(row.sku_code || '').replace(/</g,'&lt;')}</td>
+              <td>${(row.product_name || '').replace(/</g,'&lt;').slice(0,20)}</td>
+              <td>${(row.category_large || '').replace(/</g,'&lt;')}</td>
+              <td>${(row.category_mid || '').replace(/</g,'&lt;')}</td>
+              <td>${(row.category || '').replace(/</g,'&lt;')}</td>
+              <td class="num">${row.sale_qty}</td>
+              <td class="num">${fmtMoney(row.sale_amount)}</td>
+              <td class="num">${fmtMoney(row.sale_cost)}</td>
+              <td class="num">${fmtMoney(row.gross_profit)}</td>
+              <td class="num">${(row.profit_rate_pct != null ? row.profit_rate_pct : 0).toFixed(2)}%</td>
+            </tr>`;
+          }).join('');
+      bindProductExpand();
+    }
+
+    function bindProductDetailSort() {
+      document.querySelectorAll('#productTable .sortable-th').forEach(th => {
+        th.onclick = (e) => {
+          e.stopPropagation();
+          const key = th.dataset.sort;
+          if (!key) return;
+          productDetailSort.asc = productDetailSort.key === key ? !productDetailSort.asc : false;
+          productDetailSort.key = key;
+          renderProductDetail();
+        };
+      });
+    }
+
+    function bindProductExpand() {
+      document.querySelectorAll('#productTableBody .summary-row').forEach(tr => {
+        tr.onclick = async () => {
+          const sku = tr.dataset.sku;
+          const expanded = tr.dataset.expanded === '1';
+          if (expanded) {
+            tr.classList.remove('expanded');
+            tr.dataset.expanded = '0';
+            while (tr.nextElementSibling && tr.nextElementSibling.classList.contains('detail-row')) tr.nextElementSibling.remove();
+            return;
+          }
+          try {
+            const q = queryParams({ sku_code: sku });
+            const r = await fetch(API + '/api/sale_detail?' + q + '&page_size=365');
+            const d = await r.json();
+            const items = d.items || [];
+            const detailHtml = items.map(row => `<tr class="detail-row">
+              <td></td>
+              <td>${row.data_date}</td>
+              <td>${(row.sku_code || '').replace(/</g,'&lt;')}</td>
+              <td>${(row.product_name || '').replace(/</g,'&lt;').slice(0,20)}</td>
+              <td>${(row.category_large || '').replace(/</g,'&lt;')}</td>
+              <td>${(row.category_mid || '').replace(/</g,'&lt;')}</td>
+              <td>${(row.category || '').replace(/</g,'&lt;')}</td>
+              <td class="num">${row.sale_qty}</td>
+              <td class="num">${fmtMoney(row.sale_amount)}</td>
+              <td class="num">${fmtMoney(row.sale_cost)}</td>
+              <td class="num">${fmtMoney(row.gross_profit)}</td>
+              <td class="num">${(row.profit_rate_pct != null ? row.profit_rate_pct : 0).toFixed(2)}%</td>
+            </tr>`).join('');
+            const frag = document.createElement('tbody');
+            frag.innerHTML = detailHtml;
+            tr.classList.add('expanded');
+            tr.dataset.expanded = '1';
+            while (tr.nextElementSibling && tr.nextElementSibling.classList.contains('detail-row')) tr.nextElementSibling.remove();
+            Array.from(frag.children).forEach(ch => tr.parentNode.insertBefore(ch, tr.nextSibling));
+          } catch (err) { console.warn('展开失败', err); }
+        };
+      });
+    }
+
+    function renderPagination(el, total, page, pageSize, onPage) {
+      if (!el || total <= pageSize) { el.style.display = 'none'; return; }
+      el.style.display = 'flex';
+      const totalPages = Math.ceil(total / pageSize);
+      const prevBtn = document.createElement('button');
+      prevBtn.textContent = '上一页';
+      prevBtn.disabled = page <= 1;
+      prevBtn.onclick = () => { if (page > 1) onPage(page - 1); };
+      const nextBtn = document.createElement('button');
+      nextBtn.textContent = '下一页';
+      nextBtn.disabled = page >= totalPages;
+      nextBtn.onclick = () => { if (page < totalPages) onPage(page + 1); };
+      el.innerHTML = '';
+      el.appendChild(document.createTextNode('共 ' + total + ' 条 '));
+      el.appendChild(prevBtn);
+      el.appendChild(document.createTextNode(' 第 ' + page + ' / ' + totalPages + ' 页 '));
+      el.appendChild(nextBtn);
+    }
+
+    async function loadDataStatus() {
+      const el = document.getElementById('dataStatusText');
+      if (!el) return;
+      try {
+        const r = await fetch(API + '/api/data_status');
+        const d = await r.json();
+        const range = (d.min_date && d.max_date) ? `${d.min_date} ~ ${d.max_date}` : '-';
+        el.innerHTML = `销售 <strong>${d.sale_count || 0}</strong> 条 · 库存 <strong>${d.stock_count || 0}</strong> 条 · 毛利 <strong>${d.profit_count || 0}</strong> 条 · 日期范围 <strong>${range}</strong>`;
+      } catch (e) { el.textContent = '数据状态加载失败'; }
+    }
+
+    async function loadProducts() {
+      try {
+        const q = new URLSearchParams();
+        if (currentCategoryLargeCode) q.set('category_large_code', currentCategoryLargeCode);
+        if (currentCategoryMidCode) q.set('category_mid_code', currentCategoryMidCode);
+        if (currentCategorySmallCode) q.set('category_small_code', currentCategorySmallCode);
+        const url = API + '/api/products' + (q.toString() ? '?' + q : '');
+        const r = await fetch(url);
+        const list = await r.json();
+        const sel = document.getElementById('productSelect');
+        sel.innerHTML = '<option value="">全部商品</option>' + list.map(p =>
+          `<option value="${p.sku_code}">${p.sku_code} (${p.category})</option>`
+        ).join('');
+        if (currentSkuCode) sel.value = currentSkuCode;
+      } catch (e) { console.warn('商品加载失败', e); }
+    }
+
+    async function loadCategoryRank() {
+      const tbody = document.getElementById('categoryRankBody');
+      const wrap = document.getElementById('categoryRankDetailWrap');
+      wrap.style.display = 'none';
+      try {
+        const r = await fetch(API + '/api/category_rank_by_large?' + queryParams());
+        if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+        const data = await r.json();
+        categoryRankData = safeArray(data);
+        renderCategoryRank();
+        bindCategoryRankExpand();
+        bindCategoryRankSort();
+      } catch (e) { tbody.innerHTML = '<tr><td colspan="8" class="error">加载失败: ' + e.message + '</td></tr>'; }
+    }
+
+    function renderCategoryRank() {
+      const tbody = document.getElementById('categoryRankBody');
+      const key = categoryRankSort.key;
+      const asc = categoryRankSort.asc;
+      const sorted = [...categoryRankData].sort((a, b) => {
+        const va = a[key] != null ? Number(a[key]) : 0;
+        const vb = b[key] != null ? Number(b[key]) : 0;
+        return asc ? va - vb : vb - va;
+      });
+      tbody.innerHTML = sorted.length === 0
+        ? '<tr><td colspan="8" class="loading">暂无数据</td></tr>'
+        : sorted.map((row, i) => {
+            const code = (row.category_large_code || row.category_large || '').replace(/"/g, '&quot;');
+            const name = (row.category_large || '未分类').replace(/</g, '&lt;');
+            return `<tr class="summary-row cat-rank-row" data-expanded="0" data-large-code="${code}" data-large-name="${name}">
+              <td><span class="expand-icon">▶</span></td>
+              <td>${i + 1}</td>
+              <td>${name}</td>
+              <td class="num">${fmtMoney(row.sale_amount)}</td>
+              <td class="num">${fmtMoney(row.profit_amount)}</td>
+              <td class="num">${(row.margin_pct != null ? row.margin_pct : 0).toFixed(2)}%</td>
+              <td class="num">${(row.sale_contrib_pct != null ? row.sale_contrib_pct : 0).toFixed(2)}%</td>
+              <td class="num">${(row.profit_contrib_pct != null ? row.profit_contrib_pct : 0).toFixed(2)}%</td>
+            </tr>`;
+          }).join('');
+    }
+
+    function bindCategoryRankSort() {
+      document.querySelectorAll('#categoryRankTable .sortable-th').forEach(th => {
+        th.onclick = (e) => {
+          e.stopPropagation();
+          const key = th.dataset.sort;
+          if (!key) return;
+          categoryRankSort.asc = categoryRankSort.key === key ? !categoryRankSort.asc : false;
+          categoryRankSort.key = key;
+          renderCategoryRank();
+          bindCategoryRankExpand();
+        };
+      });
+    }
+
+    function bindCategoryRankExpand() {
+      const table = document.getElementById('categoryRankTable');
+      if (!table) return;
+      table.onclick = async (e) => {
+        const tr = e.target.closest('.cat-rank-row');
+        if (!tr) return;
+        if (e.target.closest('.sortable-th')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const expanded = tr.dataset.expanded === '1';
+        const code = (tr.dataset.largeCode || '').trim();
+        const name = (tr.dataset.largeName || '').trim();
+        const wrap = document.getElementById('categoryRankDetailWrap');
+        const titleEl = document.getElementById('categoryRankDetailTitle');
+        const detailBody = document.getElementById('categoryRankDetailBody');
+        if (expanded) {
+          tr.classList.remove('expanded');
+          tr.dataset.expanded = '0';
+          wrap.style.display = 'none';
+          return;
+        }
+        document.querySelectorAll('#categoryRankBody .cat-rank-row').forEach(r => { r.classList.remove('expanded'); r.dataset.expanded = '0'; });
+        tr.classList.add('expanded');
+        tr.dataset.expanded = '1';
+        wrap.style.display = 'block';
+        titleEl.textContent = (name || '未分类') + ' — 中类/小类明细';
+        detailBody.innerHTML = '<tr><td colspan="6" class="loading">加载中...</td></tr>';
+        const key = code || name;
+        if (!key) { detailBody.innerHTML = '<tr><td colspan="6" class="loading">无法展开</td></tr>'; return; }
+        try {
+          const base = queryParams();
+          const q = (base ? base + '&' : '') + 'category_large_code=' + encodeURIComponent(key);
+          const r = await fetch(API + '/api/category_rank_detail?' + q);
+          if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+          const rows = safeArray(await r.json());
+          detailBody.innerHTML = rows.length === 0
+            ? '<tr><td colspan="6" class="loading">暂无中类/小类明细</td></tr>'
+            : rows.map(row => `<tr>
+              <td>${row.rank}</td>
+              <td>${(row.category_mid || '').replace(/</g,'&lt;')}</td>
+              <td>${(row.category || '未分类').replace(/</g,'&lt;')}</td>
+              <td class="num">${fmtMoney(row.sale_amount)}</td>
+              <td class="num">${fmtMoney(row.profit_amount)}</td>
+              <td class="num">${(row.margin_pct != null ? row.margin_pct : 0).toFixed(2)}%</td>
+            </tr>`).join('');
+        } catch (err) { detailBody.innerHTML = '<tr><td colspan="6" class="error">加载失败: ' + (err.message || err) + '</td></tr>'; }
+      };
+    }
+
+    async function loadInvAlert(page) {
+      try {
+        const q = queryParams({ page: page || currentInvPage, page_size: PAGE_SIZE });
+        const [r1, r2] = await Promise.all([
+          fetch(API + '/api/inv_alert?' + q),
+          fetch(API + '/api/inv_alert_by_category?level=large&' + q)
+        ]);
+        const cnt = r1.ok ? ((await r1.json()).alert_sku_count || 0) : 0;
+        const byLarge = r2.ok ? safeArray(await r2.json()) : [];
+        document.getElementById('alertCount').textContent = cnt;
+        const tbody = document.getElementById('invCategoryBody');
+        tbody.innerHTML = (byLarge || []).length === 0
+          ? '<tr><td colspan="4" class="loading">暂无低库存预警</td></tr>'
+          : (byLarge || []).map(row => {
+              const name = (row.category_large || '未分类').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+              const code = (row.category_large_code || row.category_large || '').replace(/"/g, '&quot;');
+              return `<tr class="summary-row inv-summary" data-expanded="0" data-large="${code}" data-large-name="${name}">
+                <td><span class="expand-icon">▶</span></td>
+                <td>${name}</td>
+                <td class="num">${row.alert_sku_count}</td>
+                <td class="num">${fmtMoney(row.stock_amount)}</td>
+              </tr>`;
+            }).join('');
+        bindInvExpand();
+      } catch (e) { document.getElementById('invCategoryBody').innerHTML = '<tr><td colspan="4" class="error">加载失败</td></tr>'; }
+    }
+
+    function bindInvExpand() {
+      document.querySelectorAll('#invCategoryBody .inv-summary').forEach(tr => {
+        tr.onclick = async () => {
+          const expanded = tr.dataset.expanded === '1';
+          const largeCode = tr.dataset.large;
+          const largeName = tr.dataset.largeName;
+          const wrap = document.getElementById('invDetailWrap');
+          const titleEl = document.getElementById('invDetailTitle');
+          const tbody = document.getElementById('invTableBody');
+          const pagEl = document.getElementById('invPagination');
+          if (expanded) {
+            tr.classList.remove('expanded');
+            tr.dataset.expanded = '0';
+            wrap.style.display = 'none';
+            return;
+          }
+          document.querySelectorAll('#invCategoryBody .inv-summary').forEach(r => { r.classList.remove('expanded'); r.dataset.expanded = '0'; });
+          tr.classList.add('expanded');
+          tr.dataset.expanded = '1';
+          wrap.style.display = 'block';
+          titleEl.textContent = (largeName || '未分类') + ' — 低库存 SKU 明细';
+          tbody.innerHTML = '<tr><td colspan="6" class="loading">加载中...</td></tr>';
+          try {
+            const q = queryParams({ category_large_code: largeCode, page: 1, page_size: PAGE_SIZE });
+            const [r1, r2] = await Promise.all([
+              fetch(API + '/api/inv_alert?' + q),
+              fetch(API + '/api/inv_alert_list?' + q)
+            ]);
+            const d = await r2.json();
+            const rows = d.items || [];
+            const total = d.total != null ? d.total : rows.length;
+            currentInvPage = 1;
+            tbody.innerHTML = rows.length === 0
+              ? '<tr><td colspan="6" class="loading">该大类下暂无低库存 SKU</td></tr>'
+              : rows.map(row => `<tr>
+                <td>${(row.sku_code || '').replace(/</g,'&lt;')}</td>
+                <td>${(row.product_name || '').replace(/</g,'&lt;').slice(0,20)}</td>
+                <td>${(row.category || '').replace(/</g,'&lt;')}</td>
+                <td class="num">${row.stock_qty}</td>
+                <td class="num">${fmtMoney(row.stock_amount)}</td>
+                <td>${row.data_date}</td>
+              </tr>`).join('');
+            renderPagination(pagEl, total, 1, PAGE_SIZE, (p) => loadInvDetailPage(largeCode, p));
+          } catch (err) { tbody.innerHTML = '<tr><td colspan="6" class="error">加载失败</td></tr>'; }
+        };
+      });
+    }
+
+    async function loadInvDetailPage(largeCode, page) {
+      const tbody = document.getElementById('invTableBody');
+      const pagEl = document.getElementById('invPagination');
+      try {
+        const q = queryParams({ category_large_code: largeCode, page: page || 1, page_size: PAGE_SIZE });
+        const r = await fetch(API + '/api/inv_alert_list?' + q);
+        const d = await r.json();
+        const rows = d.items || [];
+        const total = d.total != null ? d.total : rows.length;
+        currentInvPage = d.page != null ? d.page : 1;
+        tbody.innerHTML = rows.length === 0
+          ? '<tr><td colspan="6" class="loading">暂无数据</td></tr>'
+          : rows.map(row => `<tr>
+            <td>${(row.sku_code || '').replace(/</g,'&lt;')}</td>
+            <td>${(row.product_name || '').replace(/</g,'&lt;').slice(0,20)}</td>
+            <td>${(row.category || '').replace(/</g,'&lt;')}</td>
+            <td class="num">${row.stock_qty}</td>
+            <td class="num">${fmtMoney(row.stock_amount)}</td>
+            <td>${row.data_date}</td>
+          </tr>`).join('');
+        renderPagination(pagEl, total, currentInvPage, PAGE_SIZE, (p) => loadInvDetailPage(largeCode, p));
+      } catch (e) { tbody.innerHTML = '<tr><td colspan="6" class="error">加载失败</td></tr>'; }
+    }
+
+    async function loadDowChart() {
+      const el = document.getElementById('dowChart');
+      if (!el) return;
+      try {
+        const r = await fetch(API + '/api/dow_sales?' + queryParams());
+        const data = await r.json();
+        const chart = echarts.init(el);
+        chart.setOption({
+          tooltip: { trigger: 'axis', formatter: p => {
+            const idx = p[0].dataIndex;
+            const row = data[idx];
+            return (row.dow_name || '') + '<br/>销售额: ' + fmtMoney(row.sale_amount) + '<br/>毛利: ' + fmtMoney(row.profit_amount) + '<br/>天数: ' + (row.day_count || 0);
+          }},
+          grid: { left: 40, right: 20, top: 20, bottom: 30 },
+          xAxis: { type: 'category', data: data.map(x => x.dow_name), axisLabel: { color: '#94a3b8', fontSize: 11 } },
+          yAxis: { type: 'value', axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: '#334155' } } },
+          series: [{ name: '销售额', type: 'bar', data: data.map(x => x.sale_amount), itemStyle: { color: '#38bdf8' } }]
+        });
+      } catch (e) { el.innerHTML = '<div class="loading" style="padding:20px;">加载失败</div>'; }
+    }
+
+    async function loadTrendAnalysis() {
+      const popEl = document.getElementById('popContent');
+      const yoyEl = document.getElementById('yoyContent');
+      try {
+        const r = await fetch(API + '/api/trend_analysis?granularity=' + currentGranularity + '&' + queryParams());
+        const d = await r.json();
+        let popHtml = '';
+        if (d.period_over_period) {
+          const p = d.period_over_period;
+          const saleCls = p.sale_change_pct >= 0 ? 'trend-up' : 'trend-down';
+          const profitCls = p.profit_change_pct >= 0 ? 'trend-up' : 'trend-down';
+          popHtml = `
+            <div class="trend-item"><span>本期 (${p.current_period})</span><span>销售额 ${fmtMoney(p.current_sale)}</span></div>
+            <div class="trend-item"><span>上期 (${p.prev_period})</span><span>销售额 ${fmtMoney(p.prev_sale)}</span></div>
+            <div class="trend-item"><span>销售额环比</span><span class="${saleCls}">${p.sale_change_pct >= 0 ? '+' : ''}${p.sale_change_pct}%</span></div>
+            <div class="trend-item"><span>毛利环比</span><span class="${profitCls}">${p.profit_change_pct >= 0 ? '+' : ''}${p.profit_change_pct}%</span></div>
+          `;
+        } else {
+          popHtml = '<div class="trend-item">数据不足，无法计算环比</div>';
+        }
+        popEl.innerHTML = popHtml;
+
+        let yoyHtml = '';
+        const trendCls = d.trend === 'up' ? 'trend-up' : d.trend === 'down' ? 'trend-down' : 'trend-neutral';
+        const trendText = d.trend === 'up' ? '↑ 近期呈上升趋势' : d.trend === 'down' ? '↓ 近期呈下降趋势' : '→ 近期较为平稳';
+        yoyHtml += `<div class="trend-item"><span>走势</span><span class="${trendCls}">${trendText}</span></div>`;
+        if (d.year_over_year) {
+          const y = d.year_over_year;
+          const saleCls = y.sale_change_pct >= 0 ? 'trend-up' : 'trend-down';
+          const profitCls = y.profit_change_pct >= 0 ? 'trend-up' : 'trend-down';
+          yoyHtml += `
+            <div class="trend-item"><span>销售额同比 (vs ${y.same_period_last_year})</span><span class="${saleCls}">${y.sale_change_pct >= 0 ? '+' : ''}${y.sale_change_pct}%</span></div>
+            <div class="trend-item"><span>毛利同比</span><span class="${profitCls}">${y.profit_change_pct >= 0 ? '+' : ''}${y.profit_change_pct}%</span></div>
+          `;
+        } else {
+          const reason = d.yoy_reason || '同比需至少12个月（月）/53周（周）/366天（日）历史数据';
+          yoyHtml += '<div class="trend-item" title="' + reason + '">数据不足，无法计算同比</div><div class="trend-item" style="font-size:0.75rem;color:#64748b;">' + reason + '</div>';
+        }
+        yoyEl.innerHTML = yoyHtml;
+      } catch (e) {
+        document.getElementById('popContent').innerHTML = '<div class="error">加载失败</div>';
+        document.getElementById('yoyContent').innerHTML = '<div class="error">加载失败</div>';
+      }
+    }
+
+    function refreshAll() {
+      Promise.all([loadKpi(), loadPie(), loadBar(), loadCategoryRank(), loadProfitDetail(), loadTrendAnalysis(), loadDowChart()]);
+    }
+
+    async function loadAiInsight() {
+      const btn = document.getElementById('btnAiInsight');
+      const section = document.getElementById('aiInsightSection');
+      const content = document.getElementById('aiInsightContent');
+      if (!btn || !section || !content) return;
+      btn.disabled = true;
+      btn.innerHTML = '<span class="btn-ai-icon">⏳</span> 分析中...';
+      try {
+        const r = await fetch(API + '/api/insights?' + queryParams());
+        const d = await r.json();
+        const insights = d.insights || [];
+        section.style.display = insights.length ? 'block' : 'none';
+        content.innerHTML = insights.length === 0
+          ? '<p class="loading">暂无分析建议，请先导入数据</p>'
+          : insights.map(i => `<div class="insight-card ${i.type || 'info'}">
+            <div class="title">${(i.title || '').replace(/</g,'&lt;')}</div>
+            <div class="desc">${(i.desc || '').replace(/</g,'&lt;')}</div>
+            <div class="action">${(i.action || '').replace(/</g,'&lt;')}</div>
+          </div>`).join('');
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch (e) {
+        content.innerHTML = '<p class="error">加载失败: ' + (e.message || '网络错误') + '。请确认服务已启动（npm run htma:run）</p>';
+        section.style.display = 'block';
+      }
+      btn.disabled = false;
+      btn.innerHTML = '<span class="btn-ai-icon">✨</span> AI 分析建议';
+    }
+
+    async function loadReportHistory() {
+      const listEl = document.getElementById('reportHistoryList');
+      if (!listEl) return;
+      try {
+        const r = await fetch(API + '/api/report_history?limit=20');
+        const data = await r.json();
+        if (!r.ok) throw new Error(data?.error || '加载失败');
+        const items = Array.isArray(data) ? data : (data?.items || []);
+        listEl.innerHTML = items.length === 0
+          ? '<p class="loading" style="padding:12px;color:#64748b;">暂无历史报告，点击上方按钮生成</p>'
+          : '<table><thead><tr><th>日期</th><th>时间</th><th>接收人</th><th>状态</th><th></th></tr></thead><tbody>' +
+            items.map(x => `<tr>
+              <td>${x.report_date || '-'}</td>
+              <td>${(x.report_time || '').slice(11,19)}</td>
+              <td>${(x.feishu_at_user_name || '-').replace(/</g,'&lt;')}</td>
+              <td>${x.send_status ? '✓已发送' : '✗失败'}</td>
+              <td><a href="#" class="btn-view-report" data-id="${x.id}">查看</a></td>
+            </tr>`).join('') + '</tbody></table>';
+        listEl.querySelectorAll('.btn-view-report').forEach(a => {
+          a.addEventListener('click', (e) => { e.preventDefault(); loadReportDetail(parseInt(a.dataset.id)); });
+        });
+      } catch (e) {
+        listEl.innerHTML = '<p class="error" style="padding:12px;">加载失败，请先执行 scripts/06_create_report_log.sql 创建表</p>';
+      }
+    }
+
+    async function loadReportDetail(id) {
+      const wrap = document.getElementById('reportDetailWrap');
+      if (!wrap) return;
+      try {
+        const r = await fetch(API + '/api/report_history/' + id);
+        const d = await r.json();
+        wrap.style.display = 'block';
+        wrap.textContent = d.report_content || '无内容';
+      } catch (e) {
+        wrap.textContent = '加载失败: ' + (e.message || '');
+        wrap.style.display = 'block';
+      }
+    }
+
+    async function genAndSendReport() {
+      const btn = document.getElementById('btnGenReport');
+      if (!btn) return;
+      btn.disabled = true;
+      btn.textContent = '生成中...';
+      try {
+        const r = await fetch(API + '/api/marketing_report?send=1');
+        const d = await r.json();
+        if (d.success) {
+          btn.textContent = d.feishu_ok ? '✓ 已发送并保存' : '已保存（飞书发送失败）';
+          loadReportHistory();
+          const detailWrap = document.getElementById('reportDetailWrap');
+          if (detailWrap) { detailWrap.style.display = 'block'; detailWrap.textContent = d.report || ''; }
+        } else {
+          btn.textContent = '生成失败';
+          alert('生成失败: ' + (d.error || ''));
+        }
+      } catch (e) {
+        btn.textContent = '生成失败';
+        alert('请求失败: ' + (e.message || ''));
+      }
+      btn.disabled = false;
+      setTimeout(() => { if (btn) btn.textContent = '生成并发送营销报告'; }, 2000);
+    }
+
+    function showAiSection() {
+      const section = document.getElementById('aiInsightSection');
+      if (section) section.style.display = 'block';
+    }
+
+    async function sendAiChat(msg) {
+      const input = document.getElementById('aiChatInput');
+      const messages = document.getElementById('aiChatMessages');
+      const btn = document.getElementById('btnAiChatSend');
+      if (!msg || !messages) return;
+      const txt = String(msg).trim();
+      if (!txt) return;
+      if (input) input.value = '';
+      if (btn) btn.disabled = true;
+      messages.innerHTML += '<div style="margin-bottom:8px;"><span style="color:#38bdf8;">您：</span>' + txt.replace(/</g,'&lt;') + '</div>';
+      messages.scrollTop = messages.scrollHeight;
+      try {
+        const r = await fetch(API + '/api/ai_chat?message=' + encodeURIComponent(txt));
+        const ct = r.headers.get('content-type') || '';
+        const text = await r.text();
+        let d;
+        try {
+          d = ct.includes('json') ? JSON.parse(text) : (text.startsWith('{') ? JSON.parse(text) : { success: false, reply: '服务返回异常(' + r.status + ')，请确认访问 ' + API });
+        } catch (_) {
+          d = { success: false, reply: '服务返回非 JSON，请确认后端已启动（npm run htma:run）' };
+        }
+        const reply = (d && d.success) ? (d.reply || '') : ('错误: ' + (d && d.reply ? d.reply : '未知'));
+        messages.innerHTML += '<div style="margin-bottom:8px;padding:8px;background:#1e293b;border-radius:6px;border-left:3px solid #38bdf8;"><span style="color:#34d399;">AI：</span>' + reply.replace(/</g,'&lt;').replace(/\n/g,'<br/>') + '</div>';
+        messages.scrollTop = messages.scrollHeight;
+      } catch (e) {
+        messages.innerHTML += '<div style="color:#f87171;">请求失败: ' + (e.message || '').replace(/</g,'&lt;') + '</div>';
+      }
+      if (btn) btn.disabled = false;
+    }
+
+    async function onMarketingReportClick() {
+      const btn = document.getElementById('btnMarketingReport');
+      const listEl = document.getElementById('reportHistoryList');
+      if (!btn) return;
+      btn.disabled = true;
+      btn.innerHTML = '<span class="btn-ai-icon">⏳</span> 生成中...';
+      showAiSection();
+      if (listEl) listEl.innerHTML = '<p class="loading" style="padding:16px;">正在生成报告并发送给余为军...</p>';
+      document.getElementById('reportHistoryWrap')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      try {
+        const r = await fetch(API + '/api/marketing_report?send=1');
+        const d = await r.json();
+        if (d.success) {
+          btn.innerHTML = '<span class="btn-ai-icon">✓</span> 已发送';
+          const detailWrap = document.getElementById('reportDetailWrap');
+          if (detailWrap) { detailWrap.style.display = 'block'; detailWrap.textContent = d.report || ''; }
+          await loadReportHistory();
+        } else {
+          btn.innerHTML = '<span class="btn-ai-icon">✗</span> 失败';
+          if (listEl) listEl.innerHTML = '<p class="error" style="padding:12px;">生成失败: ' + (d.error || '').replace(/</g,'&lt;') + '</p>';
+        }
+      } catch (e) {
+        btn.innerHTML = '<span class="btn-ai-icon">✗</span> 失败';
+        const msg = e.name === 'AbortError' ? '请求超时' : ('网络错误: ' + (e.message || '') + '。请确认服务已启动：npm run htma:run');
+        if (listEl) listEl.innerHTML = '<p class="error" style="padding:12px;">' + msg.replace(/</g,'&lt;') + '</p>';
+      }
+      btn.disabled = false;
+      setTimeout(() => { if (btn) btn.innerHTML = '<span class="btn-ai-icon">📤</span> 生成营销报告'; }, 3000);
+    }
+
+    async function loadCategoryLarge() {
+      try {
+        const r = await fetch(API + '/api/categories?level=large');
+        const list = await r.json();
+        const sel = document.getElementById('categoryLargeSelect');
+        sel.innerHTML = '<option value="">全部大类</option>' + (list || []).map(x => `<option value="${(x.code||'').replace(/"/g,'&quot;')}">${(x.name||x.code||'').replace(/</g,'&lt;')}</option>`).join('');
+      } catch (e) { console.warn('大类加载失败', e); }
+    }
+    async function loadCategoryMid() {
+      try {
+        const r = await fetch(API + '/api/categories?level=mid&category_large_code=' + encodeURIComponent(currentCategoryLargeCode || ''));
+        const list = await r.json();
+        const sel = document.getElementById('categoryMidSelect');
+        sel.innerHTML = '<option value="">全部中类</option>' + (list || []).map(x => `<option value="${(x.code||'').replace(/"/g,'&quot;')}">${(x.name||x.code||'').replace(/</g,'&lt;')}</option>`).join('');
+      } catch (e) { console.warn('中类加载失败', e); }
+    }
+    async function loadCategorySmall() {
+      try {
+        const q = 'category_large_code=' + encodeURIComponent(currentCategoryLargeCode || '') + '&category_mid_code=' + encodeURIComponent(currentCategoryMidCode || '');
+        const r = await fetch(API + '/api/categories?level=small&' + q);
+        const list = await r.json();
+        const sel = document.getElementById('categorySmallSelect');
+        sel.innerHTML = '<option value="">全部小类</option>' + (list || []).map(x => `<option value="${(x.code||'').replace(/"/g,'&quot;')}">${(x.name||x.code||'').replace(/</g,'&lt;')}</option>`).join('');
+      } catch (e) { console.warn('小类加载失败', e); }
+    }
+
+    async function loadDateRange() {
+      try {
+        const r = await fetch(API + '/api/date_range');
+        const d = await r.json();
+        const startIn = document.getElementById('startDate');
+        const endIn = document.getElementById('endDate');
+        if (startIn && d.min_date) startIn.min = d.min_date;
+        if (endIn && d.max_date) { endIn.max = d.max_date; endIn.min = d.min_date; if (startIn) startIn.max = d.max_date; }
+      } catch (e) { console.warn('日期范围加载失败', e); }
+    }
+
+    function applyFilter() {
+      const startIn = document.getElementById('startDate');
+      const endIn = document.getElementById('endDate');
+      currentStartDate = startIn.value || '';
+      currentEndDate = endIn.value || '';
+      currentCategoryLargeCode = document.getElementById('categoryLargeSelect').value || '';
+      currentCategoryMidCode = document.getElementById('categoryMidSelect').value || '';
+      currentCategorySmallCode = document.getElementById('categorySmallSelect').value || '';
+      currentSkuCode = document.getElementById('productSelect').value || '';
+      updateExportLinks();
+      loadKpi();
+      loadPie();
+      loadBar();
+      loadCategoryRank();
+      currentDetailPage.category = 1;
+      currentDetailPage.product = 1;
+      loadProfitDetail();
+      loadProductDetail(1);
+      loadTrendAnalysis();
+      loadDowChart();
+      currentInvPage = 1;
+      loadInvAlert(1);
+    }
+
+    function updatePeriodTabActive() {
+        const isCustom = (currentStartDate && currentEndDate) || currentPeriod === 'custom';
+        document.querySelectorAll('.period-tabs .tab-btn').forEach(b => {
+          b.classList.toggle('active', (isCustom && b.dataset.period === 'custom') || (!currentStartDate && b.dataset.period === currentPeriod));
+        });
+        const dateEl = document.getElementById('dateRangeInline');
+        if (dateEl) dateEl.style.display = isCustom ? 'flex' : 'none';
+      }
+
+    (async function() {
+      await loadCategoryLarge();
+      await loadCategoryMid();
+      await loadCategorySmall();
+      await loadProducts();
+      await loadDateRange();
+      loadDataStatus();
+      updatePeriodTabActive();
+      updateExportLinks();
+      await Promise.all([loadKpi(), loadPie(), loadBar(), loadCategoryRank(), loadProfitDetail(), loadProductDetail(1), loadInvAlert(), loadTrendAnalysis(), loadDowChart()]);
+
+      document.getElementById('btnQuery').addEventListener('click', () => { applyFilter(); updatePeriodTabActive(); });
+      document.getElementById('btnAiInsight').addEventListener('click', loadAiInsight);
+      document.getElementById('btnMarketingReport').addEventListener('click', onMarketingReportClick);
+      document.getElementById('btnGenReport').addEventListener('click', genAndSendReport);
+      const aiChatInput = document.getElementById('aiChatInput');
+      const aiChatSend = document.getElementById('btnAiChatSend');
+      if (aiChatInput && aiChatSend) {
+        aiChatSend.addEventListener('click', () => sendAiChat(aiChatInput.value));
+        aiChatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendAiChat(aiChatInput.value); });
+      }
+
+      document.querySelectorAll('.page-nav .nav-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const page = btn.dataset.page;
+          document.querySelectorAll('.page-nav .nav-tab').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          document.querySelectorAll('.page-panel').forEach(p => p.classList.remove('active'));
+          const panel = document.querySelector('.page-panel[data-page="' + page + '"]');
+          if (panel) panel.classList.add('active');
+          if (page === 'overview' && typeof echarts !== 'undefined') {
+            ['pieChart', 'barChart', 'dowChart'].forEach(id => {
+              const el = document.getElementById(id);
+              if (el) {
+                const inst = echarts.getInstanceByDom(el);
+                if (inst) setTimeout(() => inst.resize(), 50);
+              }
+            });
+          }
+        });
+      });
+
+      function onCategoryLargeChange() {
+        currentCategoryLargeCode = document.getElementById('categoryLargeSelect').value || '';
+        currentCategoryMidCode = '';
+        currentCategorySmallCode = '';
+        document.getElementById('categoryMidSelect').value = '';
+        document.getElementById('categorySmallSelect').value = '';
+        loadCategoryMid();
+        loadCategorySmall();
+        loadProducts();
+        currentSkuCode = '';
+        document.getElementById('productSelect').value = '';
+      }
+      function onCategoryMidChange() {
+        currentCategoryMidCode = document.getElementById('categoryMidSelect').value || '';
+        currentCategorySmallCode = '';
+        document.getElementById('categorySmallSelect').value = '';
+        loadCategorySmall();
+        loadProducts();
+        currentSkuCode = '';
+        document.getElementById('productSelect').value = '';
+      }
+      function onCategorySmallChange() {
+        currentCategorySmallCode = document.getElementById('categorySmallSelect').value || '';
+        loadProducts();
+        currentSkuCode = '';
+        document.getElementById('productSelect').value = '';
+      }
+      document.getElementById('categoryLargeSelect').addEventListener('change', onCategoryLargeChange);
+      document.getElementById('categoryMidSelect').addEventListener('change', onCategoryMidChange);
+      document.getElementById('categorySmallSelect').addEventListener('change', onCategorySmallChange);
+
+      document.querySelectorAll('.detail-tabs .tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.detail-tabs .tab-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          const isProduct = btn.dataset.detail === 'product';
+          const profitTbl = document.getElementById('profitTable');
+          const prodTbl = document.getElementById('productTable');
+          const prodPag = document.getElementById('productPagination');
+          profitTbl.style.display = isProduct ? 'none' : 'table';
+          prodTbl.style.display = isProduct ? 'table' : 'none';
+          if (prodPag) prodPag.style.display = (!isProduct || !prodPag.innerHTML) ? 'none' : 'flex';
+        });
+      });
+
+      document.querySelectorAll('.period-tabs .tab-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (btn.dataset.period === 'custom') {
+            const r = await fetch(API + '/api/date_range');
+            const d = await r.json();
+            const today = new Date().toISOString().slice(0, 10);
+            if (d.min_date && d.max_date) {
+              document.getElementById('startDate').value = d.min_date;
+              document.getElementById('endDate').value = today > d.max_date ? d.max_date : today;
+              currentStartDate = d.min_date;
+              currentEndDate = today > d.max_date ? d.max_date : today;
+              currentPeriod = 'custom';
+            }
+          } else {
+            document.getElementById('startDate').value = '';
+            document.getElementById('endDate').value = '';
+            currentStartDate = '';
+            currentEndDate = '';
+            currentPeriod = btn.dataset.period;
+          }
+          updatePeriodTabActive();
+          updateExportLinks();
+          loadKpi();
+          loadPie();
+          loadBar();
+          loadCategoryRank();
+          loadProfitDetail();
+          loadProductDetail(1);
+          loadTrendAnalysis();
+          loadDowChart();
+          loadInvAlert(1);
+        });
+      });
+
+      document.querySelectorAll('.chart-tabs .tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.chart-tabs .tab-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          currentGranularity = btn.dataset.granularity;
+          loadBar();
+          loadTrendAnalysis();
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

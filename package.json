@@ -1,0 +1,23 @@
+{
+  "name": "htma-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "jr:install": "npx playwright install chromium",
+    "jr:auto": "node scripts/jimureport_auto_design.mjs",
+    "jr:test": "node scripts/test_report_view.mjs",
+    "jr:test:curl": "./scripts/test_report_curl.sh",
+    "jr:test:htma": "VIEW_REPORT_ID=8946110000000000001 node scripts/test_report_view.mjs",
+    "jr:deploy": "bash scripts/openclaw_deploy_htma_dashboard.sh",
+    "jr:deploy:open": "bash scripts/openclaw_deploy_htma_dashboard.sh --open",
+    "htma:standalone": "bash scripts/deploy_htma_standalone.sh",
+    "htma:run": "bash scripts/start_htma.sh",
+    "htma:import": "source .venv/bin/activate && python scripts/auto_import_and_verify.py",
+    "htma:report": ".venv/bin/python scripts/htma_marketing_report.py",
+    "htma:report:dry": ".venv/bin/python scripts/htma_marketing_report.py --dry-run"
+  },
+  "devDependencies": {
+    "playwright": "^1.58.2"
+  }
+}

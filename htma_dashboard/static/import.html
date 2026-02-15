@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>数据导入 - 好特卖运营看板</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; padding: 24px; }
+    h1 { font-size: 1.4rem; margin-bottom: 8px; color: #f8fafc; }
+    .nav { margin-bottom: 24px; }
+    .nav a { color: #38bdf8; text-decoration: none; margin-right: 16px; }
+    .nav a:hover { text-decoration: underline; }
+    .section { background: #1e293b; border-radius: 12px; padding: 24px; margin-bottom: 20px; border: 1px solid #334155; max-width: 640px; }
+    .section h2 { font-size: 1rem; color: #94a3b8; margin-bottom: 16px; }
+    .file-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .file-row label { min-width: 140px; color: #94a3b8; font-size: 0.9rem; }
+    .file-row input[type="file"] { flex: 1; color: #e2e8f0; }
+    .btn { background: #38bdf8; color: #0f172a; border: none; padding: 12px 24px; border-radius: 8px; font-size: 1rem; cursor: pointer; font-weight: 600; }
+    .btn:hover { background: #0ea5e9; }
+    .btn:disabled { background: #64748b; cursor: not-allowed; }
+    .btn-secondary { background: #64748b; }
+    .btn-secondary:hover { background: #475569; }
+    .result { margin-top: 20px; padding: 16px; background: #334155; border-radius: 8px; font-size: 0.9rem; white-space: pre-wrap; }
+    .result.success { border-left: 4px solid #34d399; }
+    .result.error { border-left: 4px solid #f87171; }
+    .tip { color: #64748b; font-size: 0.85rem; margin-top: 8px; }
+    .data-status-bar { padding: 8px 12px; background: #1e293b; border-radius: 6px; margin-bottom: 16px; font-size: 0.85rem; color: #94a3b8; border: 1px solid #334155; }
+    .data-status-bar strong { color: #e2e8f0; }
+  </style>
+</head>
+<body>
+  <h1>数据导入</h1>
+  <div class="nav">
+    <a href="/">← 返回看板</a>
+  </div>
+  <div class="data-status-bar" id="dataStatusBar">
+    <span id="dataStatusText">数据加载中...</span>
+  </div>
+
+  <div class="section">
+    <h2>上传 Excel 文件（覆盖原有数据）</h2>
+    <form id="importForm">
+      <div class="file-row">
+        <label>销售日报</label>
+        <input type="file" name="sale_daily" accept=".xls,.xlsx" id="fileSaleDaily" />
+        <button type="button" class="btn btn-secondary" id="btnPreviewDaily" title="预览结构">预览</button>
+      </div>
+      <div class="file-row">
+        <label>销售汇总_默认</label>
+        <input type="file" name="sale_summary" accept=".xls,.xlsx" id="fileSaleSummary" />
+        <button type="button" class="btn btn-secondary" id="btnPreviewSummary" title="预览结构">预览</button>
+      </div>
+      <div class="file-row">
+        <label>实时库存</label>
+        <input type="file" name="stock" accept=".xls,.xlsx" />
+      </div>
+      <div class="file-row">
+        <label>品类附表</label>
+        <input type="file" name="category" accept=".xls,.xlsx" />
+        <span style="color:#64748b;font-size:0.85rem;">（大类编、大类名称、中类编、中类名称、小类编、小类名称）</span>
+      </div>
+      <div class="file-row">
+        <label>毛利汇总</label>
+        <input type="file" name="profit" accept=".xls,.xlsx" />
+        <span style="color:#64748b;font-size:0.85rem;">（大类名称、类别名称、销售金额、参考进价金额）</span>
+      </div>
+      <div class="file-row" style="margin-top:16px;">
+        <label>列映射（默认金额/进价为单价，销售额=金额×数量）：</label>
+        <div style="display:flex;flex-wrap:wrap;gap:12px 16px;align-items:center;">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" name="amount_as_total" value="1" /> 金额已是总金额</label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" name="cost_as_total" value="1" /> 进价已是总成本</label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" name="swap_amount_cost" value="1" /> 金额/进价列对调</label>
+        </div>
+      </div>
+      <p class="tip">文件名需包含对应关键词。至少上传一个文件。导入前会清空对应表，再写入新数据。</p>
+      <button type="submit" class="btn" id="submitBtn">开始导入</button>
+      <button type="button" class="btn btn-secondary" id="btnRepairSwap" style="margin-left:8px;">修复：对调金额/成本</button>
+      <button type="button" class="btn btn-secondary" id="btnRepairUnit" style="margin-left:8px;">修复：按单价×数量重算</button>
+    </form>
+    <div id="result" class="result" style="display:none;"></div>
+  </div>
+
+  <script>
+    document.getElementById('importForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const btn = document.getElementById('submitBtn');
+      const resultEl = document.getElementById('result');
+      btn.disabled = true;
+      resultEl.style.display = 'none';
+
+      const fd = new FormData();
+      let hasFile = false;
+      for (const key of ['sale_daily', 'sale_summary', 'stock', 'category', 'profit']) {
+        const el = form.elements[key];
+        if (el && el.files && el.files.length) {
+          fd.append(key, el.files[0]);
+          hasFile = true;
+        }
+      }
+      if (form.elements.swap_amount_cost?.checked) fd.append('swap_amount_cost', '1');
+      if (form.elements.amount_as_total?.checked) fd.append('amount_as_total', '1');
+      if (form.elements.cost_as_total?.checked) fd.append('cost_as_total', '1');
+      if (!hasFile) {
+        resultEl.textContent = '请至少选择一个 Excel 文件';
+        resultEl.className = 'result error';
+        resultEl.style.display = 'block';
+        btn.disabled = false;
+        return;
+      }
+
+      try {
+        const r = await fetch(apiBase() + '/api/import', { method: 'POST', body: fd });
+        const text = await r.text();
+        let d;
+        try {
+          d = JSON.parse(text);
+        } catch (_) {
+          const msg = r.status === 413 ? '文件过大，请上传小于 200MB 的 Excel' : ('服务器返回异常（' + r.status + '），请确认访问 http://127.0.0.1:5002');
+          throw new Error(msg);
+        }
+        if (d.success) {
+          let msg = '导入完成\n';
+          msg += `销售日报: ${d.sale_daily || 0} 条\n`;
+          msg += `销售汇总: ${d.sale_summary || 0} 条\n`;
+          msg += `实时库存: ${d.stock || 0} 条\n`;
+          msg += `品类附表: ${d.category || 0} 条\n`;
+          msg += `品类表(从销售透视): ${d.category_refreshed ?? '-'} 条\n`;
+          msg += `毛利汇总: ${d.profit || 0} 条\n`;
+          msg += `毛利表刷新: ${d.profit_refreshed || 0} 条\n`;
+          msg += `--- 当前数据 ---\n`;
+          msg += `销售表: ${d.sale_total || 0} 条\n`;
+          msg += `库存表: ${d.stock_total || 0} 条\n`;
+          msg += `毛利表: ${d.profit_total || 0} 条\n`;
+          msg += `日期范围: ${d.date_range || '-'}`;
+          if (d.errors && d.errors.length) msg += '\n警告: ' + d.errors.join('; ');
+          if (d.diagnostics && d.diagnostics.length) msg += '\n诊断: ' + d.diagnostics.join('; ');
+          resultEl.textContent = msg;
+          resultEl.className = 'result success';
+          loadDataStatus();
+        } else {
+          resultEl.textContent = '导入失败: ' + (d.message || JSON.stringify(d));
+          resultEl.className = 'result error';
+        }
+      } catch (err) {
+        resultEl.textContent = '请求失败: ' + err.message;
+        resultEl.className = 'result error';
+      }
+      resultEl.style.display = 'block';
+      btn.disabled = false;
+    };
+
+    async function callRepair(url, msg) {
+      const btn = event.target;
+      const resultEl = document.getElementById('result');
+      if (!confirm(msg)) return;
+      btn.disabled = true;
+      resultEl.style.display = 'none';
+      try {
+        const r = await fetch(apiBase() + url, { method: 'POST', headers: { 'Accept': 'application/json' } });
+        const text = await r.text();
+        let d;
+        try { d = JSON.parse(text); } catch (_) { throw new Error('服务器返回异常，请确认访问 http://127.0.0.1:5002'); }
+        resultEl.textContent = d.success ? '完成：' + d.message : '失败：' + d.message;
+        resultEl.className = 'result ' + (d.success ? 'success' : 'error');
+      } catch (e) {
+        resultEl.textContent = '请求失败：' + e.message;
+        resultEl.className = 'result error';
+      }
+      resultEl.style.display = 'block';
+      btn.disabled = false;
+    }
+    document.getElementById('btnRepairSwap').onclick = () => callRepair('/api/repair_swap_amount_cost', '将对调销售额与成本列并重算毛利，是否继续？');
+    document.getElementById('btnRepairUnit').onclick = () => callRepair('/api/repair_recalc_unit_price', '将按「单价×数量」重算销售额与成本，是否继续？');
+
+    function apiBase() {
+      const o = window.location.origin;
+      if (o && o !== 'null' && o !== 'undefined') return o;
+      return 'http://127.0.0.1:5002';
+    }
+
+    async function loadDataStatus() {
+      const el = document.getElementById('dataStatusText');
+      if (!el) return;
+      try {
+        const r = await fetch(apiBase() + '/api/data_status');
+        const d = await r.json();
+        const range = (d.min_date && d.max_date) ? `${d.min_date} ~ ${d.max_date}` : '-';
+        el.innerHTML = `销售 <strong>${d.sale_count || 0}</strong> 条 · 库存 <strong>${d.stock_count || 0}</strong> 条 · 毛利 <strong>${d.profit_count || 0}</strong> 条 · 日期范围 <strong>${range}</strong>`;
+      } catch (e) { el.textContent = '数据状态加载失败'; }
+    }
+    loadDataStatus();
+
+    async function doPreview(type) {
+      const input = type === 'sale_summary' ? document.getElementById('fileSaleSummary') : document.getElementById('fileSaleDaily');
+      const resultEl = document.getElementById('result');
+      const btn = type === 'sale_summary' ? document.getElementById('btnPreviewSummary') : document.getElementById('btnPreviewDaily');
+      if (!input.files || !input.files[0]) {
+        resultEl.textContent = '请先选择文件';
+        resultEl.className = 'result error';
+        resultEl.style.display = 'block';
+        return;
+      }
+      if (btn) { btn.disabled = true; btn.textContent = '预览中...'; }
+      const fd = new FormData();
+      fd.append(type, input.files[0]);
+      fd.append('preview_only', '1');
+      try {
+        const url = apiBase() + '/api/import';
+        const r = await fetch(url, { method: 'POST', body: fd });
+        const text = await r.text();
+        let d;
+        try { d = JSON.parse(text); } catch (_) { throw new Error('服务器返回非 JSON: ' + text.slice(0, 200)); }
+        if (d.preview) {
+          const p = d.preview;
+          if (!p.ok) {
+            resultEl.textContent = '预览失败: ' + (p.error || '未知错误');
+            resultEl.className = 'result error';
+          } else {
+            let msg = `原始: ${p.raw_rows}行×${p.raw_cols}列 → 保留${p.trimmed_rows}行, 表头行${p.header_row}, 数据${p.data_rows}行\n`;
+            msg += `检测列: 货号=${p.cols.sku}, 日期=${p.cols.date}, 金额=${p.cols.amount}, 成本=${p.cols.cost}\n`;
+            msg += `前3行: ${JSON.stringify(p.sample, null, 2)}`;
+            if (p.issues && p.issues.length) msg += '\n⚠️ ' + p.issues.join('; ');
+            resultEl.textContent = msg;
+            resultEl.className = 'result success';
+          }
+        } else if (d.ok) {
+          let msg = `原始: ${d.raw_rows}行×${d.raw_cols}列 → 保留${d.trimmed_rows}行, 表头行${d.header_row}, 数据${d.data_rows}行\n`;
+          msg += `检测列: 货号=${d.cols.sku}, 日期=${d.cols.date}, 金额=${d.cols.amount}, 成本=${d.cols.cost}\n`;
+          msg += `前3行: ${JSON.stringify(d.sample, null, 2)}`;
+          if (d.issues && d.issues.length) msg += '\n⚠️ ' + d.issues.join('; ');
+          resultEl.textContent = msg;
+          resultEl.className = 'result success';
+        } else {
+          const errMsg = d.error || d.message || (r.status !== 200 ? 'HTTP ' + r.status : '') || '未知错误';
+          resultEl.textContent = '预览失败: ' + errMsg;
+          resultEl.className = 'result error';
+        }
+      } catch (e) {
+        resultEl.textContent = '请求失败: ' + e.message + '（若在 Cursor 内嵌浏览器，请用系统浏览器打开 http://127.0.0.1:5002/import 再试）';
+        resultEl.className = 'result error';
+      }
+      resultEl.style.display = 'block';
+      if (btn) { btn.disabled = false; btn.textContent = '预览'; }
+    }
+    document.getElementById('btnPreviewDaily').onclick = () => doPreview('sale_daily');
+    document.getElementById('btnPreviewSummary').onclick = () => doPreview('sale_summary');
+  </script>
+</body>
+</html>
