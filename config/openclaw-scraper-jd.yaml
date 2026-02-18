@@ -1,0 +1,20 @@
+# OpenClaw 京东比价 - 爬虫配置（参考 browser-automation）
+# 用于好特卖货盘与京东价格对比
+# 用法：openclaw workflow run htma-jd-price-scrape
+name: htma-jd-price-scrape
+description: 好特卖货盘抽样与京东比价（Playwright 自主爬取）
+url: "https://search.jd.com/Search"
+selectors:
+  container: "li.gl-item"
+  fields:
+    title:
+      selector: ".p-name em"
+      type: text
+    price:
+      selector: ".p-price i"
+      type: text
+      transform: strip_currency
+    url:
+      selector: ".p-img a"
+      attribute: href
+      type: url

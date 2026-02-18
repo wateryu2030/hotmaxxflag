@@ -1,0 +1,16 @@
+{
+  "tools": {
+    "allow": ["exec", "process", "read", "write", "edit"],
+    "exec": {
+      "host": "sandbox",
+      "security": "full",
+      "ask": "off"
+    }
+  },
+  "skills": {
+    "load": {
+      "extraDirs": ["/Users/document/好特卖超级仓/数据分析/skills"],
+      "watch": true
+    }
+  }
+}

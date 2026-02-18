@@ -99,6 +99,19 @@
     .page-nav .nav-tab.active { background: #38bdf8; color: #0f172a; border-color: #38bdf8; }
     .page-panel { display: none; }
     .page-panel.active { display: block; }
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .modal-box { background: #1e293b; border-radius: 10px; border: 1px solid #334155; max-width: 90vw; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden; }
+    .modal-header { padding: 12px 16px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
+    .modal-header h2 { font-size: 1rem; color: #e2e8f0; }
+    .modal-close { background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 1.2rem; padding: 0 8px; }
+    .modal-close:hover { color: #f87171; }
+    .modal-body { padding: 12px 16px; overflow-y: auto; flex: 1; }
+    .modal-footer { padding: 12px 16px; border-top: 1px solid #334155; display: flex; justify-content: flex-end; gap: 8px; }
+    .price-compare-group { margin-bottom: 16px; }
+    .price-compare-group .cat-large { font-size: 0.95rem; font-weight: 600; color: #38bdf8; margin-bottom: 6px; }
+    .price-compare-group .cat-mid { font-size: 0.85rem; color: #94a3b8; margin-left: 12px; margin-bottom: 4px; }
+    .price-compare-group .cat-small { font-size: 0.8rem; color: #64748b; margin-left: 24px; margin-bottom: 2px; }
+    .price-compare-group table { font-size: 0.78rem; margin-left: 32px; margin-bottom: 8px; }
     .section.scroll-table .table-wrap { max-height: 50vh; overflow-y: auto; }
     @media (max-width: 768px) { .kpi-row { grid-template-columns: 1fr 1fr; } .chart-row { grid-template-columns: 1fr; } .trend-section { grid-template-columns: 1fr; } .dashboard-grid { grid-template-columns: 1fr; } .filter-bar { flex-direction: column; align-items: stretch; } .nav-row { flex-direction: column; align-items: stretch; } }
   </style>
@@ -169,8 +182,32 @@
   </div>
   </div>
 
+  <div id="priceCompareModal" class="modal-overlay" style="display:none;">
+    <div class="modal-box" style="width:720px;">
+      <div class="modal-header">
+        <h2>📊 货盘比价 - 平台商品与竞品价格对比</h2>
+        <button class="modal-close" id="priceCompareModalClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:0.85rem;color:#94a3b8;margin-bottom:12px;">以下为平台商品（来自 t_htma_platform_products），按大类、中类、小类分类，含规格、条码。确认后将对标京东/拼多多等平台执行比价（约1-3分钟）。</p>
+        <div id="priceCompareProductList"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="tab-btn" id="priceCompareModalCancel">取消</button>
+        <button class="btn-query" id="priceCompareExecute">确认执行比价</button>
+      </div>
+    </div>
+  </div>
+
   <div id="aiInsightSection" style="display:none; margin-bottom:6px;">
     <div class="section">
+      <h2>📊 货盘比价（平台商品 vs 京东/拼多多）</h2>
+      <p style="font-size:0.8rem;color:#94a3b8;margin-bottom:8px;">列出平台商品（按大类/中类/小类、规格、条码），确认后执行竞品比价（约1-3分钟）。</p>
+      <button id="btnPriceCompare" class="btn-ai" title="打开商品列表，确认后执行比价">
+        <span class="btn-ai-icon">📊</span> 比价
+      </button>
+    </div>
+    <div class="section" style="margin-top:8px;">
       <h2>✨ AI 智能分析建议</h2>
       <div id="aiInsightContent"></div>
     </div>
@@ -187,7 +224,7 @@
     </div>
     <div class="section" style="margin-top:8px;">
       <h2>💬 AI 对话（可操作洞察）</h2>
-      <p style="font-size:0.8rem;color:#94a3b8;margin-bottom:8px;">针对报告提问，获取可执行建议。可问：负毛利怎么诊断？高毛利如何做 SOP？断货优先级？移动异业合作怎么落地？验证闭环怎么设计？</p>
+      <p style="font-size:0.8rem;color:#94a3b8;margin-bottom:8px;">针对报告提问，获取可执行建议。可问：销售突破500万营销怎么做？毛利提高到200万要哪些动作？哪些货品性价比高？负毛利怎么诊断？断货优先级？移动异业合作怎么落地？</p>
       <div id="aiChatWrap" style="background:#0f172a;border-radius:8px;padding:8px;border:1px solid #334155;">
         <div id="aiChatMessages" style="max-height:180px;overflow-y:auto;min-height:60px;font-size:0.85rem;white-space:pre-wrap;margin-bottom:8px;"></div>
         <div style="display:flex;gap:8px;">
@@ -1137,6 +1174,83 @@
       if (btn) btn.disabled = false;
     }
 
+    async function onPriceCompareClick() {
+      const modal = document.getElementById('priceCompareModal');
+      const listEl = document.getElementById('priceCompareProductList');
+      if (!modal || !listEl) return;
+      showAiSection();
+      modal.style.display = 'flex';
+      listEl.innerHTML = '<p class="loading" style="padding:24px;">加载商品列表...</p>';
+      try {
+        const r = await fetch(API + '/api/price_compare_products?days=30&limit=300');
+        const d = await r.json();
+        if (!d.success) throw new Error(d.error || '加载失败');
+        const groups = d.groups || {};
+        let html = '';
+        for (const [large, midMap] of Object.entries(groups)) {
+          html += '<div class="price-compare-group"><div class="cat-large">' + (large || '未分类').replace(/</g,'&lt;') + '</div>';
+          for (const [mid, smallMap] of Object.entries(midMap)) {
+            html += '<div class="cat-mid">' + (mid || '未分类').replace(/</g,'&lt;') + '</div>';
+            for (const [small, items] of Object.entries(smallMap)) {
+              html += '<div class="cat-small">' + (small || '未分类').replace(/</g,'&lt;') + '</div>';
+              html += '<table><thead><tr><th>品名</th><th>规格</th><th>条码</th><th>售价</th><th>销量</th></tr></thead><tbody>';
+              for (const it of items) {
+                html += '<tr><td>' + (it.raw_name || '').replace(/</g,'&lt;').slice(0,20) + '</td><td>' + (it.spec || '-').replace(/</g,'&lt;') + '</td><td>' + (it.barcode || '-').replace(/</g,'&lt;') + '</td><td class="num">' + (it.unit_price || 0) + '</td><td class="num">' + (it.sale_qty || 0) + '</td></tr>';
+              }
+              html += '</tbody></table>';
+            }
+          }
+          html += '</div>';
+        }
+        listEl.innerHTML = html || '<p class="loading" style="padding:24px;">暂无符合条件商品</p>';
+        listEl.innerHTML += '<p style="font-size:0.8rem;color:#64748b;margin-top:12px;">共 ' + (d.total || 0) + ' 个商品</p>';
+      } catch (e) {
+        listEl.innerHTML = '<p class="error">加载失败: ' + (e.message || '').replace(/</g,'&lt;') + '</p>';
+      }
+    }
+
+    function closePriceCompareModal() {
+      const modal = document.getElementById('priceCompareModal');
+      if (modal) modal.style.display = 'none';
+    }
+
+    async function executePriceCompare() {
+      const btn = document.getElementById('priceCompareExecute');
+      if (!btn) return;
+      btn.disabled = true;
+      btn.textContent = '执行中（约1-3分钟）...';
+      try {
+        const r = await fetch(API + '/api/price_compare', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ days: 30 })
+        });
+        const d = await r.json();
+        if (d.success) {
+          closePriceCompareModal();
+          showAiSection();
+          const content = document.getElementById('aiInsightContent');
+          if (content) {
+            content.innerHTML = '<div class="insight-card success"><div class="title">货盘比价报告</div><div class="desc" style="white-space:pre-wrap;max-height:400px;overflow-y:auto;">' + (d.report || '').replace(/</g,'&lt;').replace(/\n/g,'<br/>') + '</div></div>';
+          }
+          document.getElementById('aiInsightSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else {
+          alert('比价失败: ' + (d.error || ''));
+        }
+      } catch (e) {
+        alert('请求失败: ' + (e.message || ''));
+      }
+      btn.disabled = false;
+      btn.textContent = '确认执行比价';
+    }
+
+    (function setupPriceCompareModal() {
+      document.getElementById('priceCompareModalClose')?.addEventListener('click', closePriceCompareModal);
+      document.getElementById('priceCompareModalCancel')?.addEventListener('click', closePriceCompareModal);
+      document.getElementById('priceCompareExecute')?.addEventListener('click', executePriceCompare);
+      document.getElementById('priceCompareModal')?.addEventListener('click', (e) => { if (e.target.id === 'priceCompareModal') closePriceCompareModal(); });
+    })();
+
     async function onMarketingReportClick() {
       const btn = document.getElementById('btnMarketingReport');
       const listEl = document.getElementById('reportHistoryList');
@@ -1251,6 +1365,7 @@
       document.getElementById('btnQuery').addEventListener('click', () => { applyFilter(); updatePeriodTabActive(); });
       document.getElementById('btnAiInsight').addEventListener('click', loadAiInsight);
       document.getElementById('btnMarketingReport').addEventListener('click', onMarketingReportClick);
+      document.getElementById('btnPriceCompare').addEventListener('click', onPriceCompareClick);
       document.getElementById('btnGenReport').addEventListener('click', genAndSendReport);
       const aiChatInput = document.getElementById('aiChatInput');
       const aiChatSend = document.getElementById('btnAiChatSend');

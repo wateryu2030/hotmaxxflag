@@ -15,7 +15,11 @@
     "htma:run": "bash scripts/start_htma.sh",
     "htma:import": "source .venv/bin/activate && python scripts/auto_import_and_verify.py",
     "htma:report": ".venv/bin/python scripts/htma_marketing_report.py",
-    "htma:report:dry": ".venv/bin/python scripts/htma_marketing_report.py --dry-run"
+    "htma:report:dry": ".venv/bin/python scripts/htma_marketing_report.py --dry-run",
+    "htma:price_compare": "bash scripts/openclaw_price_compare.sh",
+    "htma:pdd_apply": "bash scripts/openclaw_pdd_auto_apply.sh",
+    "htma:price_scrape": "source .venv/bin/activate && python scripts/htma_price_scrape_jd.py --limit 15 --headless",
+    "htma:price_scrape:dry": "source .venv/bin/activate && python scripts/htma_price_scrape_jd.py --dry-run --limit 20"
   },
   "devDependencies": {
     "playwright": "^1.58.2"

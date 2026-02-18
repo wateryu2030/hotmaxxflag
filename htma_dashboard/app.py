@@ -5,6 +5,13 @@
 直接读取 MySQL htma_dashboard，提供 API 与看板页面。
 """
 import os
+
+# 加载 .env（货盘比价等需 JUHE_PRICE_KEY 等）
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+except ImportError:
+    pass
 import tempfile
 import pymysql
 from flask import Flask, jsonify, send_from_directory, request
@@ -1778,6 +1785,107 @@ def api_ai_chat():
             conn.close()
     except Exception as e:
         return jsonify({"success": False, "reply": "处理失败: " + str(e)}), 500
+
+
+@app.route("/api/platform_products_sync", methods=["POST", "OPTIONS"])
+def api_platform_products_sync():
+    """同步平台商品到 t_htma_platform_products 表（按大类/中类/小类、规格、条码）"""
+    if request.method == "OPTIONS":
+        return "", 204
+    try:
+        from price_compare import sync_platform_products
+        days = int((request.get_json(silent=True) or {}).get("days", 30))
+        limit = int((request.get_json(silent=True) or {}).get("limit", 500))
+        conn = get_conn()
+        try:
+            cnt = sync_platform_products(conn, store_id=STORE_ID, days=days, limit=limit)
+            return jsonify({"success": True, "synced": cnt})
+        finally:
+            conn.close()
+    except Exception as e:
+        return jsonify({"success": False, "synced": 0, "error": str(e)}), 500
+
+
+@app.route("/api/price_compare_products", methods=["GET", "OPTIONS"])
+def api_price_compare_products():
+    """比价商品列表：从 t_htma_platform_products 读取，按大类、中类、小类分组。若表为空则先同步。"""
+    if request.method == "OPTIONS":
+        return "", 204
+    try:
+        from price_compare import load_platform_products_from_db, sync_platform_products, stage1_standardize
+        days = int(request.args.get("days", 30))
+        limit = int(request.args.get("limit", 300))
+        sync_first = request.args.get("sync", "1") == "1"
+        conn = get_conn()
+        try:
+            try:
+                items = load_platform_products_from_db(conn, store_id=STORE_ID, limit=limit)
+            except Exception:
+                items = []
+            if not items and sync_first:
+                sync_platform_products(conn, store_id=STORE_ID, days=days, limit=limit)
+                items = load_platform_products_from_db(conn, store_id=STORE_ID, limit=limit)
+            if not items:
+                items_raw = stage1_standardize(conn, store_id=STORE_ID, days=days, limit=limit)
+                items = [{"sku_code": it.get("sku_code"), "raw_name": it.get("raw_name"), "spec": it.get("spec") or "", "barcode": it.get("barcode") or "", "brand_name": it.get("brand_name") or "", "category_large": it.get("category_large") or "未分类", "category_mid": it.get("category_mid") or "未分类", "category_small": it.get("category_small") or "未分类", "unit_price": round(float(it.get("unit_price") or 0), 2), "sale_qty": float(it.get("sale_qty") or 0), "sale_amount": round(float(it.get("sale_amount") or 0), 2)} for it in items_raw]
+            groups = {}
+            for it in items:
+                large = (it.get("category_large") or "未分类").strip() or "未分类"
+                mid = (it.get("category_mid") or "未分类").strip() or "未分类"
+                small = (it.get("category_small") or "未分类").strip() or "未分类"
+                if large not in groups:
+                    groups[large] = {}
+                if mid not in groups[large]:
+                    groups[large][mid] = {}
+                if small not in groups[large][mid]:
+                    groups[large][mid][small] = []
+                groups[large][mid][small].append({
+                    "sku_code": it.get("sku_code", ""),
+                    "raw_name": it.get("raw_name", ""),
+                    "spec": it.get("spec", ""),
+                    "barcode": it.get("barcode", ""),
+                    "brand_name": it.get("brand_name", ""),
+                    "unit_price": round(float(it.get("unit_price") or 0), 2),
+                    "sale_qty": float(it.get("sale_qty") or 0),
+                    "sale_amount": round(float(it.get("sale_amount") or 0), 2),
+                })
+            return jsonify({"success": True, "groups": groups, "total": len(items)})
+        finally:
+            conn.close()
+    except Exception as e:
+        return jsonify({"success": False, "groups": {}, "total": 0, "error": str(e)}), 500
+
+
+@app.route("/api/price_compare", methods=["GET", "POST", "OPTIONS"])
+def api_price_compare():
+    """货盘价格对比分析 - 4 阶段闭环，返回完整报告。POST 时使用真实 API"""
+    if request.method == "OPTIONS":
+        return "", 204
+    try:
+        from price_compare import run_full_pipeline, format_report
+        if request.method == "GET":
+            days = int(request.args.get("days", 30))
+            fetch_limit = request.args.get("fetch_limit", type=int)
+        else:
+            data = (request.get_json(silent=True) or {}) if request.is_json else {}
+            days = int(data.get("days", 30))
+            fetch_limit = data.get("fetch_limit")
+        if fetch_limit is None:
+            try:
+                v = os.environ.get("PRICE_COMPARE_FETCH_LIMIT", "")
+                fetch_limit = int(v) if v else None
+            except (TypeError, ValueError):
+                fetch_limit = None
+        use_mock = request.method == "GET"  # POST 时用真实 API
+        conn = get_conn()
+        try:
+            result = run_full_pipeline(conn, store_id=STORE_ID, days=days, use_mock_fetcher=use_mock, fetch_limit=fetch_limit)
+            report = format_report(result)
+            return jsonify({"success": True, "report": report, "summary": result.get("portfolio", {}).get("summary", {})})
+        finally:
+            conn.close()
+    except Exception as e:
+        return jsonify({"success": False, "report": "", "error": str(e)}), 500
 
 
 @app.route("/api/health")
