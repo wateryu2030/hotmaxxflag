@@ -316,6 +316,97 @@ def build_marketing_report(conn, store_id="沈阳超级仓", days=30, mode="mark
     """, (store_id, days) + tuple(profit_exc_params))
     profit_rows = cur.fetchall()
 
+    # 动销 Top10（按商品 SKU 明细：品名、规格、销量、销售额、利润总额、利润率）
+    cur.execute(f"""
+        SELECT s.sku_code, COALESCE(st.product_name, s.product_name, s.sku_code) AS name,
+               COALESCE(st.spec, s.spec, '') AS spec, s.category,
+               SUM(s.sale_qty) AS qty, SUM(s.sale_amount) AS sale, SUM(s.gross_profit) AS profit,
+               SUM(s.gross_profit)/NULLIF(SUM(s.sale_amount),0)*100 AS margin_pct
+        FROM t_htma_sale s
+        LEFT JOIN t_htma_stock st ON st.sku_code = s.sku_code AND st.store_id = s.store_id
+            AND st.data_date = (SELECT MAX(t.data_date) FROM t_htma_stock t WHERE t.store_id = %s)
+        WHERE s.store_id = %s AND {s_date_cond} AND {exc_sale_cond}
+        GROUP BY s.sku_code, st.product_name, s.product_name, st.spec, s.spec, s.category
+        HAVING SUM(s.sale_qty) > 0 AND SUM(s.sale_amount)/NULLIF(SUM(s.sale_qty),0) >= {_MIN_UNIT_PRICE}
+        ORDER BY SUM(s.sale_qty) DESC
+        LIMIT 10
+    """, (store_id, store_id, days) + tuple(exc_sale_params))
+    top10_sale_sku = cur.fetchall()
+
+    # 高毛利 Top10（毛利率≥35% 且销售额>500，按商品）
+    cur.execute(f"""
+        SELECT s.sku_code, COALESCE(st.product_name, s.product_name, s.sku_code) AS name,
+               COALESCE(st.spec, s.spec, '') AS spec, s.category,
+               SUM(s.sale_qty) AS qty, SUM(s.sale_amount) AS sale, SUM(s.gross_profit) AS profit,
+               SUM(s.gross_profit)/NULLIF(SUM(s.sale_amount),0)*100 AS margin_pct
+        FROM t_htma_sale s
+        LEFT JOIN t_htma_stock st ON st.sku_code = s.sku_code AND st.store_id = s.store_id
+            AND st.data_date = (SELECT MAX(t.data_date) FROM t_htma_stock t WHERE t.store_id = %s)
+        WHERE s.store_id = %s AND {s_date_cond} AND {exc_sale_cond}
+        GROUP BY s.sku_code, st.product_name, s.product_name, st.spec, s.spec, s.category
+        HAVING SUM(s.sale_amount) > 500 AND SUM(s.gross_profit)/NULLIF(SUM(s.sale_amount),0)*100 >= 35
+        ORDER BY SUM(s.gross_profit) DESC
+        LIMIT 10
+    """, (store_id, store_id, days) + tuple(exc_sale_params))
+    top10_high_margin_sku = cur.fetchall()
+
+    # 黄金商品（销量≥10 且毛利率≥30%，动销好+毛利高）
+    cur.execute(f"""
+        SELECT s.sku_code, COALESCE(st.product_name, s.product_name, s.sku_code) AS name,
+               COALESCE(st.spec, s.spec, '') AS spec, s.category,
+               SUM(s.sale_qty) AS qty, SUM(s.sale_amount) AS sale, SUM(s.gross_profit) AS profit,
+               SUM(s.gross_profit)/NULLIF(SUM(s.sale_amount),0)*100 AS margin_pct
+        FROM t_htma_sale s
+        LEFT JOIN t_htma_stock st ON st.sku_code = s.sku_code AND st.store_id = s.store_id
+            AND st.data_date = (SELECT MAX(t.data_date) FROM t_htma_stock t WHERE t.store_id = %s)
+        WHERE s.store_id = %s AND {s_date_cond} AND {exc_sale_cond}
+        GROUP BY s.sku_code, st.product_name, s.product_name, st.spec, s.spec, s.category
+        HAVING SUM(s.sale_qty) >= 10 AND SUM(s.sale_amount) > 0
+          AND SUM(s.gross_profit)/NULLIF(SUM(s.sale_amount),0)*100 >= 30
+        ORDER BY SUM(s.gross_profit) DESC
+        LIMIT 15
+    """, (store_id, store_id, days) + tuple(exc_sale_params))
+    golden_sku = cur.fetchall()
+
+    # 需补货（畅销但库存不足：近 N 天有销且库存<50）
+    cur.execute(f"""
+        SELECT s.sku_code, COALESCE(st.product_name, s.product_name, s.sku_code) AS name,
+               COALESCE(st.spec, s.spec, '') AS spec, st.stock_qty, s.category,
+               SUM(s.sale_qty) AS sale_qty, SUM(s.sale_amount) AS sale, SUM(s.gross_profit) AS profit,
+               SUM(s.gross_profit)/NULLIF(SUM(s.sale_amount),0)*100 AS margin_pct
+        FROM t_htma_sale s
+        INNER JOIN t_htma_stock st ON st.sku_code = s.sku_code AND st.store_id = s.store_id
+            AND st.data_date = (SELECT MAX(t.data_date) FROM t_htma_stock t WHERE t.store_id = %s)
+        WHERE s.store_id = %s AND {s_date_cond} AND {exc_sale_cond}
+          AND st.stock_qty < 50 AND st.stock_qty >= 0
+        GROUP BY s.sku_code, st.product_name, s.product_name, st.spec, s.spec, st.stock_qty, s.category
+        HAVING SUM(s.sale_qty) >= 5 AND SUM(s.sale_amount)/NULLIF(SUM(s.sale_qty),0) >= {_MIN_UNIT_PRICE}
+        ORDER BY SUM(s.sale_qty) DESC
+        LIMIT 10
+    """, (store_id, store_id, days) + tuple(exc_sale_params))
+    need_replenish_sku = cur.fetchall()
+
+    # 滞销高库存（库存≥100 且近 N 天销量<3）
+    cur.execute(f"""
+        SELECT st.sku_code, COALESCE(st.product_name, st.sku_code) AS name,
+               COALESCE(st.spec, '') AS spec, st.stock_qty, st.stock_amount,
+               COALESCE(agg.sale_qty, 0) AS sale_qty, COALESCE(agg.sale_amount, 0) AS sale,
+               COALESCE(agg.profit, 0) AS profit
+        FROM t_htma_stock st
+        LEFT JOIN (
+            SELECT sku_code, SUM(sale_qty) AS sale_qty, SUM(sale_amount) AS sale_amount, SUM(gross_profit) AS profit
+            FROM t_htma_sale
+            WHERE store_id = %s AND {date_cond}
+            GROUP BY sku_code
+        ) agg ON agg.sku_code = st.sku_code
+        WHERE st.store_id = %s AND st.data_date = (SELECT MAX(t.data_date) FROM t_htma_stock t WHERE t.store_id = %s)
+          AND st.stock_qty >= 100 AND COALESCE(agg.sale_qty, 0) < 3
+          AND {exc_stock_cond}
+        ORDER BY st.stock_qty DESC
+        LIMIT 10
+    """, (store_id, days, store_id, store_id) + tuple(exc_stock_params))
+    slow_high_stock_sku = cur.fetchall()
+
     # 断货损失估算（低库存畅销品的预估损失）
     out_of_stock_loss = sum(float(r.get("sale_amt") or 0) for r in low_stock_rows if float(r.get("sale_qty") or 0) >= 100)
     neg_loss = sum(abs(float(r.get("profit") or 0)) for r in neg_rows)
@@ -388,33 +479,104 @@ def build_marketing_report(conn, store_id="沈阳超级仓", days=30, mode="mark
         report.append("  ✓ 黄金品类（服装/烘焙/鞋）可借活动放大销售额与毛利")
         report.append("  ✓ 爆款补货后新客体验更好，复购更强")
     else:
-        # 传统 internal 模式（保持原结构）
+        # 进销存营销分析（明细版）：Top10/ Top5 均列明具体商品、利润总额、利润率，建议体现专家气质
         report.append("【好特卖沈阳超级仓 · 进销存营销分析】")
         report.append(f"📅 分析周期：近{days}天")
         report.append(f"📊 销售额 {_fmt_money(total_sale)} · 毛利 {_fmt_money(total_profit)} · 毛利率 {avg_margin:.1f}%")
         report.append(f"📦 动销 SKU {sku_cnt} 个 · 销量 {total_qty:,} 件 · 库存总额 {_fmt_money(total_stock)}")
         report.append("")
-        for i, r in enumerate(top_sale_rows[:10], 1):
-            if i == 1:
-                report.append("🔥 【动销 Top10】")
-            cat = (r.get("category") or "未分类")[:12]
-            margin = (float(r["profit"] or 0) / float(r["sale"] or 1) * 100) if r["sale"] else 0
-            report.append(f"  {i}. {cat} | 销量{int(r['qty'] or 0)}件 销售额{_fmt_money(r['sale'])} 毛利率{margin:.0f}%")
-        if top_sale_rows:
-            report.append("  💡 建议：加大陈列、做堆头/端架")
+
+        report.append("🔥 【动销 Top10】销量领先的 10 个商品明细")
+        if top10_sale_sku:
+            for i, r in enumerate(top10_sale_sku, 1):
+                name = (r.get("name") or r["sku_code"] or "")[:14].strip()
+                spec = (r.get("spec") or "-")[:10].strip()
+                qty = int(r.get("qty") or 0)
+                sale = float(r.get("sale") or 0)
+                profit = float(r.get("profit") or 0)
+                margin = float(r.get("margin_pct") or 0)
+                report.append(f"  {i}. {name} {spec} | 销量{qty}件 销售额{_fmt_money(sale)} 利润总额{_fmt_money(profit)} 利润率{margin:.1f}%")
+            report.append("  ▶ 专家建议：上述为门店流量担当，建议加大陈列面、设置堆头或端架，提升曝光与复购；可配合档期做主题陈列。")
+        else:
+            report.append("  暂无符合条件商品")
         report.append("")
-        for i, r in enumerate(profit_rows[:5], 1):
-            if i == 1:
-                report.append("📂 【品类毛利 Top5】")
-            report.append(f"  {i}. {r['cat'][:10]} | 毛利{_fmt_money(r['profit'])} 毛利率{float(r['margin_pct'] or 0):.0f}%")
+
+        report.append("💰 【高毛利 Top10】毛利率≥35% 且销售额>500 的 10 个商品明细")
+        if top10_high_margin_sku:
+            for i, r in enumerate(top10_high_margin_sku, 1):
+                name = (r.get("name") or r["sku_code"] or "")[:14].strip()
+                spec = (r.get("spec") or "-")[:10].strip()
+                profit = float(r.get("profit") or 0)
+                margin = float(r.get("margin_pct") or 0)
+                sale = float(r.get("sale") or 0)
+                report.append(f"  {i}. {name} {spec} | 利润总额{_fmt_money(profit)} 利润率{margin:.1f}% 销售额{_fmt_money(sale)}")
+            report.append("  ▶ 专家建议：高毛利单品是利润核心，建议重点推广、搭配促销话术与陈列位，避免被低价品稀释毛利结构。")
+        else:
+            report.append("  暂无符合条件商品")
         report.append("")
+
+        report.append("⭐ 【黄金商品】动销好+毛利高（销量≥10件 毛利率≥30%）主推清单")
+        if golden_sku:
+            for i, r in enumerate(golden_sku[:10], 1):
+                name = (r.get("name") or r["sku_code"] or "")[:14].strip()
+                spec = (r.get("spec") or "-")[:10].strip()
+                qty = int(r.get("qty") or 0)
+                profit = float(r.get("profit") or 0)
+                margin = float(r.get("margin_pct") or 0)
+                report.append(f"  {i}. {name} {spec} | 销量{qty}件 利润总额{_fmt_money(profit)} 利润率{margin:.1f}%")
+            report.append("  ▶ 专家建议：黄金商品兼具周转与毛利，适合作为主推款、组合促销与会员权益，可设置「店长推荐」标识。")
+        else:
+            report.append("  暂无符合条件商品")
+        report.append("")
+
+        report.append("📦 【需补货】畅销但库存不足，优先补货明细")
+        if need_replenish_sku:
+            for i, r in enumerate(need_replenish_sku, 1):
+                name = (r.get("name") or r["sku_code"] or "")[:14].strip()
+                spec = (r.get("spec") or "-")[:10].strip()
+                stock_qty = int(r.get("stock_qty") or 0)
+                sale_qty = int(r.get("sale_qty") or 0)
+                profit = float(r.get("profit") or 0)
+                margin = float(r.get("margin_pct") or 0)
+                report.append(f"  {i}. {name} {spec} | 当前库存{stock_qty}件 近{days}天销量{sale_qty}件 利润总额{_fmt_money(profit)} 利润率{margin:.1f}%")
+            report.append("  ▶ 专家建议：断货将直接损失销售额与毛利，建议按销量节奏提前补货，优先保障前 3 名库存安全。")
+        else:
+            report.append("  暂无符合条件商品")
+        report.append("")
+
+        report.append("⚠️ 【滞销高库存】库存≥100件 近30天销量<3件，建议促销清仓明细")
+        if slow_high_stock_sku:
+            for i, r in enumerate(slow_high_stock_sku, 1):
+                name = (r.get("name") or r["sku_code"] or "")[:14].strip()
+                spec = (r.get("spec") or "-")[:10].strip()
+                stock_qty = int(r.get("stock_qty") or 0)
+                sale_qty = int(r.get("sale_qty") or 0)
+                report.append(f"  {i}. {name} {spec} | 库存{stock_qty}件 近{days}天销量{sale_qty}件")
+            report.append("  ▶ 专家建议：高库存滞销占用资金与陈列，建议限期促销、捆绑搭售或申请调拨，释放资源给畅销品。")
+        else:
+            report.append("  暂无符合条件商品")
+        report.append("")
+
+        report.append("📂 【品类毛利 Top5】聚焦头部品类做主题陈列")
+        if profit_rows:
+            for i, r in enumerate(profit_rows[:5], 1):
+                cat = (r.get("cat") or "未分类")[:12]
+                profit = float(r.get("profit") or 0)
+                margin = float(r.get("margin_pct") or 0)
+                sale = float(r.get("sale") or 0)
+                report.append(f"  {i}. {cat} | 利润总额{_fmt_money(profit)} 利润率{margin:.1f}% 销售额{_fmt_money(sale)}")
+            report.append("  ▶ 专家建议：头部品类决定门店毛利结构，建议做主题陈列与档期主推，带动关联购买。")
+        else:
+            report.append("  暂无符合条件品类")
+        report.append("")
+
         if neg_rows:
-            report.append("⚠️ 【负毛利商品】")
+            report.append("⚠️ 【负毛利商品】需核查成本或调价/清仓")
             for i, r in enumerate(neg_rows[:5], 1):
                 name = (r.get("name") or r["sku_code"])[:12]
-                report.append(f"  {i}. {name} | 销售额{_fmt_money(r['sale'])} 毛利{_fmt_money(r['profit'])}")
-            report.append("  💡 建议：核查成本或调价/清仓")
-        report.append("")
+                report.append(f"  {i}. {name} | 销售额{_fmt_money(r['sale'])} 利润总额{_fmt_money(r['profit'])}")
+            report.append("  ▶ 专家建议：负毛利拉低整体利润，建议优先核查进价与促销设置，必要时限期清仓止损。")
+            report.append("")
 
     report.append(f"--- 报告生成时间 {datetime.now().strftime('%Y-%m-%d %H:%M')} ---")
     cur.close()
@@ -543,6 +705,16 @@ def _ai_fetch_context(conn, store_id="沈阳超级仓", days=30, include_monthly
     """, (store_id, store_id, days) + tuple(exc_sale_params))
     ctx["value_skus"] = cur.fetchall()
 
+    # 本月至今（用于与「月目标」同口径对比）
+    cur.execute("""
+        SELECT COALESCE(SUM(sale_amount), 0) AS sale, COALESCE(SUM(gross_profit), 0) AS profit
+        FROM t_htma_sale
+        WHERE store_id = %s AND data_date >= DATE_FORMAT(CURDATE(), '%%Y-%%m-01')
+    """, (store_id,))
+    row_m = cur.fetchone()
+    ctx["month_sale"] = float(row_m["sale"] or 0)
+    ctx["month_profit"] = float(row_m["profit"] or 0)
+
     # 近几个月按月毛利（用于「结合前面几个月」类问题）
     if include_monthly:
         cur.execute("""
@@ -555,8 +727,23 @@ def _ai_fetch_context(conn, store_id="沈阳超级仓", days=30, include_monthly
             LIMIT 4
         """, (store_id,))
         ctx["monthly"] = cur.fetchall()
+        # 上月各品类毛利占比（用于品类预测）
+        cur.execute("""
+            SELECT COALESCE(category, '未分类') AS cat,
+                   SUM(total_profit) AS profit, SUM(total_sale) AS sale
+            FROM t_htma_profit
+            WHERE store_id = %s AND data_date >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%%Y-%%m-01')
+              AND data_date < DATE_FORMAT(CURDATE(), '%%Y-%%m-01')
+              AND COALESCE(category,'') NOT LIKE %s AND COALESCE(category,'') NOT LIKE %s AND COALESCE(category,'') NOT LIKE %s
+            GROUP BY category
+            HAVING SUM(total_profit) > 0
+            ORDER BY SUM(total_profit) DESC
+            LIMIT 12
+        """, (store_id,) + tuple(f"%{kw}%" for kw in _EXCLUDED_CATEGORY_KEYWORDS))
+        ctx["last_month_cat_profit"] = cur.fetchall()
     else:
         ctx["monthly"] = []
+        ctx["last_month_cat_profit"] = []
 
     cur.close()
     return ctx
@@ -568,8 +755,8 @@ def ai_chat_response(conn, user_message, report_summary=None):
     msg = (user_message or "").strip()
     msg_lower = msg.lower()
 
-    # 是否拉取多月数据（用户提到「几个月」「结合」「3月」等）
-    need_monthly = any(k in msg for k in ["几个月", "前几个月", "结合", "销售情况", "历史", "3月", "2月", "1月"])
+    # 是否拉取多月数据（用户提到「几个月」「结合」「预测」「品类」等）
+    need_monthly = any(k in msg for k in ["几个月", "前几个月", "结合", "销售情况", "历史", "3月", "2月", "1月", "预测", "品类"])
 
     try:
         ctx = _ai_fetch_context(conn, days=30, include_monthly=need_monthly)
@@ -630,12 +817,14 @@ def ai_chat_response(conn, user_message, report_summary=None):
             actions.append("⑤ 3月节点：妇女节、春游季做主题陈列与促销，抓住节日消费")
         return "\n".join(actions)
 
-    # 1b. 毛利目标：提高毛利到 X 万
+    # 1b. 毛利目标：提高毛利到 X 万（与「月毛利」同口径：用本月至今对比目标）
     if is_profit_goal:
         target = (target_wan or 200) * 10000
-        gap = target - ctx["total_profit"]
+        month_profit = ctx.get("month_profit") or 0
+        month_profit_wan = month_profit / 10000
+        gap = target - month_profit  # 缺口以本月至今为口径，与「月目标」一致
         actions = []
-        # 若用户提到「几个月」「结合」等，展示近几个月走势
+        # 若用户提到「几个月」「结合」「预测」等，展示近几个月走势
         if ctx.get("monthly"):
             actions.append("【近几个月毛利走势】")
             for r in ctx["monthly"][:4]:
@@ -644,9 +833,10 @@ def ai_chat_response(conn, user_message, report_summary=None):
                 actions.append(f"  {r.get('ym','')} 销售额{s:.1f}万 毛利{p:.1f}万")
             actions.append("")
         if gap <= 0:
-            actions.append(f"当前近30天毛利约 {profit_wan:.1f}万，已超过目标。建议：① 巩固高毛利品类占比 ② 控制负毛利品 ③ 保持断货预警机制")
+            actions.append(f"【现状】本月至今毛利约 {month_profit_wan:.1f}万，已达成目标 {target/10000:.0f}万。（近30天毛利约 {profit_wan:.1f}万，供参考）")
+            actions.append("建议：① 巩固高毛利品类占比 ② 控制负毛利品 ③ 保持断货预警机制")
         else:
-            actions.append(f"【现状】近30天毛利 {profit_wan:.1f}万，目标 {target/10000:.0f}万，缺口约 {gap/10000:.1f}万")
+            actions.append(f"【现状】本月至今毛利 {month_profit_wan:.1f}万，目标 {target/10000:.0f}万（月口径），缺口约 {gap/10000:.1f}万。（近30天毛利 {profit_wan:.1f}万，供参考）")
             if ctx["neg_loss"] > 0:
                 actions.append(f"① 负毛利止损：当前负毛利损失约 {_fmt_money(ctx['neg_loss'])}，修复后可直接增加利润")
             if ctx["neg_top"]:
@@ -659,6 +849,19 @@ def ai_chat_response(conn, user_message, report_summary=None):
                 cats = "、".join([r["category"][:6] for r in ctx["low_stock_cats"][:3]])
                 actions.append(f"③ 断货补货：{cats} 等畅销但库存不足，补满后可减少流失、提升销售额与毛利")
             actions.append("④ 异业合作：移动办套餐送券可定向核销高毛利区，零成本拉新、放大黄金品类销售")
+        # 品类销售预测：若用户提到预测/品类，按上月占比推算本月达目标时各品类约数
+        need_forecast = any(k in msg for k in ["预测", "品类", "销售情况", "各品类"])
+        if need_forecast and ctx.get("last_month_cat_profit") and target > 0:
+            total_last = sum(float(r.get("profit") or 0) for r in ctx["last_month_cat_profit"])
+            if total_last > 0:
+                actions.append("")
+                actions.append("【品类销售预测】若本月毛利达目标，按上月各品类毛利占比推算约：")
+                for r in ctx["last_month_cat_profit"][:8]:
+                    cat = (r.get("cat") or "未分类")[:10]
+                    pct = float(r.get("profit") or 0) / total_last * 100
+                    pred_wan = target / 10000 * (float(r.get("profit") or 0) / total_last)
+                    actions.append(f"  · {cat} 占比{pct:.0f}% → 本月约 {pred_wan:.1f}万")
+                actions.append("（以上为按上月结构静态推算，实际需结合断货补货与促销节奏）")
         return "\n".join(actions)
 
     # 2. 负毛利 / 亏损

@@ -1231,11 +1231,40 @@
           showAiSection();
           const content = document.getElementById('aiInsightContent');
           if (content) {
-            content.innerHTML = '<div class="insight-card success"><div class="title">货盘比价报告</div><div class="desc" style="white-space:pre-wrap;max-height:400px;overflow-y:auto;">' + (d.report || '').replace(/</g,'&lt;').replace(/\n/g,'<br/>') + '</div></div>';
+            let html = '<div class="insight-card success"><div class="title">货盘比价报告</div>';
+            if (d.all_exclusive_hint || d.fetcher_error) {
+              html += '<div class="section" style="background:#451a03;color:#fcd34d;padding:10px 12px;border-radius:8px;margin-bottom:10px;font-size:0.85rem;">';
+              html += '<strong>商品比较环节说明：</strong>当前未获取到竞品价格（京东/淘宝），全部显示为「独家款」。';
+              if (d.fetcher_error) html += '<br/>接口预检：' + (d.fetcher_error || '').replace(/</g,'&lt;');
+              html += '<br/>请检查 .env 中 ONEBOUND_KEY/ONEBOUND_SECRET 或 PDD_HOJINGKE_APIKEY，以及万邦/蚂蚁星球控制台是否已开通对应接口。';
+              html += '</div>';
+            }
+            // 确保 items 存在且为数组
+            const items = Array.isArray(d.items) ? d.items : [];
+            if (items.length > 0) {
+              html += '<p style="font-size:0.8rem;color:#94a3b8;margin-bottom:8px;">好特卖超级仓商品 vs 京东/淘宝价格（共 ' + items.length + ' 条，已实体化保存）</p>';
+              html += '<div class="section scroll-table" style="margin-bottom:10px;"><div class="table-wrap" style="max-height:360px;overflow:auto;"><table><thead><tr><th>品名</th><th>规格</th><th class="num">好特卖售价</th><th class="num">京东最低</th><th class="num">淘宝最低</th><th class="num">竞品最低</th><th>来源</th><th class="num">优势%</th></tr></thead><tbody>';
+              for (const it of items) {
+                const name = (it.raw_name || '').replace(/</g,'&lt;').slice(0,24);
+                const spec = (it.spec || '-').replace(/</g,'&lt;').slice(0,12);
+                const ht = it.unit_price != null ? Number(it.unit_price).toFixed(2) : '-';
+                const jd = it.jd_min_price != null ? Number(it.jd_min_price).toFixed(2) : '-';
+                const tb = it.taobao_min_price != null ? Number(it.taobao_min_price).toFixed(2) : '-';
+                const comp = it.competitor_min != null ? Number(it.competitor_min).toFixed(2) : '-';
+                const plat = (it.platform || '-').replace(/</g,'&lt;').slice(0,14);
+                const adv = it.advantage_pct != null ? it.advantage_pct + '%' : '-';
+                html += '<tr><td>' + name + '</td><td>' + spec + '</td><td class="num">' + ht + '</td><td class="num">' + jd + '</td><td class="num">' + tb + '</td><td class="num">' + comp + '</td><td>' + plat + '</td><td class="num">' + adv + '</td></tr>';
+              }
+              html += '</tbody></table></div></div>';
+            } else {
+              html += '<p style="font-size:0.8rem;color:#94a3b8;margin-bottom:8px;">暂无比价数据，请检查数据源或稍后重试</p>';
+            }
+            html += '<div class="desc" style="white-space:pre-wrap;max-height:240px;overflow-y:auto;font-size:0.8rem;">' + (d.report || '').replace(/</g,'&lt;').replace(/\n/g,'<br/>') + '</div></div>';
+            content.innerHTML = html;
           }
           document.getElementById('aiInsightSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
         } else {
-          alert('比价失败: ' + (d.error || ''));
+          alert('比价失败: ' + (d.error || '未知错误'));
         }
       } catch (e) {
         alert('请求失败: ' + (e.message || ''));

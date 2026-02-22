@@ -21,6 +21,7 @@ pip install -q pymysql python-dotenv 2>/dev/null || true
 [ -f "$PROJECT_ROOT/.env" ] && set -a && source "$PROJECT_ROOT/.env" && set +a
 
 cd "$PROJECT_ROOT/htma_dashboard"
+# 使用真实 API 执行比价（若 .env 已配置 PDD_HOJINGKE_APIKEY 等）；未配置时自动回退为模拟
 python3 -c "
 from price_compare import run_full_pipeline, format_report
 import pymysql
@@ -31,7 +32,7 @@ conn = pymysql.connect(
     cursorclass=pymysql.cursors.DictCursor
 )
 try:
-    result = run_full_pipeline(conn, store_id='沈阳超级仓', days=30, use_mock_fetcher=True, fetch_limit=50)
+    result = run_full_pipeline(conn, store_id='沈阳超级仓', days=30, use_mock_fetcher=False, fetch_limit=100)
     report = format_report(result)
     print(report)
 finally:

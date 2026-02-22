@@ -14,10 +14,11 @@ try:
     load_dotenv(os.path.join(_root, ".env"))
 except ImportError:
     pass
+import time
 import urllib.request
 import urllib.parse
 import json
-from typing import Optional
+from typing import Optional, Callable, Any
 
 # ========== 配置（环境变量） ==========
 # 百度 API 商城 apikey：https://apis.baidu.com/ 购买商品条码/商品搜索类 API 后获取
@@ -105,6 +106,40 @@ def juhe_price_fetcher(std_name: str) -> Optional[dict]:
     return None
 
 
+def _normalize_barcode(barcode: Optional[str]) -> Optional[str]:
+    """
+    规范化条码：提取数字，EAN-13 为 13 位，也接受 12/14 位。
+    条码是全球唯一编码，优先用于精准比价。
+    """
+    if not barcode:
+        return None
+    s = "".join(c for c in str(barcode).strip() if c.isdigit())
+    if len(s) in (12, 13, 14):
+        return s
+    return None
+
+
+def _build_keyword_from_item(item: Any) -> str:
+    """
+    用「商品名称 + 规格」构建关键词，作为条码无结果时的补充检索。
+    与条码不是二选一：条码为主、信息为辅。
+    """
+    if not isinstance(item, dict):
+        return ""
+    raw = (item.get("raw_name") or item.get("std_name") or "").strip()
+    spec = (item.get("spec") or "").strip()
+    brand = (item.get("brand_name") or "").strip()
+    parts = []
+    if brand and len(brand) >= 2 and brand not in ("好特卖", "好特卖超级仓", "门店"):
+        parts.append(brand)
+    if raw and len(raw) >= 2:
+        parts.append(raw)
+    if spec and len(spec) >= 1:
+        parts.append(spec)
+    kw = " ".join(p for p in parts if p).strip()[:50]
+    return kw if kw else (raw or "商品")[:30]
+
+
 def _onebound_search(platform: str, keyword: str) -> Optional[dict]:
     """OneBound 关键词搜索，platform=taobao|jd"""
     if not ONEBOUND_KEY or not ONEBOUND_SECRET:
@@ -125,13 +160,21 @@ def _onebound_search(platform: str, keyword: str) -> Optional[dict]:
     if not data or str(data.get("error_code", "")) != "0000":
         return None
     items_obj = data.get("items") or {}
-    item_list = items_obj.get("item") if isinstance(items_obj, dict) else []
+    # 淘宝常见: items.item[]；京东可能: items 直接为 list 或 items.item[]
+    item_list = items_obj.get("item") if isinstance(items_obj, dict) else None
     if not isinstance(item_list, list) or not item_list:
+        item_list = items_obj if isinstance(items_obj, list) else []
+    if not item_list:
         return None
     prices = []
     for it in item_list:
         if isinstance(it, dict):
-            p = it.get("price") or it.get("promotion_price") or it.get("orginal_price")
+            # 兼容京东/淘宝多种价格字段：price, promotion_price, orginal_price(拼写), original_price, jdPrice
+            p = (
+                it.get("price") or it.get("promotion_price")
+                or it.get("orginal_price") or it.get("original_price")
+                or it.get("jdPrice") or it.get("wlPrice")
+            )
             if p is not None:
                 try:
                     prices.append(float(str(p).replace(",", "")))
@@ -376,19 +419,105 @@ def baidu_fetcher(std_name: str, barcode: Optional[str] = None) -> Optional[dict
     return None
 
 
-def get_configured_fetcher():
+def item_fetcher(item: dict) -> Optional[dict]:
     """
-    返回已配置的 fetcher，若无可用的则返回 None
-    优先级：OneBound > 京东蚂蚁星球 > 拼多多蚂蚁星球 > 聚合数据 > 百度 API 商城
+    按「条码为主、名称为辅」做比价：先尝试条码，条码无结果/无条码时再用「商品名称+规格」关键词。
+    条码（EAN-13 等）全球唯一，精准匹配；名称+规格作为补充检索。
+    返回 {min_price, platform, is_same_spec} 或 None。
     """
-    if ONEBOUND_KEY and ONEBOUND_SECRET:
-        return onebound_price_fetcher
-    if PDD_HOJINGKE_APIKEY:
-        return baidu_fetcher
-    if JUHE_PRICE_KEY:
-        return juhe_price_fetcher
-    if BAIDU_APISTORE_KEY:
-        return lambda name: baidu_apistore_barcode_fetcher(name, None)
+    barcode = _normalize_barcode(item.get("barcode") if isinstance(item, dict) else None)
+    keyword = _build_keyword_from_item(item)
+    # 1) 条码优先：支持条码的接口先查
+    if barcode and BAIDU_APISTORE_KEY:
+        r = baidu_apistore_barcode_fetcher(keyword or "商品", barcode)
+        if r:
+            return r
+    # 2) 名称+规格 关键词检索（各渠道）
+    if keyword:
+        r = onebound_price_fetcher(keyword)
+        if r:
+            return r
+        r = haojingke_unified_fetcher(keyword)
+        if r:
+            return r
+        r = jd_haojingke_fetcher(keyword)
+        if r:
+            return r
+        r = pdd_haojingke_fetcher(keyword)
+        if r:
+            return r
+        r = juhe_price_fetcher(keyword)
+        if r:
+            return r
+        r = baidu_apistore_barcode_fetcher(keyword, None)
+        if r:
+            return r
+    return None
+
+
+def item_fetcher_jd_taobao(item: dict) -> Optional[dict]:
+    """
+    京东+淘宝双平台检索：分别查京东、淘宝，取最低价作为竞品价。
+    用于实体化保存，方便了解货盘在两大平台的价格优劣势。
+    返回 {min_price, platform, jd_min_price, jd_platform, taobao_min_price, taobao_platform, is_same_spec}
+    """
+    barcode = _normalize_barcode(item.get("barcode") if isinstance(item, dict) else None)
+    keyword = _build_keyword_from_item(item)
+    jd_r, tb_r = None, None
+
+    # 1) 条码优先
+    if barcode and BAIDU_APISTORE_KEY:
+        r = baidu_apistore_barcode_fetcher(keyword or "商品", barcode)
+        if r:
+            return {**r, "jd_min_price": r.get("min_price"), "jd_platform": r.get("platform"),
+                    "taobao_min_price": None, "taobao_platform": None}
+
+    # 2) 京东：OneBound JD / 京东蚂蚁星球 / 蚂蚁星球三合一
+    if keyword:
+        jd_r = onebound_jd_price_fetcher(keyword)
+        if not jd_r:
+            jd_r = jd_haojingke_fetcher(keyword)
+        if not jd_r:
+            r = haojingke_unified_fetcher(keyword, source_type=1)  # 1=京东
+            if r:
+                jd_r = r
+
+    # 3) 淘宝：OneBound Taobao（蚂蚁星球无淘宝，仅 OneBound 支持）
+    if keyword:
+        time.sleep(0.15)  # 限流
+        tb_r = onebound_taobao_price_fetcher(keyword)
+
+    jd_min = float(jd_r["min_price"]) if jd_r and jd_r.get("min_price") else None
+    tb_min = float(tb_r["min_price"]) if tb_r and tb_r.get("min_price") else None
+    prices = [p for p in (jd_min, tb_min) if p is not None and p > 0]
+    if not prices:
+        return None
+    best = min(prices)
+    platforms = []
+    if jd_min is not None:
+        platforms.append(f"京东:{jd_min:.1f}")
+    if tb_min is not None:
+        platforms.append(f"淘宝:{tb_min:.1f}")
+    return {
+        "min_price": best,
+        "platform": "、".join(platforms),
+        "jd_min_price": jd_min,
+        "jd_platform": (jd_r or {}).get("platform", "") if jd_r else None,
+        "taobao_min_price": tb_min,
+        "taobao_platform": (tb_r or {}).get("platform", "") if tb_r else None,
+        "is_same_spec": True,
+    }
+
+
+def get_configured_fetcher(dual_platform: bool = True) -> Optional[Callable[[dict], Optional[dict]]]:
+    """
+    返回已配置的 fetcher。dual_platform=True 时优先返回京东+淘宝双平台 fetcher。
+    内部按「条码优先、名称+规格为辅」检索。
+    """
+    if ONEBOUND_KEY and ONEBOUND_SECRET or PDD_HOJINGKE_APIKEY or JUHE_PRICE_KEY or BAIDU_APISTORE_KEY:
+        if dual_platform and (ONEBOUND_KEY and ONEBOUND_SECRET or PDD_HOJINGKE_APIKEY):
+            return item_fetcher_jd_taobao
+        return item_fetcher
     return None
 
 

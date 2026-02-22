@@ -19,6 +19,7 @@ node_modules/
 *.swo
 .idea/
 .vscode/
+.cursor/
 
 # 数据文件（含敏感信息）
 *.xlsx

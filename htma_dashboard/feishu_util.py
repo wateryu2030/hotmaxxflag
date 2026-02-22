@@ -25,17 +25,20 @@ def _normalize_open_id(uid):
     return uid
 
 
-def send_feishu(text, at_user_id=None, at_user_name=None):
+def send_feishu(text, at_user_id=None, at_user_name=None, title=None):
     """发送飞书消息。at_user_id 时使用富文本 @ 指定人。
-    at_user_id 支持 8db735f2 或 ou_8db735f2 格式。"""
+    at_user_id 支持 8db735f2 或 ou_8db735f2 格式。
+    title: 富文本标题，默认「好特卖进销存营销分析」；比价报告可传「好特卖商品比价报告」。"""
     if not FEISHU_WEBHOOK or not text:
         return False, None
     uid = _normalize_open_id(at_user_id or FEISHU_AT_USER_ID)
     name = at_user_name or FEISHU_AT_USER_NAME
+    post_title = title or "好特卖进销存营销分析"
     try:
         if uid:
             lines = text.split("\n")
-            content = [[{"tag": "at", "user_id": uid}, {"tag": "text", "text": f" {name}，请查看进销存营销报告：\n"}]]
+            prompt = "请查看进销存营销报告：" if "比价" not in (title or "") else "请查看商品比价报告："
+            content = [[{"tag": "at", "user_id": uid}, {"tag": "text", "text": f" {name}，{prompt}\n"}]]
             for line in lines:
                 content.append([{"tag": "text", "text": line + "\n"}])
             body = {
@@ -43,7 +46,7 @@ def send_feishu(text, at_user_id=None, at_user_name=None):
                 "content": {
                     "post": {
                         "zh_cn": {
-                            "title": "好特卖进销存营销分析",
+                            "title": post_title,
                             "content": content,
                         }
                     }

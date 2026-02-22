@@ -17,6 +17,10 @@
     "htma:report": ".venv/bin/python scripts/htma_marketing_report.py",
     "htma:report:dry": ".venv/bin/python scripts/htma_marketing_report.py --dry-run",
     "htma:price_compare": "bash scripts/openclaw_price_compare.sh",
+    "htma:price_compare:auto": "bash scripts/openclaw_auto_price_compare.sh",
+    "htma:price_compare:daily": "bash scripts/openclaw_nightly_price_compare.sh",
+    "htma:openclaw_work": "bash scripts/openclaw_do_actual_work.sh",
+    "openclaw:merge": "bash scripts/merge_openclaw_autonomous.sh",
     "htma:pdd_apply": "bash scripts/openclaw_pdd_auto_apply.sh",
     "htma:price_scrape": "source .venv/bin/activate && python scripts/htma_price_scrape_jd.py --limit 15 --headless",
     "htma:price_scrape:dry": "source .venv/bin/activate && python scripts/htma_price_scrape_jd.py --dry-run --limit 20"

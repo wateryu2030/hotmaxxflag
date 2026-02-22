@@ -58,3 +58,7 @@ npm run htma:pdd_apply
 会打开注册页与 API 页，使用 wateryu2030@gmail.com 完成注册后，将 apikey 填入 `.env` 即可。
 
 全权限配置见 `config/openclaw-htma-full.json`，合并到 `~/.openclaw/openclaw.json`。
+
+## 利用 OpenClaw 自主完成编程（浏览器 + 外设）
+
+若需要 **OpenClaw 自主分析任务、直接调用浏览器和终端** 完成编程（而非仅执行固定脚本），见 **`docs/OpenClaw自主编程-浏览器与外设.md`**，并合并 **`config/openclaw-htma-autonomous.json`** 以开启 browser 与 exec 等工具。

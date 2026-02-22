@@ -67,7 +67,7 @@ def main():
     conn = None
     try:
         conn = pymysql.connect(**DB_CONFIG)
-        report = build_marketing_report(conn, STORE_ID, DAYS)
+        report = build_marketing_report(conn, STORE_ID, DAYS, mode="internal")
         print(report)
         send_ok = False
         send_err = None

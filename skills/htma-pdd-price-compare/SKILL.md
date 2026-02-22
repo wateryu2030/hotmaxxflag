@@ -26,6 +26,16 @@ metadata:
 cd /Users/document/好特卖超级仓/数据分析 && npm run htma:pdd_apply
 ```
 
+## 自主执行直到成功（交给 OpenClaw）
+
+让 OpenClaw 根据运行结果自动重试，直到比价成功：
+
+```bash
+cd /Users/document/好特卖超级仓/数据分析 && npm run htma:price_compare:auto
+```
+
+详见 `docs/OpenClaw自主比价-终端命令.md`。
+
 该脚本会：
 1. 打开注册页 https://www.haojingke.com/auth/register（使用 wateryu2030@gmail.com 完成注册）
 2. 打开 API 申请页 https://www.haojingke.com/open-api/pdd

@@ -906,6 +906,91 @@ def refresh_category_from_sale(conn):
     return cur.rowcount
 
 
+def sync_products_table(conn, store_id: str = "沈阳超级仓", days: int = 90) -> int:
+    """
+    从 t_htma_sale + t_htma_stock 同步商品主表 t_htma_products。
+    唯一性：store_id+sku_code；有条码必录（供比价）；粒度与比价分析配合。
+    """
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO t_htma_products
+        (store_id, sku_code, product_name, raw_name, spec, barcode, brand_name,
+         category, category_large, category_mid, category_small,
+         category_large_code, category_mid_code, category_small_code,
+         unit_price, sale_qty, sale_amount, gross_profit, sync_at)
+        SELECT %s, s.sku_code,
+               COALESCE(st.product_name, s.product_name, s.sku_code),
+               COALESCE(st.product_name, s.product_name, s.sku_code),
+               MAX(COALESCE(st.spec, s.spec)),
+               NULLIF(TRIM(MAX(COALESCE(st.barcode, s.barcode))), ''),
+               MAX(COALESCE(st.brand_name, s.brand_name)),
+               MAX(s.category), MAX(s.category_large), MAX(s.category_mid), MAX(s.category_small),
+               MAX(s.category_large_code), MAX(s.category_mid_code), MAX(s.category_small_code),
+               SUM(s.sale_amount)/NULLIF(SUM(s.sale_qty),0),
+               COALESCE(SUM(s.sale_qty),0), COALESCE(SUM(s.sale_amount),0), COALESCE(SUM(s.gross_profit),0),
+               NOW()
+        FROM t_htma_sale s
+        LEFT JOIN t_htma_stock st ON st.sku_code = s.sku_code AND st.store_id = s.store_id
+            AND st.data_date = (SELECT MAX(t.data_date) FROM t_htma_stock t WHERE t.store_id = %s)
+        WHERE s.store_id = %s AND s.data_date >= DATE_SUB(CURDATE(), INTERVAL %s DAY)
+        GROUP BY s.sku_code, st.product_name, s.product_name, s.category, s.category_large, s.category_mid, s.category_small
+        ON DUPLICATE KEY UPDATE
+            product_name=VALUES(product_name), raw_name=VALUES(raw_name),
+            spec=VALUES(spec), barcode=COALESCE(VALUES(barcode), barcode),
+            brand_name=VALUES(brand_name),
+            category=VALUES(category), category_large=VALUES(category_large),
+            category_mid=VALUES(category_mid), category_small=VALUES(category_small),
+            category_large_code=VALUES(category_large_code), category_mid_code=VALUES(category_mid_code),
+            category_small_code=VALUES(category_small_code),
+            unit_price=VALUES(unit_price), sale_qty=VALUES(sale_qty),
+            sale_amount=VALUES(sale_amount), gross_profit=VALUES(gross_profit),
+            sync_at=NOW()
+    """, (store_id, store_id, store_id, days))
+    conn.commit()
+    cnt = cur.rowcount
+    cur.close()
+    return cnt
+
+
+def sync_category_table(conn, store_id: str = "沈阳超级仓", days: int = 30) -> int:
+    """
+    从 t_htma_profit 汇总同步品类毛利表 t_htma_category_profit。
+    品类维度：总销售额、总毛利、毛利率、SKU数、销售笔数、周期。
+    """
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO t_htma_category_profit
+        (store_id, category, category_large, category_mid, category_small,
+         category_large_code, category_mid_code, category_small_code,
+         total_sale, total_profit, profit_rate, sku_count, sale_count,
+         period_start, period_end, sync_at)
+        SELECT store_id, category,
+               MAX(category_large), MAX(category_mid), MAX(category_small),
+               MAX(category_large_code), MAX(category_mid_code), MAX(category_small_code),
+               SUM(total_sale), SUM(total_profit),
+               CASE WHEN SUM(total_sale) > 0 THEN SUM(total_profit)/SUM(total_sale) ELSE NULL END,
+               0,
+               COUNT(*),
+               MIN(data_date), MAX(data_date),
+               NOW()
+        FROM t_htma_profit
+        WHERE store_id = %s AND data_date >= DATE_SUB(CURDATE(), INTERVAL %s DAY)
+        GROUP BY store_id, category
+        ON DUPLICATE KEY UPDATE
+            category_large=VALUES(category_large), category_mid=VALUES(category_mid), category_small=VALUES(category_small),
+            category_large_code=VALUES(category_large_code), category_mid_code=VALUES(category_mid_code),
+            category_small_code=VALUES(category_small_code),
+            total_sale=VALUES(total_sale), total_profit=VALUES(total_profit), profit_rate=VALUES(profit_rate),
+            sku_count=VALUES(sku_count), sale_count=VALUES(sale_count),
+            period_start=VALUES(period_start), period_end=VALUES(period_end),
+            sync_at=NOW()
+    """, (store_id, days))
+    conn.commit()
+    cnt = cur.rowcount
+    cur.close()
+    return cnt
+
+
 def refresh_profit(conn):
     """按日期+品类汇总销售表，写入毛利表（含分类层级字段）"""
     cur = conn.cursor()

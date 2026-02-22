@@ -1,0 +1,9 @@
+{
+  "browser": {"enabled": true, "defaultProfile": "clawd", "headless": false},
+  "tools": {"allow": ["browser", "exec", "process", "read", "write", "edit", "web_fetch", "web_search"], "deny": [], "exec": {"host": "sandbox", "security": "full", "ask": "off"}},
+  "skills": {"load": {"extraDirs": ["/Users/document/好特卖超级仓/数据分析/skills"], "watch": true}},
+  "models": {
+    "providers": {"openai": {"apiKey": "${OPENAI_API_KEY}"}},
+    "defaults": {"provider": "openai", "model": "gpt-4o-mini"}
+  }
+}

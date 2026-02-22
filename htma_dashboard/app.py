@@ -17,7 +17,7 @@ import pymysql
 from flask import Flask, jsonify, send_from_directory, request
 from werkzeug.utils import secure_filename
 
-from import_logic import import_sale_daily, import_sale_summary, import_stock, import_category, import_profit, refresh_profit, refresh_category_from_sale, preview_sale_excel
+from import_logic import import_sale_daily, import_sale_summary, import_stock, import_category, import_profit, refresh_profit, refresh_category_from_sale, sync_products_table, sync_category_table, preview_sale_excel
 from analytics import build_insights, category_rank_data
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
@@ -244,6 +244,17 @@ def api_import():
                 result["category_refreshed"] = refresh_category_from_sale(conn)
             except Exception as e:
                 result.setdefault("errors", []).append(f"品类表刷新: {str(e)}")
+        # 同步商品表、品类表（供导出与比价使用）
+        if result["sale_daily"] > 0 or result["sale_summary"] > 0 or result.get("stock"):
+            try:
+                result["products_synced"] = sync_products_table(conn)
+            except Exception as e:
+                result.setdefault("errors", []).append(f"商品表同步: {str(e)}")
+        if result.get("profit_refreshed") is not None or result.get("profit"):
+            try:
+                result["category_synced"] = sync_category_table(conn)
+            except Exception as e:
+                result.setdefault("errors", []).append(f"品类表同步: {str(e)}")
 
         cur.execute("SELECT COUNT(*) FROM t_htma_sale")
         result["sale_total"] = cur.fetchone()["COUNT(*)"]
@@ -527,7 +538,7 @@ def api_sale_detail():
 
 @app.route("/api/export")
 def api_export():
-    """导出筛选后的数据为 CSV。支持 period、start_date、end_date、category、sku_code、export_type=category|product"""
+    """导出：商品从 t_htma_products，品类从 t_htma_category_profit。支持 period、start_date、end_date、category、sku_code、export_type=category|product"""
     from flask import Response
     import csv
     import io
@@ -540,48 +551,112 @@ def api_export():
     try:
         with conn.cursor() as cur:
             if export_type == "category":
-                profit_cat_cond, profit_cat_params = _profit_category_cond_and_params(date_cond, date_params)
-                export_params = (STORE_ID,) + date_params + profit_cat_params
-                cur.execute(f"""
-                    SELECT data_date, COALESCE(category, '未分类') AS category,
-                           total_sale, total_profit, profit_rate
-                    FROM t_htma_profit
-                    WHERE store_id = %s AND {date_cond}{profit_cat_cond}
-                    ORDER BY data_date DESC, total_sale DESC
-                """, export_params)
-                rows = cur.fetchall()
-                headers = ["日期", "品类", "销售额", "毛利", "毛利率"]
-                data_rows = []
-                for r in rows:
-                    rate = float(r["profit_rate"] or 0) * 100 if r["profit_rate"] else 0
-                    data_rows.append([
-                        r["data_date"].strftime("%Y-%m-%d") if hasattr(r["data_date"], "strftime") else str(r["data_date"]),
-                        r["category"] or "未分类",
-                        str(round(float(r["total_sale"] or 0), 2)),
-                        str(round(float(r["total_profit"] or 0), 2)),
-                        f"{rate:.2f}%",
-                    ])
+                # 品类：优先从 t_htma_category_profit，无则从 t_htma_profit 汇总
+                try:
+                    cur.execute("""
+                        SELECT category, category_large, category_mid, category_small,
+                               total_sale, total_profit, profit_rate, sale_count, period_start, period_end
+                        FROM t_htma_category_profit
+                        WHERE store_id = %s
+                        ORDER BY total_sale DESC
+                    """, (STORE_ID,))
+                    rows = cur.fetchall()
+                    headers = ["品类", "大类", "中类", "小类", "总销售额", "总毛利", "毛利率", "销售笔数", "周期起", "周期止"]
+                    data_rows = []
+                    for r in rows:
+                        rate = float(r["profit_rate"] or 0) * 100 if r["profit_rate"] else 0
+                        data_rows.append([
+                            r["category"] or "未分类",
+                            r["category_large"] or "",
+                            r["category_mid"] or "",
+                            r["category_small"] or "",
+                            str(round(float(r["total_sale"] or 0), 2)),
+                            str(round(float(r["total_profit"] or 0), 2)),
+                            f"{rate:.2f}%",
+                            str(r["sale_count"] or 0),
+                            str(r["period_start"]) if r.get("period_start") else "",
+                            str(r["period_end"]) if r.get("period_end") else "",
+                        ])
+                except Exception:
+                    profit_cat_cond, profit_cat_params = _profit_category_cond_and_params(date_cond, date_params)
+                    export_params = (STORE_ID,) + date_params + profit_cat_params
+                    cur.execute(f"""
+                        SELECT data_date, COALESCE(category, '未分类') AS category,
+                               total_sale, total_profit, profit_rate
+                        FROM t_htma_profit
+                        WHERE store_id = %s AND {date_cond}{profit_cat_cond}
+                        ORDER BY data_date DESC, total_sale DESC
+                    """, export_params)
+                    rows = cur.fetchall()
+                    headers = ["日期", "品类", "销售额", "毛利", "毛利率"]
+                    data_rows = []
+                    for r in rows:
+                        rate = float(r["profit_rate"] or 0) * 100 if r["profit_rate"] else 0
+                        data_rows.append([
+                            r["data_date"].strftime("%Y-%m-%d") if hasattr(r["data_date"], "strftime") else str(r["data_date"]),
+                            r["category"] or "未分类",
+                            str(round(float(r["total_sale"] or 0), 2)),
+                            str(round(float(r["total_profit"] or 0), 2)),
+                            f"{rate:.2f}%",
+                        ])
             else:
-                cur.execute(f"""
-                    SELECT data_date, sku_code, COALESCE(category, '未分类') AS category,
-                           sale_qty, sale_amount, sale_cost, gross_profit
-                    FROM t_htma_sale
-                    WHERE store_id = %s AND {date_cond}{category_cond}{sku_cond}
-                    ORDER BY data_date DESC, sale_amount DESC
-                """, params)
-                rows = cur.fetchall()
-                headers = ["日期", "商品编码", "品类", "销售数量", "销售额", "成本", "毛利"]
-                data_rows = []
-                for r in rows:
-                    data_rows.append([
-                        r["data_date"].strftime("%Y-%m-%d") if hasattr(r["data_date"], "strftime") else str(r["data_date"]),
-                        r["sku_code"] or "",
-                        r["category"] or "未分类",
-                        str(float(r["sale_qty"] or 0)),
-                        str(round(float(r["sale_amount"] or 0), 2)),
-                        str(round(float(r["sale_cost"] or 0), 2)),
-                        str(round(float(r["gross_profit"] or 0), 2)),
-                    ])
+                # 商品：优先从 t_htma_products（含条码），无则从 t_htma_sale 汇总
+                try:
+                    cat_cond = ""
+                    cat_params = [STORE_ID]
+                    if params and len(params) > 2:
+                        for i, p in enumerate(params[2:], 2):
+                            if "category" in str(request.args):
+                                break
+                        # 简化：仅 store_id 筛选
+                    cur.execute("""
+                        SELECT sku_code, product_name, raw_name, spec, barcode, brand_name,
+                               category, category_large, category_mid, category_small,
+                               unit_price, sale_qty, sale_amount, gross_profit
+                        FROM t_htma_products
+                        WHERE store_id = %s
+                        ORDER BY sale_amount DESC
+                    """, (STORE_ID,))
+                    rows = cur.fetchall()
+                    headers = ["商品编码", "品名", "规格", "条码", "品牌", "品类", "大类", "中类", "小类", "售价", "销量", "销售额", "毛利"]
+                    data_rows = []
+                    for r in rows:
+                        data_rows.append([
+                            r["sku_code"] or "",
+                            (r["product_name"] or r["raw_name"] or "")[:64],
+                            r["spec"] or "",
+                            r["barcode"] or "",
+                            r["brand_name"] or "",
+                            r["category"] or "未分类",
+                            r["category_large"] or "",
+                            r["category_mid"] or "",
+                            r["category_small"] or "",
+                            str(round(float(r["unit_price"] or 0), 2)),
+                            str(float(r["sale_qty"] or 0)),
+                            str(round(float(r["sale_amount"] or 0), 2)),
+                            str(round(float(r["gross_profit"] or 0), 2)),
+                        ])
+                except Exception:
+                    cur.execute(f"""
+                        SELECT data_date, sku_code, COALESCE(category, '未分类') AS category,
+                               sale_qty, sale_amount, sale_cost, gross_profit
+                        FROM t_htma_sale
+                        WHERE store_id = %s AND {date_cond}{category_cond}{sku_cond}
+                        ORDER BY data_date DESC, sale_amount DESC
+                    """, params)
+                    rows = cur.fetchall()
+                    headers = ["日期", "商品编码", "品类", "销售数量", "销售额", "成本", "毛利"]
+                    data_rows = []
+                    for r in rows:
+                        data_rows.append([
+                            r["data_date"].strftime("%Y-%m-%d") if hasattr(r["data_date"], "strftime") else str(r["data_date"]),
+                            r["sku_code"] or "",
+                            r["category"] or "未分类",
+                            str(float(r["sale_qty"] or 0)),
+                            str(round(float(r["sale_amount"] or 0), 2)),
+                            str(round(float(r["sale_cost"] or 0), 2)),
+                            str(round(float(r["gross_profit"] or 0), 2)),
+                        ])
 
         output = io.StringIO()
         writer = csv.writer(output)
@@ -592,10 +667,11 @@ def api_export():
         buf = io.BytesIO()
         buf.write(output.getvalue().encode("utf-8-sig"))
         buf.seek(0)
+        fname = "htma_category.csv" if export_type == "category" else "htma_products.csv"
         return Response(
             buf.getvalue(),
             mimetype="text/csv; charset=utf-8-sig",
-            headers={"Content-Disposition": "attachment; filename=htma_export.csv"},
+            headers={"Content-Disposition": f"attachment; filename={fname}"},
         )
     finally:
         conn.close()
@@ -1670,9 +1746,9 @@ def _save_report_log(conn, report, send_ok, send_err=None):
 
 @app.route("/api/marketing_report")
 def api_marketing_report():
-    """进销存营销分析报告。mode=market_expansion 为市场拓展版，internal 为传统版。send=1 时推送飞书"""
+    """进销存营销分析报告。mode=internal 为明细版（Top10 列清品名/利润/利润率+专家建议），market_expansion 为市场拓展版。send=1 时推送飞书"""
     send_feishu_flag = request.args.get("send", "").strip() in ("1", "true", "yes")
-    mode = request.args.get("mode", "market_expansion").strip() or "market_expansion"
+    mode = request.args.get("mode", "internal").strip() or "internal"
     try:
         from analytics import build_marketing_report
         from feishu_util import send_feishu
@@ -1806,6 +1882,23 @@ def api_platform_products_sync():
         return jsonify({"success": False, "synced": 0, "error": str(e)}), 500
 
 
+@app.route("/api/sync_products_category", methods=["POST", "GET", "OPTIONS"])
+def api_sync_products_category():
+    """同步商品表、品类表（供导出与比价）。数据导入后自动调用，也可手动触发"""
+    if request.method == "OPTIONS":
+        return "", 204
+    try:
+        conn = get_conn()
+        try:
+            products_cnt = sync_products_table(conn, store_id=STORE_ID)
+            category_cnt = sync_category_table(conn, store_id=STORE_ID)
+            return jsonify({"success": True, "products_synced": products_cnt, "category_synced": category_cnt})
+        finally:
+            conn.close()
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @app.route("/api/price_compare_products", methods=["GET", "OPTIONS"])
 def api_price_compare_products():
     """比价商品列表：从 t_htma_platform_products 读取，按大类、中类、小类分组。若表为空则先同步。"""
@@ -1881,11 +1974,175 @@ def api_price_compare():
         try:
             result = run_full_pipeline(conn, store_id=STORE_ID, days=days, use_mock_fetcher=use_mock, fetch_limit=fetch_limit)
             report = format_report(result)
-            return jsonify({"success": True, "report": report, "summary": result.get("portfolio", {}).get("summary", {})})
+            items = result.get("items", [])
+            # 构建表格数据，确保 items 字段始终存在（即使为空数组）
+            table_rows = []
+            if items and isinstance(items, list):
+                for it in items:
+                    if isinstance(it, dict):
+                        table_rows.append({
+                            "raw_name": str(it.get("raw_name") or it.get("std_name") or ""),
+                            "spec": str(it.get("spec") or "-"),
+                            "unit_price": it.get("unit_price"),
+                            "jd_min_price": it.get("jd_min_price"),
+                            "taobao_min_price": it.get("taobao_min_price"),
+                            "competitor_min": it.get("competitor_min"),
+                            "platform": str(it.get("platform") or "-"),
+                            "advantage_pct": it.get("advantage_pct"),
+                            "tier": str(it.get("tier") or "独家款"),
+                        })
+            # 确保 items 字段始终存在；返回竞品接口状态便于前端提示
+            summary = result.get("portfolio", {}).get("summary", {}) if isinstance(result.get("portfolio"), dict) else {}
+            exclusive = summary.get("exclusive", 0)
+            total = summary.get("total", 0)
+            response_data = {
+                "success": True,
+                "report": str(report) if report else "",
+                "summary": summary,
+                "items": table_rows,
+                "use_real_fetcher": result.get("use_real_fetcher", False),
+                "fetcher_error": result.get("fetcher_error"),
+                "fetcher_platform": result.get("fetcher_platform", ""),
+                "all_exclusive_hint": bool(total > 0 and exclusive == total and result.get("use_real_fetcher")),
+            }
+            return jsonify(response_data)
         finally:
             conn.close()
     except Exception as e:
-        return jsonify({"success": False, "report": "", "error": str(e)}), 500
+        error_msg = str(e)
+        return jsonify({"success": False, "report": "", "items": [], "error": error_msg}), 500
+
+
+@app.route("/api/price_compare_daily", methods=["POST", "OPTIONS"])
+def api_price_compare_daily():
+    """
+    每日自动比价：按当日（或昨日）销售 TOP 商品比价，可选推送飞书。
+    供用户主动触发或 OpenClaw/cron 调用。body: limit, fetch_limit, send_feishu, feishu_at_user_id
+    """
+    if request.method == "OPTIONS":
+        return "", 204
+    try:
+        from price_compare import run_daily_top_compare, format_report
+        from feishu_util import send_feishu
+        data = (request.get_json(silent=True) or {}) if request.is_json else {}
+        limit = int(data.get("limit", 50))
+        fetch_limit = data.get("fetch_limit")
+        if fetch_limit is not None:
+            fetch_limit = int(fetch_limit)
+        send_feishu_flag = data.get("send_feishu", False)
+        at_user_id = data.get("feishu_at_user_id") or os.environ.get("FEISHU_AT_USER_ID", "ou_8db735f2")
+        at_user_name = data.get("feishu_at_user_name") or os.environ.get("FEISHU_AT_USER_NAME", "余为军")
+        conn = get_conn()
+        try:
+            result = run_daily_top_compare(
+                conn, store_id=STORE_ID, data_date=None, limit=limit,
+                use_mock_fetcher=False, save_to_db=True, fetch_limit=fetch_limit or limit,
+            )
+            report = format_report(result)
+            items = result.get("items", [])
+            feishu_sent = False
+            feishu_ok = False
+            if send_feishu_flag and items:
+                feishu_ok, feishu_err = send_feishu(
+                    report, at_user_id=at_user_id, at_user_name=at_user_name, title="好特卖商品比价报告"
+                )
+                feishu_sent = True
+            table_rows = []
+            for it in items:
+                if isinstance(it, dict):
+                    table_rows.append({
+                        "raw_name": str(it.get("raw_name") or it.get("std_name") or ""),
+                        "spec": str(it.get("spec") or "-"),
+                        "unit_price": it.get("unit_price"),
+                        "jd_min_price": it.get("jd_min_price"),
+                        "taobao_min_price": it.get("taobao_min_price"),
+                        "competitor_min": it.get("competitor_min"),
+                        "platform": str(it.get("platform") or "-"),
+                        "advantage_pct": it.get("advantage_pct"),
+                        "tier": str(it.get("tier") or "独家款"),
+                    })
+            return jsonify({
+                "success": True,
+                "report": report,
+                "data_date": result.get("data_date"),
+                "items": table_rows,
+                "summary": result.get("portfolio", {}).get("summary", {}),
+                "feishu_sent": feishu_sent,
+                "feishu_ok": feishu_ok,
+            })
+        finally:
+            conn.close()
+    except Exception as e:
+        return jsonify({"success": False, "report": "", "items": [], "error": str(e)}), 500
+
+
+@app.route("/api/price_compare_results", methods=["GET", "OPTIONS"])
+def api_price_compare_results():
+    """查询已保存的比价结果（实体化数据），支持按 run_at、tier 筛选"""
+    if request.method == "OPTIONS":
+        return "", 204
+    run_at = request.args.get("run_at", "").strip()  # 如 2026-02-18
+    tier = request.args.get("tier", "").strip()  # 高优势款/独家款/价格劣势款 等
+    limit = min(int(request.args.get("limit", 200)), 500)
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            conds, params = [], [STORE_ID]
+            if run_at:
+                conds.append("DATE(run_at) = %s")
+                params.append(run_at)
+            if tier:
+                conds.append("tier = %s")
+                params.append(tier)
+            where = " AND " + " AND ".join(conds) if conds else ""
+            params.append(limit)
+            try:
+                cur.execute(f"""
+                    SELECT run_at, sku_code, std_name, raw_name, spec, barcode, category,
+                           unit_price, jd_min_price, jd_platform, taobao_min_price, taobao_platform,
+                           competitor_min, advantage_pct, tier, platform
+                    FROM t_htma_price_compare
+                    WHERE store_id = %s {where}
+                    ORDER BY run_at DESC, advantage_pct DESC
+                    LIMIT %s
+                """, params)
+            except Exception:
+                cur.execute(f"""
+                    SELECT run_at, sku_code, std_name, category, unit_price,
+                           competitor_min, advantage_pct, tier, platform
+                    FROM t_htma_price_compare
+                    WHERE store_id = %s {where}
+                    ORDER BY run_at DESC, advantage_pct DESC
+                    LIMIT %s
+                """, params)
+            rows = cur.fetchall()
+        items = []
+        for r in rows:
+            run_at_val = r.get("run_at")
+            run_at_str = run_at_val.isoformat() if run_at_val and hasattr(run_at_val, "isoformat") else str(run_at_val or "")
+            items.append({
+                "run_at": run_at_str,
+                "sku_code": r.get("sku_code"),
+                "std_name": r.get("std_name"),
+                "raw_name": r.get("raw_name"),
+                "spec": r.get("spec"),
+                "barcode": r.get("barcode"),
+                "category": r.get("category"),
+                "unit_price": float(r["unit_price"]) if r.get("unit_price") is not None else None,
+                "jd_min_price": float(r["jd_min_price"]) if r.get("jd_min_price") is not None else None,
+                "jd_platform": r.get("jd_platform"),
+                "taobao_min_price": float(r["taobao_min_price"]) if r.get("taobao_min_price") is not None else None,
+                "taobao_platform": r.get("taobao_platform"),
+                "competitor_min": float(r["competitor_min"]) if r.get("competitor_min") is not None else None,
+                "advantage_pct": float(r["advantage_pct"]) if r.get("advantage_pct") is not None else None,
+                "tier": r.get("tier"),
+                "platform": r.get("platform"),
+            })
+        return jsonify({"success": True, "items": items, "total": len(items)})
+    except Exception as e:
+        return jsonify({"success": False, "items": [], "error": str(e)}), 500
+    finally:
+        conn.close()
 
 
 @app.route("/api/health")
