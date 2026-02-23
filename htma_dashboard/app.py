@@ -273,6 +273,7 @@ def api_import():
 
         conn.close()
         result["success"] = True
+        result["data_import_target"] = "server"  # 导入始终写入本接口所在服务器的 MySQL，与访问者设备无关
         # 导入成功时发送飞书通知
         if result.get("sale_total", 0) > 0 or result.get("stock_total", 0) > 0:
             msg = f"好特卖数据导入完成\n销售表: {result.get('sale_total', 0)} 条\n库存表: {result.get('stock_total', 0)} 条\n毛利表: {result.get('profit_total', 0)} 条\n日期范围: {result.get('date_range', '-')}"
@@ -285,7 +286,13 @@ def api_import():
                 conn.close()
             except Exception:
                 pass
-        return jsonify({"success": False, "message": str(e), "traceback": traceback.format_exc()}), 500
+        tb = traceback.format_exc()
+        return jsonify({
+            "success": False,
+            "message": str(e),
+            "data_import_target": "server",
+            "traceback": tb[-2000:] if len(tb) > 2000 else tb  # 限制长度，避免响应过大导致前端超时
+        }), 500
 
 
 @app.route("/api/import_preview", methods=["POST"])

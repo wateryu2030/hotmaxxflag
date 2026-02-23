@@ -39,6 +39,9 @@
   </div>
 
   <div class="section">
+    <p class="tip" style="margin-bottom:12px;padding:10px;background:#0f172a;border-radius:6px;border:1px solid #334155;">
+      <strong>说明：</strong>只要通过当前网址（如 htma.greatagain.com.cn 或本机 127.0.0.1:5002）打开本页，上传的数据<strong>一律导入到该网址对应服务器的数据库</strong>，与您使用的电脑无关。外网访问时导入到跑看板的那台机器，不会导入到您本机。
+    </p>
     <h2>上传 Excel 文件（覆盖原有数据）</h2>
     <form id="importForm">
       <div class="file-row">
@@ -74,6 +77,7 @@
         </div>
       </div>
       <p class="tip">文件名需包含对应关键词。至少上传一个文件。导入前会清空对应表，再写入新数据。</p>
+      <p class="tip" style="color:#fbbf24;">通过外网（如 htma.greatagain.com.cn）访问时，若出现「请求失败: Failed to fetch」，多为上传超时。请<strong>一次只选一个文件</strong>分别导入（先销售日报 → 再销售汇总 → 再实时库存），或改用跑看板的那台电脑打开本页导入。</p>
       <button type="submit" class="btn" id="submitBtn">开始导入</button>
       <button type="button" class="btn btn-secondary" id="btnRepairSwap" style="margin-left:8px;">修复：对调金额/成本</button>
       <button type="button" class="btn btn-secondary" id="btnRepairUnit" style="margin-left:8px;">修复：按单价×数量重算</button>
@@ -111,17 +115,24 @@
       }
 
       try {
-        const r = await fetch(apiBase() + '/api/import', { method: 'POST', body: fd });
+        const apiUrl = apiBase() + '/api/import';
+        const r = await fetch(apiUrl, { method: 'POST', body: fd });
         const text = await r.text();
         let d;
         try {
           d = JSON.parse(text);
         } catch (_) {
-          const msg = r.status === 413 ? '文件过大，请上传小于 200MB 的 Excel' : ('服务器返回异常（' + r.status + '），请确认访问 http://127.0.0.1:5002');
-          throw new Error(msg);
+          loadDataStatus();
+          const msg = r.status === 413 ? '文件过大，请上传小于 200MB 的 Excel' : ('服务器返回异常（' + r.status + '），可能超时或网络中断');
+          resultEl.textContent = msg + '\n\n已刷新下方「当前数据」。若条数已更新，说明部分数据可能已写入当前访问的服务器，请返回看板查看。';
+          resultEl.className = 'result error';
+          resultEl.style.display = 'block';
+          btn.disabled = false;
+          return;
         }
+        loadDataStatus();
         if (d.success) {
-          let msg = '导入完成\n';
+          let msg = '导入完成（数据已写入当前访问的服务器）\n';
           msg += `销售日报: ${d.sale_daily || 0} 条\n`;
           msg += `销售汇总: ${d.sale_summary || 0} 条\n`;
           msg += `实时库存: ${d.stock || 0} 条\n`;
@@ -138,13 +149,19 @@
           if (d.diagnostics && d.diagnostics.length) msg += '\n诊断: ' + d.diagnostics.join('; ');
           resultEl.textContent = msg;
           resultEl.className = 'result success';
-          loadDataStatus();
         } else {
-          resultEl.textContent = '导入失败: ' + (d.message || JSON.stringify(d));
+          resultEl.textContent = '导入失败: ' + (d.message || JSON.stringify(d)) + '\n\n已刷新下方「当前数据」。若条数有变化，说明部分数据可能已写入当前服务器。';
           resultEl.className = 'result error';
         }
       } catch (err) {
-        resultEl.textContent = '请求失败: ' + err.message;
+        loadDataStatus();
+        let msg = '请求失败: ' + err.message;
+        if (String(err.message).toLowerCase().includes('fetch')) {
+          msg += '\n\n多为网络/隧道超时。请尝试：\n1) 一次只上传一个文件（先销售日报，成功后再传销售汇总，再传库存）；\n2) 或在本机（跑看板的那台电脑）打开本页再导入。';
+        } else {
+          msg += '\n\n已刷新下方「当前数据」；若条数已更新，说明部分数据可能已写入，请返回看板查看。';
+        }
+        resultEl.textContent = msg;
         resultEl.className = 'result error';
       }
       resultEl.style.display = 'block';
@@ -161,7 +178,7 @@
         const r = await fetch(apiBase() + url, { method: 'POST', headers: { 'Accept': 'application/json' } });
         const text = await r.text();
         let d;
-        try { d = JSON.parse(text); } catch (_) { throw new Error('服务器返回异常，请确认访问 http://127.0.0.1:5002'); }
+        try { d = JSON.parse(text); } catch (_) { throw new Error('服务器返回异常'); }
         resultEl.textContent = d.success ? '完成：' + d.message : '失败：' + d.message;
         resultEl.className = 'result ' + (d.success ? 'success' : 'error');
       } catch (e) {
@@ -174,9 +191,10 @@
     document.getElementById('btnRepairSwap').onclick = () => callRepair('/api/repair_swap_amount_cost', '将对调销售额与成本列并重算毛利，是否继续？');
     document.getElementById('btnRepairUnit').onclick = () => callRepair('/api/repair_recalc_unit_price', '将按「单价×数量」重算销售额与成本，是否继续？');
 
+    // 与看板一致：始终用当前页面的域名请求接口，保证本机/外网都导入到同一台服务器
     function apiBase() {
       const o = window.location.origin;
-      if (o && o !== 'null' && o !== 'undefined') return o;
+      if (o && o !== 'null' && o !== 'undefined' && (o.startsWith('http://') || o.startsWith('https://'))) return o;
       return 'http://127.0.0.1:5002';
     }
 
@@ -238,7 +256,7 @@
           resultEl.className = 'result error';
         }
       } catch (e) {
-        resultEl.textContent = '请求失败: ' + e.message + '（若在 Cursor 内嵌浏览器，请用系统浏览器打开 http://127.0.0.1:5002/import 再试）';
+        resultEl.textContent = '请求失败: ' + e.message;
         resultEl.className = 'result error';
       }
       resultEl.style.display = 'block';
