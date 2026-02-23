@@ -76,8 +76,8 @@ def main():
         sale_summary_cnt, diag = import_sale_summary(files["sale_summary"], conn)
         print(f"销售汇总: {sale_summary_cnt} 条", diag or "")
     if "stock" in files:
-        stock_cnt = import_stock(files["stock"], conn)
-        print(f"实时库存: {stock_cnt} 条")
+        stock_cnt, stock_diag = import_stock(files["stock"], conn)
+        print(f"实时库存: {stock_cnt} 条", stock_diag or "")
 
     if sale_daily_cnt > 0 or sale_summary_cnt > 0:
         refresh_profit(conn)

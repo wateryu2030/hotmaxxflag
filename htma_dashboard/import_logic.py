@@ -79,6 +79,45 @@ def _extract_report_date(df_or_path):
     return None
 
 
+# 销售/毛利/库存 Excel 中视为「汇总行」的货号或品类，导入时跳过，避免重复计入
+SALE_SUMMARY_ROW_KEYWORDS = frozenset({"总计", "合计", "小计", "求和项", "汇总", "合计行", "总计行", "小计行", "货号"})
+# 任一字段「包含」以下词即视为汇总行（导出的统计结果，非明细）
+SUMMARY_SUBSTRINGS = ("合计", "总计", "小计", "汇总", "求和项", "合计行", "总计行", "小计行")
+
+
+def _is_summary_like(s):
+    """字符串是否包含汇总类关键词（合计/总计/小计等），用于严格过滤导出中的统计行"""
+    if not s or not str(s).strip():
+        return False
+    t = str(s).strip()
+    for k in SUMMARY_SUBSTRINGS:
+        if k in t:
+            return True
+    return False
+
+
+def _is_sale_summary_row(row, cols):
+    """判断是否为汇总行（总计/合计/小计等），这类行不应作为明细导入，否则会重复计算"""
+    sku = _row_val(row, cols.get("sku", cols.get("sku_code", 2)))
+    cat = _row_val(row, cols.get("category", 9))
+    sku_s = (str(sku or "").strip())[:64]
+    cat_s = (str(cat or "").strip())[:64]
+    if sku_s and sku_s in SALE_SUMMARY_ROW_KEYWORDS:
+        return True
+    if cat_s and cat_s in SALE_SUMMARY_ROW_KEYWORDS:
+        return True
+    if _is_summary_like(sku_s) or _is_summary_like(cat_s):
+        return True
+    # 品名列含合计/总计/小计 也视为汇总行
+    pn = _row_val(row, cols.get("product_name", 3))
+    if _is_summary_like(pn or ""):
+        return True
+    # 部分导出在货号列写「求和项:销售金额」等
+    if sku_s and ("求和项" in sku_s or "总计" in sku_s or "合计" in sku_s):
+        return True
+    return False
+
+
 def _row_val(row, idx, default=None, as_decimal=False):
     if idx >= len(row):
         return _safe_decimal(default, 0) if as_decimal else default
@@ -350,8 +389,8 @@ STOCK_NEW_COLS = {
 }
 
 
-def import_sale_daily(excel_path, conn):
-    """销售日报表：支持表头检测，销售收入=销售金额，成本=成本金额/参考金额/销售成本。"""
+def import_sale_daily(excel_path, conn, overwrite_on_duplicate=False):
+    """销售日报表：支持表头检测。overwrite_on_duplicate=True 时同(日期,货号)覆盖不累加（与汇总同传时防翻倍）。"""
     df = _read_excel_safe(excel_path)
     df = _trim_leading_junk_rows(df, ("货号", "销售金额", "商品编码", "销售日期", "销售数量", "品号", "商品号", "商品名称", "订单日期", "销售汇总"))
     if df.shape[0] <= 1:
@@ -369,9 +408,49 @@ def import_sale_daily(excel_path, conn):
     inserted = 0
     skipped_no_sku = 0
     skipped_no_date = 0
+    skipped_summary = 0
     skipped_err = 0
     first_err = None
+    col_list = None
+    buf = []
+    qty_idx = cols.get("qty", 28)
+
+    def flush_sale_batch():
+        nonlocal inserted, skipped_err, first_err, col_list
+        if not buf:
+            return
+        try:
+            _batch_insert_sale(cur, col_list, buf, overwrite_on_duplicate)
+            inserted += len(buf)
+        except Exception as e:
+            col_str = ", ".join(col_list)
+            one_ph = ", ".join(["%s"] * len(col_list))
+            if overwrite_on_duplicate:
+                update_parts = ["sale_qty=VALUES(sale_qty)", "sale_amount=VALUES(sale_amount)", "sale_cost=VALUES(sale_cost)", "gross_profit=VALUES(gross_profit)"]
+            else:
+                update_parts = ["sale_qty=sale_qty+VALUES(sale_qty)", "sale_amount=sale_amount+VALUES(sale_amount)", "sale_cost=sale_cost+VALUES(sale_cost)", "gross_profit=gross_profit+VALUES(gross_profit)"]
+            for c in col_list:
+                if c not in ("data_date", "sku_code", "store_id", "sale_qty", "sale_amount", "sale_cost", "gross_profit", "source_sheet"):
+                    update_parts.append(f"{c}=COALESCE(VALUES({c}),{c})")
+            update_parts.append("source_sheet=VALUES(source_sheet)")
+            update_str = ", ".join(update_parts)
+            sql_one = f"INSERT INTO t_htma_sale ({col_str}) VALUES ({one_ph}) ON DUPLICATE KEY UPDATE {update_str}"
+            for v in buf:
+                try:
+                    cur.execute(sql_one, tuple(v))
+                    inserted += 1
+                except Exception as e2:
+                    skipped_err += 1
+                    if first_err is None:
+                        first_err = str(e2)
+        buf.clear()
+
+    # 按 (日期, 货号) 去重合并后再写入，避免重复数据上传
+    agg_sale = {}  # (dt, sku) -> (qty_sum, amount_sum, cost_sum, gross_sum, row)
     for _, row in data_rows.iterrows():
+        if _is_sale_summary_row(row, cols):
+            skipped_summary += 1
+            continue
         dt = _parse_date(_row_val(row, cols["date"]))
         sku = _row_val(row, cols["sku"])
         if not sku:
@@ -385,18 +464,34 @@ def import_sale_daily(excel_path, conn):
         gross = sale_amount - cost
         if sale_amount == 0 and cost > 0:
             gross = 0
+        qty = _row_val(row, qty_idx, as_decimal=True) or 0
+        key = (dt, sku)
+        if key not in agg_sale:
+            agg_sale[key] = [0, 0, 0, 0, row.copy()]
+        agg_sale[key][0] += qty
+        agg_sale[key][1] += sale_amount
+        agg_sale[key][2] += cost
+        agg_sale[key][3] += gross
+
+    for (dt, sku), (qty_sum, amount_sum, cost_sum, gross_sum, row) in agg_sale.items():
         try:
-            _import_sale_full(row, dt, sku, sale_amount, cost, gross, cur, cols, SALE_DAILY_FULL, source_sheet="sale_daily")
-            inserted += 1
+            all_cols, all_vals = _build_sale_row_vals(row, dt, sku, amount_sum, cost_sum, gross_sum, cols, SALE_DAILY_FULL, source_sheet="sale_daily", qty_override=qty_sum)
+            if col_list is None:
+                col_list = all_cols
+            buf.append(all_vals)
+            if len(buf) >= _IMPORT_BATCH_SIZE:
+                flush_sale_batch()
         except Exception as e:
             skipped_err += 1
             if first_err is None:
                 first_err = str(e)
-            pass  # 跳过该行
+    flush_sale_batch()
     conn.commit()
     diag = None
-    if inserted == 0:
-        parts = [f"总行{len(data_rows)}"]
+    if inserted == 0 or skipped_summary > 0:
+        parts = [f"总行{len(data_rows)}", f"去重后{len(agg_sale)}条", f"导入{inserted}条"]
+        if skipped_summary:
+            parts.append(f"跳过汇总行{skipped_summary}条")
         if skipped_no_sku:
             parts.append(f"无货号{skipped_no_sku}")
         if skipped_no_date:
@@ -409,9 +504,14 @@ def import_sale_daily(excel_path, conn):
     return inserted, diag
 
 
-def _import_sale_full(row, dt, sku, sale_amount, cost, gross, cur, cols, full_map, source_sheet="sale_daily"):
-    """完整导入：将 Excel 行按 full_map 映射写入 t_htma_sale 所有字段"""
+# 批量写入每批行数，减少数据库往返，避免长时间导入超时（如 Cloudflare 524）
+_IMPORT_BATCH_SIZE = 1000
+
+
+def _build_sale_row_vals(row, dt, sku, sale_amount, cost, gross, cols, full_map, source_sheet="sale_daily", qty_override=None):
+    """构建单行销售数据 (all_cols, all_vals)，供单条 INSERT 或批量 INSERT 使用。qty_override 用于去重合并时传入合并后的数量。"""
     qty_idx = cols.get("qty", 28 if source_sheet == "sale_daily" else 30)
+    qty_val = qty_override if qty_override is not None else _row_val(row, qty_idx, as_decimal=True)
     extra_cols, extra_vals = [], []
     for excel_col, db_col, as_dec in full_map:
         if db_col in ("data_date", "sku_code", "sale_amount", "cost_amount", "sale_qty"):
@@ -423,16 +523,54 @@ def _import_sale_full(row, dt, sku, sale_amount, cost, gross, cur, cols, full_ma
         extra_cols.append(db_col)
         extra_vals.append(v)
     all_cols = ["data_date", "sku_code", "store_id"] + extra_cols + ["sale_qty", "sale_amount", "sale_cost", "gross_profit", "source_sheet"]
-    all_vals = [dt, sku, STORE_ID] + extra_vals + [_row_val(row, qty_idx, as_decimal=True), sale_amount, cost, gross, source_sheet]
+    all_vals = [dt, sku, STORE_ID] + extra_vals + [qty_val, sale_amount, cost, gross, source_sheet]
+    return all_cols, all_vals
+
+
+def _batch_insert_sale(cur, all_cols, vals_list, overwrite_on_duplicate=False):
+    """批量 INSERT 销售表。overwrite_on_duplicate=True 时同键覆盖不累加，避免日报+汇总同传时销售额翻倍。"""
+    if not vals_list:
+        return
+    n = len(vals_list)
+    placeholders = ", ".join(["(" + ", ".join(["%s"] * len(all_cols)) + ")" for _ in range(n)])
+    col_str = ", ".join(all_cols)
+    if overwrite_on_duplicate:
+        update_parts = [
+            "sale_qty=VALUES(sale_qty)", "sale_amount=VALUES(sale_amount)",
+            "sale_cost=VALUES(sale_cost)", "gross_profit=VALUES(gross_profit)",
+        ]
+    else:
+        update_parts = [
+            "sale_qty=sale_qty+VALUES(sale_qty)", "sale_amount=sale_amount+VALUES(sale_amount)",
+            "sale_cost=sale_cost+VALUES(sale_cost)", "gross_profit=gross_profit+VALUES(gross_profit)",
+        ]
+    extra_cols = [c for c in all_cols if c not in ("data_date", "sku_code", "store_id", "sale_qty", "sale_amount", "sale_cost", "gross_profit", "source_sheet")]
+    for c in extra_cols:
+        update_parts.append(f"{c}=COALESCE(VALUES({c}),{c})")
+    update_parts.append("source_sheet=VALUES(source_sheet)")
+    update_str = ", ".join(update_parts)
+    flat = []
+    for v in vals_list:
+        flat.extend(v)
+    cur.execute(f"""
+        INSERT INTO t_htma_sale ({col_str})
+        VALUES {placeholders}
+        ON DUPLICATE KEY UPDATE {update_str}
+    """, flat)
+
+
+def _import_sale_full(row, dt, sku, sale_amount, cost, gross, cur, cols, full_map, source_sheet="sale_daily"):
+    """完整导入：将 Excel 行按 full_map 映射写入 t_htma_sale 所有字段（单行，供 fallback 或小数据量使用）。"""
+    all_cols, all_vals = _build_sale_row_vals(row, dt, sku, sale_amount, cost, gross, cols, full_map, source_sheet)
     placeholders = ", ".join(["%s"] * len(all_vals))
     col_str = ", ".join(all_cols)
-    # 同一(date,sku)多行（如销售+退货）需累加，不能覆盖
     update_parts = [
         "sale_qty=sale_qty+VALUES(sale_qty)",
         "sale_amount=sale_amount+VALUES(sale_amount)",
         "sale_cost=sale_cost+VALUES(sale_cost)",
         "gross_profit=gross_profit+VALUES(gross_profit)",
     ]
+    extra_cols = [c for c in all_cols if c not in ("data_date", "sku_code", "store_id", "sale_qty", "sale_amount", "sale_cost", "gross_profit", "source_sheet")]
     for c in extra_cols:
         update_parts.append(f"{c}=COALESCE(VALUES({c}),{c})")
     update_parts.append("source_sheet=VALUES(source_sheet)")
@@ -445,6 +583,7 @@ def _import_sale_full(row, dt, sku, sale_amount, cost, gross, cur, cols, full_ma
         """, tuple(all_vals))
     except Exception as e:
         if "Unknown column" in str(e):
+            qty_idx = cols.get("qty", 28 if source_sheet == "sale_daily" else 30)
             cur.execute("""
                 INSERT INTO t_htma_sale (data_date, sku_code, category, sale_qty, sale_amount, sale_cost, gross_profit, store_id)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
@@ -454,8 +593,8 @@ def _import_sale_full(row, dt, sku, sale_amount, cost, gross, cur, cols, full_ma
             raise
 
 
-def import_sale_summary(excel_path, conn):
-    """销售汇总表：支持表头检测，销售收入=销售金额，成本=成本金额/参考进价金额/销售成本。"""
+def import_sale_summary(excel_path, conn, overwrite_on_duplicate=False):
+    """销售汇总表：支持表头检测。overwrite_on_duplicate=True 时同(日期,货号)覆盖不累加（与日报同传时防销售额翻倍）。"""
     df = _read_excel_safe(excel_path)
     df = _trim_leading_junk_rows(df, ("货号", "销售金额", "商品编码", "销售日期", "销售数量", "品号", "商品号", "商品名称", "订单日期", "销售汇总"))
     if df.shape[0] <= 1:
@@ -472,9 +611,49 @@ def import_sale_summary(excel_path, conn):
     inserted = 0
     skipped_no_sku = 0
     skipped_no_date = 0
+    skipped_summary = 0
     skipped_err = 0
     first_err = None
+    col_list = None
+    buf = []
+    qty_idx = cols.get("qty", 30)
+
+    def flush_sale_batch():
+        nonlocal inserted, skipped_err, first_err, col_list
+        if not buf:
+            return
+        try:
+            _batch_insert_sale(cur, col_list, buf, overwrite_on_duplicate)
+            inserted += len(buf)
+        except Exception as e:
+            col_str = ", ".join(col_list)
+            one_ph = ", ".join(["%s"] * len(col_list))
+            if overwrite_on_duplicate:
+                update_parts = ["sale_qty=VALUES(sale_qty)", "sale_amount=VALUES(sale_amount)", "sale_cost=VALUES(sale_cost)", "gross_profit=VALUES(gross_profit)"]
+            else:
+                update_parts = ["sale_qty=sale_qty+VALUES(sale_qty)", "sale_amount=sale_amount+VALUES(sale_amount)", "sale_cost=sale_cost+VALUES(sale_cost)", "gross_profit=gross_profit+VALUES(gross_profit)"]
+            for c in col_list:
+                if c not in ("data_date", "sku_code", "store_id", "sale_qty", "sale_amount", "sale_cost", "gross_profit", "source_sheet"):
+                    update_parts.append(f"{c}=COALESCE(VALUES({c}),{c})")
+            update_parts.append("source_sheet=VALUES(source_sheet)")
+            update_str = ", ".join(update_parts)
+            sql_one = f"INSERT INTO t_htma_sale ({col_str}) VALUES ({one_ph}) ON DUPLICATE KEY UPDATE {update_str}"
+            for v in buf:
+                try:
+                    cur.execute(sql_one, tuple(v))
+                    inserted += 1
+                except Exception as e2:
+                    skipped_err += 1
+                    if first_err is None:
+                        first_err = str(e2)
+        buf.clear()
+
+    # 按 (日期, 货号) 去重合并后再写入，避免重复数据上传
+    agg_sale = {}  # (dt, sku) -> (qty_sum, amount_sum, cost_sum, gross_sum, row)
     for _, row in data_rows.iterrows():
+        if _is_sale_summary_row(row, cols):
+            skipped_summary += 1
+            continue
         dt = _parse_date(_row_val(row, cols["date"]))
         sku = _row_val(row, cols["sku"])
         if not sku:
@@ -485,7 +664,6 @@ def import_sale_summary(excel_path, conn):
             continue
         sale_amount = _row_val(row, cols["amount"], as_decimal=True)
         cost = _row_val(row, cols["cost"], as_decimal=True)
-        # 销售汇总表：若有「进销差价金额」列，直接用作毛利（与系统报表一致）
         if cols.get("margin") is not None:
             gross = _row_val(row, cols["margin"], as_decimal=True)
             cost = sale_amount - gross if sale_amount and gross is not None else cost
@@ -493,18 +671,34 @@ def import_sale_summary(excel_path, conn):
             gross = sale_amount - cost
         if sale_amount == 0 and cost > 0:
             gross = 0
+        qty = _row_val(row, qty_idx, as_decimal=True) or 0
+        key = (dt, sku)
+        if key not in agg_sale:
+            agg_sale[key] = [0, 0, 0, 0, row.copy()]
+        agg_sale[key][0] += qty
+        agg_sale[key][1] += sale_amount
+        agg_sale[key][2] += cost
+        agg_sale[key][3] += gross
+
+    for (dt, sku), (qty_sum, amount_sum, cost_sum, gross_sum, row) in agg_sale.items():
         try:
-            _import_sale_full(row, dt, sku, sale_amount, cost, gross, cur, cols, SALE_SUMMARY_FULL, source_sheet="sale_summary")
-            inserted += 1
+            all_cols, all_vals = _build_sale_row_vals(row, dt, sku, amount_sum, cost_sum, gross_sum, cols, SALE_SUMMARY_FULL, source_sheet="sale_summary", qty_override=qty_sum)
+            if col_list is None:
+                col_list = all_cols
+            buf.append(all_vals)
+            if len(buf) >= _IMPORT_BATCH_SIZE:
+                flush_sale_batch()
         except Exception as e:
             skipped_err += 1
             if first_err is None:
                 first_err = str(e)
-            pass
+    flush_sale_batch()
     conn.commit()
     diag = None
-    if inserted == 0:
-        parts = [f"总行{len(data_rows)}"]
+    if inserted == 0 or skipped_summary > 0:
+        parts = [f"总行{len(data_rows)}", f"去重后{len(agg_sale)}条", f"导入{inserted}条"]
+        if skipped_summary:
+            parts.append(f"跳过汇总行{skipped_summary}条")
         if skipped_no_sku:
             parts.append(f"无货号{skipped_no_sku}")
         if skipped_no_date:
@@ -518,7 +712,8 @@ def import_sale_summary(excel_path, conn):
 
 
 def _detect_stock_cols(df, start_row, ncol):
-    """检测库存表列：货号、实时库存、库存金额及全部 24 列。格式二(库存查询_默认)货号=2、品类=3、库存数量=15、库存总金额=17"""
+    """检测库存表列：货号、实时库存、库存金额及全部 24 列。格式二(库存查询_默认)货号=2、品类=3、库存数量=15、库存总金额=17；
+    30+列格式(仓库/仓库名称/货号/…/库存数量/零售价/库存售价金额)：数量=24、金额=26，避免误用15/17导致金额偏小。"""
     # 格式一默认：货号4 类别3 实时库存11 库存金额13；格式二默认：货号2 品类3 库存数量15 库存总金额17
     default = {"sku_code": 4, "category": 3, "stock_qty": 11, "stock_amount": 13}
     default["sku"] = default["sku_code"]
@@ -528,6 +723,10 @@ def _detect_stock_cols(df, start_row, ncol):
         default["stock_amount"] = 17
         default["sku"] = default["sku_code"] = 2
         default["category"] = 3
+    # 30+列「库存查询」格式：货号2, 库存数量24, 零售价25, 库存售价金额26；若用15/17会读成供应商/经营方式导致金额严重偏小
+    if ncol >= 26:
+        default["stock_qty"] = 24
+        default["stock_amount"] = 26
     if start_row >= df.shape[0] or ncol < 5:
         return default
     for h_idx in [start_row - 1, 0, 1]:
@@ -621,6 +820,17 @@ def _detect_stock_cols(df, start_row, ncol):
             elif "品牌" in v and "编码" not in v:
                 cols["brand_name"] = c
         if cols.get("sku") is not None:
+            # 二次扫描：30+列时在 20~35 列显式找「库存数量」「库存售价金额」，避免表头合并单元格漏识别导致用错列
+            if ncol >= 24:
+                for c in range(20, min(ncol, 35)):
+                    v = filled[c] if c < len(filled) else None
+                    if not v:
+                        continue
+                    v = str(v).strip()
+                    if "库存" in v and "数量" in v and "金额" not in v:
+                        cols["stock_qty"] = c
+                    if ("库存" in v and "售价" in v) or ("库存" in v and "金额" in v) or "库存总金额" in v:
+                        cols["stock_amount"] = c
             for excel_col, db_col, _ in STOCK_FULL + STOCK_V2_EXTRA:
                 if db_col not in cols:
                     cols[db_col] = excel_col
@@ -642,18 +852,11 @@ def _parse_datetime(v):
     return (d + " 00:00:00") if d else None
 
 
-def _import_stock_full(row, data_date, cur, cols, full_map):
-    """完整导入：将 Excel 行按 full_map 映射写入 t_htma_stock 所有字段。同一 (date, sku) 应由调用方先聚合。"""
+def _build_stock_row_vals(row, data_date, qty, amount, cols, full_map):
+    """构建单行库存数据 (all_cols, all_vals)，供单条或批量 INSERT 使用。qty/amount 可为聚合后的值。"""
     sku = _row_val(row, cols.get("sku", cols.get("sku_code", 2)))
     if not sku:
-        return False
-    qty = _row_val(row, cols.get("stock_qty", 15), as_decimal=True)
-    amount = _row_val(row, cols.get("stock_amount", 17), as_decimal=True)
-    # 未识别到「库存总金额」或为 0 时，用 平均价×库存数量 作为金额
-    if (amount is None or amount == 0) and qty:
-        avg_price = _row_val(row, cols.get("avg_price", 16), as_decimal=True)
-        if avg_price:
-            amount = avg_price * qty
+        return None, None
     extra_cols, extra_vals = [], []
     for excel_col, db_col, as_dec in full_map:
         if db_col in ("sku_code", "stock_qty", "stock_amount"):
@@ -671,9 +874,46 @@ def _import_stock_full(row, data_date, cur, cols, full_map):
         extra_vals.append(v)
     all_cols = ["data_date", "sku_code", "store_id"] + extra_cols + ["stock_qty", "stock_amount"]
     all_vals = [data_date, sku, STORE_ID] + extra_vals + [qty, amount]
+    return all_cols, all_vals
+
+
+def _batch_insert_stock(cur, all_cols, vals_list):
+    """批量 INSERT 库存表。vals_list 每项为一行 all_vals。"""
+    if not vals_list:
+        return
+    n = len(vals_list)
+    placeholders = ", ".join(["(" + ", ".join(["%s"] * len(all_cols)) + ")" for _ in range(n)])
+    col_str = ", ".join(all_cols)
+    update_parts = ["stock_qty=VALUES(stock_qty)", "stock_amount=VALUES(stock_amount)"]
+    extra_cols = [c for c in all_cols if c not in ("data_date", "sku_code", "store_id", "stock_qty", "stock_amount")]
+    for c in extra_cols:
+        update_parts.append(f"{c}=COALESCE(VALUES({c}),{c})")
+    update_str = ", ".join(update_parts)
+    flat = []
+    for v in vals_list:
+        flat.extend(v)
+    cur.execute(f"""
+        INSERT INTO t_htma_stock ({col_str})
+        VALUES {placeholders}
+        ON DUPLICATE KEY UPDATE {update_str}
+    """, flat)
+
+
+def _import_stock_full(row, data_date, cur, cols, full_map):
+    """完整导入：将 Excel 行按 full_map 映射写入 t_htma_stock 所有字段。同一 (date, sku) 应由调用方先聚合。"""
+    qty = _row_val(row, cols.get("stock_qty", 15), as_decimal=True)
+    amount = _row_val(row, cols.get("stock_amount", 17), as_decimal=True)
+    if (amount is None or amount == 0) and qty:
+        avg_price = _row_val(row, cols.get("avg_price", 16), as_decimal=True)
+        if avg_price:
+            amount = avg_price * qty
+    all_cols, all_vals = _build_stock_row_vals(row, data_date, qty, amount, cols, full_map)
+    if all_cols is None:
+        return False
     placeholders = ", ".join(["%s"] * len(all_vals))
     col_str = ", ".join(all_cols)
     update_parts = ["stock_qty=VALUES(stock_qty)", "stock_amount=VALUES(stock_amount)"]
+    extra_cols = [c for c in all_cols if c not in ("data_date", "sku_code", "store_id", "stock_qty", "stock_amount")]
     for c in extra_cols:
         update_parts.append(f"{c}=COALESCE(VALUES({c}),{c})")
     update_str = ", ".join(update_parts)
@@ -686,7 +926,7 @@ def _import_stock_full(row, data_date, cur, cols, full_map):
         return True
     except Exception as e:
         if "Unknown column" in str(e):
-            # 格式二 品类在列3，格式一 类别在列2；fallback 用 3 更兼容格式二
+            sku = all_vals[all_cols.index("sku_code")]
             cur.execute("""
                 INSERT INTO t_htma_stock (data_date, sku_code, category, stock_qty, stock_amount, store_id)
                 VALUES (%s,%s,%s,%s,%s,%s)
@@ -701,20 +941,29 @@ def import_stock(excel_path, conn):
     m = re.search(r"(\d{4})-(\d{2})-(\d{2})", os.path.basename(excel_path))
     data_date = m.group(0) if m else datetime.now().strftime("%Y-%m-%d")
     df = _read_excel_safe(excel_path)
-    df = _trim_leading_junk_rows(df, ("货号", "实时库存", "库存", "商品名称", "库存金额", "库存数量", "库存总金额"))
+    df = _trim_leading_junk_rows(df, ("货号", "实时库存", "库存", "商品名称", "库存金额", "库存数量", "库存总金额", "库存售价金额"))
     if df.shape[0] <= 1 or df.shape[1] < 5:
-        return 0
+        return 0, "行数或列数不足"
     start_row = _detect_header_row(df)
     cols = _detect_stock_cols(df, start_row, df.shape[1])
     data_rows = df.iloc[start_row:]
+    ncol = df.shape[1]
     sku_idx = cols.get("sku_code", cols.get("sku", 2))
-    qty_idx = cols.get("stock_qty", 15)
-    amt_idx = cols.get("stock_amount", 17)
+    fallback_qty = 24 if ncol >= 26 else 15
+    fallback_amt = 26 if ncol >= 26 else 17
+    qty_idx = cols.get("stock_qty", fallback_qty)
+    amt_idx = cols.get("stock_amount", fallback_amt)
     # 按货号聚合：同一货号多行（多仓库/库位）数量、金额相加，避免唯一键 (data_date, sku_code) 只保留最后一行导致统计偏小
     agg = {}  # sku -> (qty_sum, amount_sum, first_row)
     for _, row in data_rows.iterrows():
         sku = _row_val(row, sku_idx)
         if not sku:
+            continue
+        if _is_summary_like(sku):
+            continue
+        cat = _row_val(row, cols.get("category", 3))
+        pn = _row_val(row, cols.get("product_name", 6))
+        if _is_summary_like(cat or "") or _is_summary_like(pn or ""):
             continue
         qty = _row_val(row, qty_idx, as_decimal=True) or 0
         amount = _row_val(row, amt_idx, as_decimal=True) or 0
@@ -728,16 +977,49 @@ def import_stock(excel_path, conn):
         agg[sku][1] += amount
     cur = conn.cursor()
     inserted = 0
+    col_list = None
+    buf = []
+    full_map = STOCK_FULL + STOCK_V2_EXTRA
+
+    def flush_stock_batch():
+        nonlocal inserted, col_list
+        if not buf:
+            return
+        try:
+            _batch_insert_stock(cur, col_list, buf)
+            inserted += len(buf)
+        except Exception:
+            for (first_row, qty_sum, amt_sum) in buf_rows:
+                if _import_stock_full(first_row, data_date, cur, cols, full_map):
+                    inserted += 1
+        buf.clear()
+        buf_rows.clear()
+
+    buf_rows = []  # 与 buf 一一对应，用于 fallback 时调用 _import_stock_full(first_row,...)
+
     for sku, (qty_sum, amt_sum, first_row) in agg.items():
+        if _is_summary_like(sku):
+            continue
         first_row = first_row.copy()
         if qty_idx < len(first_row):
             first_row.iloc[qty_idx] = qty_sum
         if amt_idx < len(first_row):
             first_row.iloc[amt_idx] = amt_sum
-        if _import_stock_full(first_row, data_date, cur, cols, STOCK_FULL + STOCK_V2_EXTRA):
-            inserted += 1
+        all_cols, all_vals = _build_stock_row_vals(first_row, data_date, qty_sum, amt_sum, cols, full_map)
+        if all_cols is None:
+            continue
+        if col_list is None:
+            col_list = all_cols
+        buf.append(all_vals)
+        buf_rows.append((first_row, qty_sum, amt_sum))
+        if len(buf) >= _IMPORT_BATCH_SIZE:
+            flush_stock_batch()
+    flush_stock_batch()
     conn.commit()
-    return inserted
+    total_qty = sum(a[0] for a in agg.values())
+    total_amt = sum(a[1] for a in agg.values())
+    diag = f"库存: 导入{inserted}条, 合计数量{total_qty:,.0f}件, 合计金额{total_amt:,.2f}元"
+    return inserted, diag
 
 
 def _detect_category_cols(df):
@@ -870,6 +1152,8 @@ def import_profit(excel_path, conn):
     inserted = 0
     skipped = 0
     last_large = ""
+    # 按 (日期, 品类) 去重合并后再写入，避免重复数据
+    agg_profit = {}  # category -> (total_sale_sum, total_profit_sum, category_large)
     for _, row in data_rows.iterrows():
         large = _row_val(row, cols.get("category_large", 0)) or last_large
         if large:
@@ -881,18 +1165,28 @@ def import_profit(excel_path, conn):
             continue
         if total_sale == 0 and cost == 0:
             continue
-        if (str(cat or "").strip() == "总计" or str(large or "").strip() == "总计"):
+        cat_s = (str(cat or "").strip())[:32]
+        large_s = (str(large or "").strip())[:32]
+        if cat_s in SALE_SUMMARY_ROW_KEYWORDS or large_s in SALE_SUMMARY_ROW_KEYWORDS:
+            continue
+        if _is_summary_like(cat_s) or _is_summary_like(large_s):
             continue
         category = (cat or large or "未分类").strip()[:64]
         total_profit = total_sale - cost
-        profit_rate = total_profit / total_sale if total_sale and total_sale > 0 else 0
+        if category not in agg_profit:
+            agg_profit[category] = [0, 0, last_large[:64] if last_large else None]
+        agg_profit[category][0] += total_sale
+        agg_profit[category][1] += total_profit
+
+    for category, (sale_sum, profit_sum, large_val) in agg_profit.items():
+        profit_rate = profit_sum / sale_sum if sale_sum and sale_sum > 0 else 0
         profit_rate = max(-1, min(1, profit_rate))
         try:
             cur.execute("""
                 INSERT INTO t_htma_profit (data_date, category, total_sale, total_profit, profit_rate, store_id, category_large)
                 VALUES (%s,%s,%s,%s,%s,%s,%s)
                 ON DUPLICATE KEY UPDATE total_sale=VALUES(total_sale), total_profit=VALUES(total_profit), profit_rate=VALUES(profit_rate), category_large=COALESCE(VALUES(category_large),category_large)
-            """, (data_date, category, total_sale, total_profit, profit_rate, STORE_ID, last_large[:64] if last_large else None))
+            """, (data_date, category, sale_sum, profit_sum, profit_rate, STORE_ID, large_val))
             inserted += 1
         except Exception as e:
             if "Unknown column" in str(e) and "category_large" in str(e):
@@ -900,7 +1194,7 @@ def import_profit(excel_path, conn):
                     INSERT INTO t_htma_profit (data_date, category, total_sale, total_profit, profit_rate, store_id)
                     VALUES (%s,%s,%s,%s,%s,%s)
                     ON DUPLICATE KEY UPDATE total_sale=VALUES(total_sale), total_profit=VALUES(total_profit), profit_rate=VALUES(profit_rate)
-                """, (data_date, category, total_sale, total_profit, profit_rate, STORE_ID))
+                """, (data_date, category, sale_sum, profit_sum, profit_rate, STORE_ID))
                 inserted += 1
             else:
                 skipped += 1
@@ -953,9 +1247,41 @@ def sync_products_table(conn, store_id: str = "沈阳超级仓", days: int = 90)
     """
     从 t_htma_sale + t_htma_stock 同步商品主表 t_htma_products。
     唯一性：store_id+sku_code；有条码必录（供比价）；粒度与比价分析配合。
+    若表不存在则先创建，避免新环境报错。
     """
     cur = conn.cursor()
-    cur.execute("""
+    create_sql = """
+        CREATE TABLE IF NOT EXISTS t_htma_products (
+          id              BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+          store_id        VARCHAR(32)     NOT NULL DEFAULT '沈阳超级仓',
+          sku_code        VARCHAR(64)     NOT NULL COMMENT 'SKU编码',
+          product_name    VARCHAR(128)    DEFAULT NULL,
+          raw_name        VARCHAR(128)    DEFAULT NULL,
+          spec            VARCHAR(64)     DEFAULT NULL,
+          barcode         VARCHAR(64)     DEFAULT NULL,
+          brand_name      VARCHAR(64)     DEFAULT NULL,
+          category        VARCHAR(64)     DEFAULT NULL,
+          category_large  VARCHAR(64)     DEFAULT NULL,
+          category_mid    VARCHAR(64)     DEFAULT NULL,
+          category_small  VARCHAR(64)     DEFAULT NULL,
+          category_large_code VARCHAR(32) DEFAULT NULL,
+          category_mid_code   VARCHAR(32) DEFAULT NULL,
+          category_small_code VARCHAR(32) DEFAULT NULL,
+          unit_price      DECIMAL(12,2)   DEFAULT NULL,
+          sale_qty        DECIMAL(12,2)   DEFAULT 0,
+          sale_amount     DECIMAL(14,2)   DEFAULT 0,
+          gross_profit    DECIMAL(14,2)   DEFAULT 0,
+          sync_at         DATETIME        DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY uk_store_sku (store_id, sku_code),
+          KEY idx_barcode (barcode),
+          KEY idx_cat_large (category_large),
+          KEY idx_cat_mid (category_mid),
+          KEY idx_cat_small (category_small)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品主表'
+    """
+    cur.execute(create_sql)
+    conn.commit()
+    insert_sql = """
         INSERT INTO t_htma_products
         (store_id, sku_code, product_name, raw_name, spec, barcode, brand_name,
          category, category_large, category_mid, category_small,
@@ -988,7 +1314,17 @@ def sync_products_table(conn, store_id: str = "沈阳超级仓", days: int = 90)
             unit_price=VALUES(unit_price), sale_qty=VALUES(sale_qty),
             sale_amount=VALUES(sale_amount), gross_profit=VALUES(gross_profit),
             sync_at=NOW()
-    """, (store_id, store_id, store_id, days))
+    """
+    try:
+        cur.execute(insert_sql, (store_id, store_id, store_id, days))
+    except Exception as e:
+        err_code = e.args[0] if getattr(e, "args", None) and len(e.args) > 0 else None
+        if err_code == 1146:  # Table doesn't exist
+            cur.execute(create_sql)
+            conn.commit()
+            cur.execute(insert_sql, (store_id, store_id, store_id, days))
+        else:
+            raise
     conn.commit()
     cnt = cur.rowcount
     cur.close()
@@ -999,8 +1335,33 @@ def sync_category_table(conn, store_id: str = "沈阳超级仓", days: int = 30)
     """
     从 t_htma_profit 汇总同步品类毛利表 t_htma_category_profit。
     品类维度：总销售额、总毛利、毛利率、SKU数、销售笔数、周期。
+    若表不存在则先创建，确保导入后自动化更新品类表。
     """
     cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS t_htma_category_profit (
+          id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+          store_id            VARCHAR(32)     NOT NULL DEFAULT '沈阳超级仓',
+          category            VARCHAR(64)     NOT NULL COMMENT '品类/小类',
+          category_large_code VARCHAR(32)     DEFAULT NULL,
+          category_large      VARCHAR(64)     DEFAULT NULL,
+          category_mid_code   VARCHAR(32)     DEFAULT NULL,
+          category_mid        VARCHAR(64)     DEFAULT NULL,
+          category_small_code VARCHAR(32)     DEFAULT NULL,
+          category_small      VARCHAR(64)     DEFAULT NULL,
+          total_sale          DECIMAL(14,2)   NOT NULL DEFAULT 0,
+          total_profit        DECIMAL(14,2)   NOT NULL DEFAULT 0,
+          profit_rate         DECIMAL(6,4)    DEFAULT NULL,
+          sku_count           INT             DEFAULT 0,
+          sale_count          INT             DEFAULT 0,
+          period_start        DATE            DEFAULT NULL,
+          period_end          DATE            DEFAULT NULL,
+          sync_at             DATETIME        DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY uk_store_cat (store_id, category),
+          KEY idx_cat_large (category_large),
+          KEY idx_cat_mid (category_mid)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='品类毛利汇总'
+    """)
     cur.execute("""
         INSERT INTO t_htma_category_profit
         (store_id, category, category_large, category_mid, category_small,

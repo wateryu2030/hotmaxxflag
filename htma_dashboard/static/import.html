@@ -77,7 +77,7 @@
         </div>
       </div>
       <p class="tip">文件名需包含对应关键词。至少上传一个文件。导入前会清空对应表，再写入新数据。</p>
-      <p class="tip" style="color:#fbbf24;">通过外网（如 htma.greatagain.com.cn）访问时，若出现「请求失败: Failed to fetch」，多为上传超时。请<strong>一次只选一个文件</strong>分别导入（先销售日报 → 再销售汇总 → 再实时库存），或改用跑看板的那台电脑打开本页导入。</p>
+      <p class="tip" style="color:#fbbf24;">① 外网若「Failed to fetch」可一次只传一个文件。② <strong>销售日报与销售汇总请同一次一起上传</strong>（否则第二次会清空第一次）；同传时相同日期+货号会覆盖不累加，避免销售额翻倍。③ 库存金额列已支持千分位。</p>
       <button type="submit" class="btn" id="submitBtn">开始导入</button>
       <button type="button" class="btn btn-secondary" id="btnRepairSwap" style="margin-left:8px;">修复：对调金额/成本</button>
       <button type="button" class="btn btn-secondary" id="btnRepairUnit" style="margin-left:8px;">修复：按单价×数量重算</button>
@@ -92,7 +92,9 @@
       const btn = document.getElementById('submitBtn');
       const resultEl = document.getElementById('result');
       btn.disabled = true;
-      resultEl.style.display = 'none';
+      resultEl.style.display = 'block';
+      resultEl.className = 'result';
+      resultEl.textContent = '导入中，数据量较大时约需 1～2 分钟，请勿关闭页面…';
 
       const fd = new FormData();
       let hasFile = false;
@@ -116,14 +118,20 @@
 
       try {
         const apiUrl = apiBase() + '/api/import';
-        const r = await fetch(apiUrl, { method: 'POST', body: fd });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 300000);
+        const r = await fetch(apiUrl, { method: 'POST', body: fd, signal: controller.signal });
+        clearTimeout(timeoutId);
         const text = await r.text();
         let d;
         try {
           d = JSON.parse(text);
         } catch (_) {
           loadDataStatus();
-          const msg = r.status === 413 ? '文件过大，请上传小于 200MB 的 Excel' : ('服务器返回异常（' + r.status + '），可能超时或网络中断');
+          let msg = '';
+          if (r.status === 413) msg = '文件过大，请上传小于 200MB 的 Excel';
+          else if (r.status === 524) msg = 'Cloudflare 超时(524)：外网到服务器的响应超过约 100 秒被断开。请一次只上传一个文件（先销售日报→再销售汇总→再库存），或在本机（跑看板的那台电脑）打开本页导入。';
+          else msg = '服务器返回异常（' + r.status + '），可能超时或网络中断';
           resultEl.textContent = msg + '\n\n已刷新下方「当前数据」。若条数已更新，说明部分数据可能已写入当前访问的服务器，请返回看板查看。';
           resultEl.className = 'result error';
           resultEl.style.display = 'block';
@@ -140,9 +148,11 @@
           msg += `品类表(从销售透视): ${d.category_refreshed ?? '-'} 条\n`;
           msg += `毛利汇总: ${d.profit || 0} 条\n`;
           msg += `毛利表刷新: ${d.profit_refreshed || 0} 条\n`;
-          msg += `--- 当前数据 ---\n`;
-          msg += `销售表: ${d.sale_total || 0} 条\n`;
-          msg += `库存表: ${d.stock_total || 0} 条\n`;
+          msg += `商品表同步: ${d.products_synced ?? '-'} 条\n`;
+          msg += `品类毛利表同步: ${d.category_synced ?? '-'} 条\n`;
+          msg += `--- 当前数据（可核对：销售日报约112579条/金额10114734.17，库存48356条/金额26537604.6）---\n`;
+          msg += `销售表: ${d.sale_total || 0} 条，销售金额合计: ${(d.sale_total_amount != null && d.sale_total_amount !== '') ? Number(d.sale_total_amount).toLocaleString('zh-CN') : '-'}\n`;
+          msg += `库存表: ${d.stock_total || 0} 条，库存金额合计: ${(d.stock_total_amount != null && d.stock_total_amount !== '') ? Number(d.stock_total_amount).toLocaleString('zh-CN') : '-'}\n`;
           msg += `毛利表: ${d.profit_total || 0} 条\n`;
           msg += `日期范围: ${d.date_range || '-'}`;
           if (d.errors && d.errors.length) msg += '\n警告: ' + d.errors.join('; ');
@@ -156,7 +166,9 @@
       } catch (err) {
         loadDataStatus();
         let msg = '请求失败: ' + err.message;
-        if (String(err.message).toLowerCase().includes('fetch')) {
+        if (err.name === 'AbortError') {
+          msg = '请求超时（已等待约 5 分钟）。若经外网访问，可能被代理断开。请尝试一次只上传一个文件，或在本机打开本页导入。';
+        } else if (String(err.message).toLowerCase().includes('fetch')) {
           msg += '\n\n多为网络/隧道超时。请尝试：\n1) 一次只上传一个文件（先销售日报，成功后再传销售汇总，再传库存）；\n2) 或在本机（跑看板的那台电脑）打开本页再导入。';
         } else {
           msg += '\n\n已刷新下方「当前数据」；若条数已更新，说明部分数据可能已写入，请返回看板查看。';

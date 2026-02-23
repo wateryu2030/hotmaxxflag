@@ -5,6 +5,7 @@
 直接读取 MySQL htma_dashboard，提供 API 与看板页面。
 """
 import os
+from datetime import date, timedelta, datetime
 
 # 加载 .env（货盘比价等需 JUHE_PRICE_KEY 等）
 try:
@@ -158,8 +159,10 @@ def api_import():
                     return True
             return False
 
-        # 销售类：先清空再导入
-        if _has_valid_file(["sale_daily", "sale_summary"]):
+        # 销售类：仅当本请求中同时包含「销售日报」和「销售汇总」时才清空，避免分步上传时后一次请求把前一次数据清掉
+        has_sale_daily = _has_valid_file(["sale_daily"])
+        has_sale_summary = _has_valid_file(["sale_summary"])
+        if has_sale_daily and has_sale_summary:
             cur.execute("TRUNCATE TABLE t_htma_sale")
             cur.execute("TRUNCATE TABLE t_htma_profit")
             conn.commit()
@@ -204,12 +207,16 @@ def api_import():
                             if diag:
                                 result.setdefault("diagnostics", []).append(diag)
                         elif key == "sale_summary":
-                            cnt, diag = import_sale_summary(tmp.name, conn)
+                            # 与日报同传时：同(日期,货号)覆盖不累加，避免销售额翻倍（日报与汇总常为同一批数据两种导出）
+                            cnt, diag = import_sale_summary(tmp.name, conn, overwrite_on_duplicate=_has_valid_file(["sale_daily"]))
                             result["sale_summary"] = cnt
                             if diag:
                                 result.setdefault("diagnostics", []).append(diag)
                         elif key == "stock":
-                            result["stock"] = import_stock(tmp.name, conn)
+                            cnt, diag = import_stock(tmp.name, conn)
+                            result["stock"] = cnt
+                            if diag:
+                                result.setdefault("diagnostics", []).append(diag)
                         elif key == "category":
                             result["category"] = import_category(tmp.name, conn)
                         elif key == "profit":
@@ -235,21 +242,23 @@ def api_import():
                 if _orig_cost is not None:
                     os.environ["HTMA_COST_AS_TOTAL"] = _orig_cost
 
-        # 有销售数据且未上传毛利 Excel 时，从销售表汇总刷新毛利
+        # 导入后自动化更新：毛利表 → 品类主数据 → 商品表 → 品类毛利表，确保后续看板/导出/比价正常
+        # 1) 有销售数据且未上传毛利 Excel 时，从销售表汇总刷新毛利表
         if (result["sale_daily"] > 0 or result["sale_summary"] > 0) and not _has_valid_file(["profit"]):
             result["profit_refreshed"] = refresh_profit(conn)
-        # 从销售表透视生成品类主数据（大类/中类/小类）
+        # 2) 从销售表透视生成品类主数据 t_htma_category（大类/中类/小类）
         if result["sale_daily"] > 0 or result["sale_summary"] > 0:
             try:
                 result["category_refreshed"] = refresh_category_from_sale(conn)
             except Exception as e:
                 result.setdefault("errors", []).append(f"品类表刷新: {str(e)}")
-        # 同步商品表、品类表（供导出与比价使用）
+        # 3) 同步商品表 t_htma_products（供导出与比价）
         if result["sale_daily"] > 0 or result["sale_summary"] > 0 or result.get("stock"):
             try:
                 result["products_synced"] = sync_products_table(conn)
             except Exception as e:
                 result.setdefault("errors", []).append(f"商品表同步: {str(e)}")
+        # 4) 从毛利表同步品类毛利表 t_htma_category_profit（供导出品类）
         if result.get("profit_refreshed") is not None or result.get("profit"):
             try:
                 result["category_synced"] = sync_category_table(conn)
@@ -258,8 +267,23 @@ def api_import():
 
         cur.execute("SELECT COUNT(*) FROM t_htma_sale")
         result["sale_total"] = cur.fetchone()["COUNT(*)"]
+        try:
+            cur.execute("SELECT COALESCE(SUM(sale_amount), 0) AS v FROM t_htma_sale")
+            row = cur.fetchone()
+            result["sale_total_amount"] = round(float((row.get("v") if isinstance(row, dict) else row[0]) or 0), 2)
+        except Exception:
+            result["sale_total_amount"] = 0.0
         cur.execute("SELECT COUNT(*) FROM t_htma_stock")
         result["stock_total"] = cur.fetchone()["COUNT(*)"]
+        try:
+            cur.execute("""
+                SELECT COALESCE(SUM(stock_amount), 0) AS v FROM t_htma_stock
+                WHERE store_id = %s AND data_date = (SELECT MAX(data_date) FROM t_htma_stock WHERE store_id = %s)
+            """, (STORE_ID, STORE_ID))
+            row = cur.fetchone()
+            result["stock_total_amount"] = round(float((row.get("v") if isinstance(row, dict) else row[0]) or 0), 2)
+        except Exception:
+            result["stock_total_amount"] = 0.0
         cur.execute("SELECT COUNT(*) FROM t_htma_profit")
         result["profit_total"] = cur.fetchone()["COUNT(*)"]
         cur.execute("SELECT MIN(data_date), MAX(data_date) FROM t_htma_sale")
@@ -765,6 +789,45 @@ def _date_condition(period, start_date=None, end_date=None):
     return "data_date BETWEEN DATE_SUB(CURDATE(), INTERVAL %s DAY) AND CURDATE()", (days,)
 
 
+def _period_over_period_ranges(period, start_date_str=None, end_date_str=None):
+    """根据 KPI 周期返回本期与上期的日期范围及标签，用于环比分析。
+    返回 (curr_start, curr_end, prev_start, prev_end, curr_label, prev_label)，均为 date 或 None。"""
+    today = date.today()
+    if start_date_str and end_date_str:
+        try:
+            curr_end = datetime.strptime(end_date_str, "%Y-%m-%d").date() if isinstance(end_date_str, str) else end_date_str
+            curr_start = datetime.strptime(start_date_str, "%Y-%m-%d").date() if isinstance(start_date_str, str) else start_date_str
+        except Exception:
+            curr_start = curr_end = today
+        length = (curr_end - curr_start).days + 1
+        prev_end = curr_start - timedelta(days=1)
+        prev_start = prev_end - timedelta(days=length - 1)
+        return curr_start, curr_end, prev_start, prev_end, f"{curr_start}~{curr_end}", f"{prev_start}~{prev_end}"
+    if period == "day":
+        return today, today, today - timedelta(days=1), today - timedelta(days=1), str(today), str(today - timedelta(days=1))
+    if period == "week":
+        # 周一为第一天：weekday() 0=Mon, 6=Sun
+        weekday = today.weekday()
+        curr_start = today - timedelta(days=weekday)
+        curr_end = curr_start + timedelta(days=6)
+        prev_end = curr_start - timedelta(days=1)
+        prev_start = prev_end - timedelta(days=6)
+        return curr_start, curr_end, prev_start, prev_end, f"{curr_start}~{curr_end}", f"{prev_start}~{prev_end}"
+    if period == "month":
+        curr_start = today.replace(day=1)
+        curr_end = today
+        prev_end = curr_start - timedelta(days=1)
+        prev_start = prev_end.replace(day=1)
+        return curr_start, curr_end, prev_start, prev_end, f"{curr_start}~{curr_end}", f"{prev_start}~{prev_end}"
+    # recent30 或默认
+    days = int(os.environ.get("HTMA_DAYS", DEFAULT_DAYS))
+    curr_end = today
+    curr_start = today - timedelta(days=days - 1)
+    prev_end = curr_start - timedelta(days=1)
+    prev_start = prev_end - timedelta(days=days - 1)
+    return curr_start, curr_end, prev_start, prev_end, f"{curr_start}~{curr_end}", f"{prev_start}~{prev_end}"
+
+
 def _query_filters(include_sku=False):
     """从 request 解析筛选条件。返回 (date_cond, params, category_cond, sku_cond)。
     支持 category_large/category_mid/category_small/category 级联筛选。
@@ -931,8 +994,9 @@ def _format_trend_row(r, granularity):
 
 @app.route("/api/trend_analysis")
 def api_trend_analysis():
-    """走势分析：环比、同比、趋势描述。支持 start_date、end_date、category_large/mid/small"""
+    """走势分析：环比（与 KPI 周期联动）、同比、趋势描述。支持 period、start_date、end_date、category"""
     granularity = request.args.get("granularity", "day")
+    period = request.args.get("period", "recent30")
     date_cond, date_params, _, _, _ = _query_filters()
     profit_cat_cond, profit_cat_params = _profit_category_cond_and_params(date_cond, date_params)
     start_date = request.args.get("start_date", "").strip()
@@ -941,6 +1005,39 @@ def api_trend_analysis():
     conn = get_conn()
     try:
         with conn.cursor() as cur:
+            # 环比：与 KPI 周期联动，本期 vs 上期（等长）
+            curr_start, curr_end, prev_start, prev_end, curr_label, prev_label = _period_over_period_ranges(
+                period, start_date or None, end_date or None
+            )
+            cur.execute(
+                """SELECT COALESCE(SUM(total_sale), 0) AS sale_amount, COALESCE(SUM(total_profit), 0) AS profit_amount
+                   FROM t_htma_profit WHERE store_id = %s AND data_date BETWEEN %s AND %s """ + profit_cat_cond,
+                (STORE_ID, curr_start, curr_end) + profit_cat_params,
+            )
+            curr_row = cur.fetchone()
+            cur.execute(
+                """SELECT COALESCE(SUM(total_sale), 0) AS sale_amount, COALESCE(SUM(total_profit), 0) AS profit_amount
+                   FROM t_htma_profit WHERE store_id = %s AND data_date BETWEEN %s AND %s """ + profit_cat_cond,
+                (STORE_ID, prev_start, prev_end) + profit_cat_params,
+            )
+            prev_row = cur.fetchone()
+            _curr_sale = float(curr_row["sale_amount"] or 0)
+            _curr_profit = float(curr_row["profit_amount"] or 0)
+            _prev_sale = float(prev_row["sale_amount"] or 0)
+            _prev_profit = float(prev_row["profit_amount"] or 0)
+            _sale_chg = ((_curr_sale - _prev_sale) / _prev_sale * 100) if _prev_sale > 0 else 0
+            _profit_chg = ((_curr_profit - _prev_profit) / _prev_profit * 100) if _prev_profit > 0 else 0
+            pop = {
+                "current_period": curr_label,
+                "prev_period": prev_label,
+                "current_sale": round(_curr_sale, 2),
+                "prev_sale": round(_prev_sale, 2),
+                "current_profit": round(_curr_profit, 2),
+                "prev_profit": round(_prev_profit, 2),
+                "sale_change_pct": round(_sale_chg, 2),
+                "profit_change_pct": round(_profit_chg, 2),
+            }
+
             if granularity == "day":
                 cur.execute(f"""
                     SELECT data_date, SUM(total_sale) AS sale_amount, SUM(total_profit) AS profit_amount
@@ -971,7 +1068,7 @@ def api_trend_analysis():
 
             rows = cur.fetchall()
             if not rows:
-                return jsonify({"message": "数据不足", "period_over_period": None, "year_over_year": None, "trend": "neutral"})
+                return jsonify({"message": "数据不足", "period_over_period": pop, "year_over_year": None, "trend": "neutral", "trend_summary": None})
 
             # 转为列表便于索引
             data_list = []
@@ -994,26 +1091,6 @@ def api_trend_analysis():
                         "sale_amount": float(r["sale_amount"]),
                         "profit_amount": float(r["profit_amount"]),
                     })
-
-            # 环比：最近两期
-            pop = None
-            if len(data_list) >= 2:
-                curr = data_list[-1]
-                prev = data_list[-2]
-                curr_sale, prev_sale = curr["sale_amount"], prev["sale_amount"]
-                curr_profit, prev_profit = curr["profit_amount"], prev["profit_amount"]
-                sale_chg = ((curr_sale - prev_sale) / prev_sale * 100) if prev_sale > 0 else 0
-                profit_chg = ((curr_profit - prev_profit) / prev_profit * 100) if prev_profit > 0 else 0
-                pop = {
-                    "current_period": curr["key"],
-                    "prev_period": prev["key"],
-                    "sale_change_pct": round(sale_chg, 2),
-                    "profit_change_pct": round(profit_chg, 2),
-                    "current_sale": round(curr_sale, 2),
-                    "prev_sale": round(prev_sale, 2),
-                    "current_profit": round(curr_profit, 2),
-                    "prev_profit": round(prev_profit, 2),
-                }
 
             # 同比：本期 vs 去年同期（月粒度需13期；周粒度需53期；日粒度需366期）
             yoy = None
@@ -1044,6 +1121,23 @@ def api_trend_analysis():
                 slope = (numer / denom) if denom > 0 else 0
                 trend = "up" if slope > 0 else "down" if slope < 0 else "neutral"
 
+            # 走势数据摘要：供「走势与同比」卡片展示近期销售额/毛利，避免只显示“下降”无数值
+            trend_summary = None
+            if data_list:
+                take = min(5, len(data_list))
+                recent_list = data_list[-take:]
+                recent_sale = sum(x["sale_amount"] for x in recent_list)
+                recent_profit = sum(x["profit_amount"] for x in recent_list)
+                last = data_list[-1]
+                trend_summary = {
+                    "recent_days": take,
+                    "recent_sale": round(recent_sale, 2),
+                    "recent_profit": round(recent_profit, 2),
+                    "latest_date": last["key"],
+                    "latest_sale": round(last["sale_amount"], 2),
+                    "latest_profit": round(last["profit_amount"], 2),
+                }
+
         # 同比所需最少期数说明
         yoy_required = {"month": 13, "week": 53, "day": 366}.get(granularity, 13)
         yoy_reason = None
@@ -1055,18 +1149,22 @@ def api_trend_analysis():
             "year_over_year": yoy,
             "trend": trend,
             "data_points": len(data_list),
+            "trend_summary": trend_summary,
             "yoy_reason": yoy_reason,
         })
     finally:
         conn.close()
 
 
+DOW_NAMES = {1: "周日", 2: "周一", 3: "周二", 4: "周三", 5: "周四", 6: "周五", 7: "周六"}
+
+
 @app.route("/api/dow_sales")
 def api_dow_sales():
-    """周几对比：按星期几聚合销售额、毛利，便于对比周一 vs 周五等"""
-    date_cond, date_params, _, _, _ = _query_filters()
+    """周几对比：在所选 KPI 周期内，按「星期几」汇总销售额与毛利，固定返回周日~周六 7 天（无数据填 0）"""
+    date_cond, date_params, _, sale_cat_cond, sale_cat_params = _query_filters()
     profit_cat_cond, profit_cat_params = _profit_category_cond_and_params(date_cond, date_params)
-    params = (STORE_ID,) + date_params + profit_cat_params
+    params_profit = (STORE_ID,) + date_params + profit_cat_params
     conn = get_conn()
     try:
         with conn.cursor() as cur:
@@ -1081,15 +1179,37 @@ def api_dow_sales():
                 WHERE store_id = %s AND {date_cond}{profit_cat_cond}
                 GROUP BY DAYOFWEEK(data_date)
                 ORDER BY dow
-            """, params)
+            """, params_profit)
             rows = cur.fetchall()
-        return jsonify([{
-            "dow": r["dow"],
-            "dow_name": r["dow_name"],
-            "sale_amount": float(r["sale_amount"] or 0),
-            "profit_amount": float(r["profit_amount"] or 0),
-            "day_count": int(r["day_count"] or 0),
-        } for r in rows])
+        total_sale_from_profit = sum(float(r["sale_amount"] or 0) for r in rows)
+        if total_sale_from_profit == 0 and (not sale_cat_cond or not sale_cat_cond.strip()):
+            cur2 = conn.cursor()
+            cur2.execute(f"""
+                SELECT DAYOFWEEK(data_date) AS dow,
+                       MAX(CASE DAYOFWEEK(data_date)
+                         WHEN 1 THEN '周日' WHEN 2 THEN '周一' WHEN 3 THEN '周二' WHEN 4 THEN '周三'
+                         WHEN 5 THEN '周四' WHEN 6 THEN '周五' WHEN 7 THEN '周六' ELSE '周日' END) AS dow_name,
+                       SUM(sale_amount) AS sale_amount, SUM(gross_profit) AS profit_amount,
+                       COUNT(DISTINCT data_date) AS day_count
+                FROM t_htma_sale
+                WHERE store_id = %s AND {date_cond}
+                GROUP BY DAYOFWEEK(data_date)
+                ORDER BY dow
+            """, (STORE_ID,) + date_params)
+            rows = cur2.fetchall()
+            cur2.close()
+        by_dow = {int(r["dow"]): r for r in rows}
+        out = []
+        for dow in range(1, 8):
+            r = by_dow.get(dow, {})
+            out.append({
+                "dow": dow,
+                "dow_name": r.get("dow_name") or DOW_NAMES.get(dow, "周?"),
+                "sale_amount": round(float(r.get("sale_amount") or 0), 2),
+                "profit_amount": round(float(r.get("profit_amount") or 0), 2),
+                "day_count": int(r.get("day_count") or 0),
+            })
+        return jsonify(out)
     finally:
         conn.close()
 
