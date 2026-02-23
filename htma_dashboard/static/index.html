@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>好特卖沈阳超级仓运营看板</title>
-  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js" onerror="var s=document.createElement('script');s.src='https://unpkg.com/echarts@5.4.3/dist/echarts.min.js';s.onload=function(){window._echartsFallbackLoaded=true;};document.head.appendChild(s);"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; padding: 4px 8px; font-size: 0.85rem; }
@@ -368,10 +368,11 @@
   </div>
 
   <script>
-    // 同源优先；若在 Cursor 预览/iframe 等环境，回退到本地 API
+    // 始终用「当前页面的域名」请求接口，保证本机和外网看到同一套数据（同一台 Flask + MySQL）
+    // 仅当页面不是通过 http(s) 打开时（如 file://、Cursor 预览）才回退到本地
     const API = (function(){
       const o = window.location.origin;
-      if (o && (o.includes('127.0.0.1') || o.includes('localhost'))) return o;
+      if (o && o !== 'null' && o !== 'undefined' && (o.startsWith('http://') || o.startsWith('https://'))) return o;
       return 'http://127.0.0.1:5002';
     })();
     let currentPeriod = 'recent30';
@@ -437,6 +438,14 @@
     let productDetailData = [];
     let productDetailSort = { key: 'sale_amount', asc: false };
 
+    function ensureEcharts(cb) {
+      if (typeof echarts !== 'undefined') { cb(); return; }
+      if (window._echartsFallbackLoaded) { setTimeout(function(){ if (typeof echarts !== 'undefined') cb(); }, 100); return; }
+      var s = document.createElement('script');
+      s.src = 'https://unpkg.com/echarts@5.4.3/dist/echarts.min.js';
+      s.onload = cb;
+      document.head.appendChild(s);
+    }
     async function loadPie() {
       const el = document.getElementById('pieChart');
       const showData = document.getElementById('pieShowData');
@@ -444,7 +453,9 @@
         const r = await fetch(API + '/api/category_pie?' + queryParams());
         const data = await r.json();
         pieChartData = data.map(x => ({ name: String(x.category || ''), value: Number(x.sale_amount) || 0 }));
-        pieChartInstance = echarts.init(el);
+        ensureEcharts(function() {
+          if (typeof echarts === 'undefined') { el.innerHTML = '<div class="loading">图表库加载失败，请刷新页面或检查网络</div>'; return; }
+          pieChartInstance = echarts.init(el);
         const showLabels = showData && showData.checked;
         pieChartInstance.setOption(_pieOption(showLabels));
         if (showData) {
@@ -452,6 +463,7 @@
             if (pieChartInstance) pieChartInstance.setOption(_pieOption(showData.checked));
           };
         }
+        });
       } catch (e) { el.innerHTML = '<div class="loading">加载失败: ' + e.message + '</div>'; }
     }
 
@@ -495,7 +507,9 @@
           throw new Error(errMsg);
         }
         const data = await r.json();
-        const chart = echarts.init(el);
+        ensureEcharts(function() {
+          if (typeof echarts === 'undefined') { el.innerHTML = '<div class="loading">图表库加载失败，请刷新页面或检查网络</div>'; return; }
+          const chart = echarts.init(el);
         const xData = data.map(x => x.x_date);
         chart.setOption({
           tooltip: {
@@ -515,6 +529,7 @@
             { name: '销售额', type: 'bar', data: data.map(x => x.sale_amount), itemStyle: { color: '#38bdf8' } },
             { name: '毛利', type: 'line', data: data.map(x => x.profit_amount), itemStyle: { color: '#34d399' }, lineStyle: { color: '#34d399' } }
           ]
+        });
         });
       } catch (e) { el.innerHTML = '<div class="loading">加载失败: ' + e.message + '</div>'; }
     }
@@ -982,7 +997,9 @@
       try {
         const r = await fetch(API + '/api/dow_sales?' + queryParams());
         const data = await r.json();
-        const chart = echarts.init(el);
+        ensureEcharts(function() {
+          if (typeof echarts === 'undefined') { el.innerHTML = '<div class="loading">图表库加载失败，请刷新页面或检查网络</div>'; return; }
+          const chart = echarts.init(el);
         chart.setOption({
           tooltip: { trigger: 'axis', formatter: p => {
             const idx = p[0].dataIndex;
@@ -993,6 +1010,7 @@
           xAxis: { type: 'category', data: data.map(x => x.dow_name), axisLabel: { color: '#94a3b8', fontSize: 11 } },
           yAxis: { type: 'value', axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: '#334155' } } },
           series: [{ name: '销售额', type: 'bar', data: data.map(x => x.sale_amount), itemStyle: { color: '#38bdf8' } }]
+        });
         });
       } catch (e) { el.innerHTML = '<div class="loading" style="padding:20px;">加载失败</div>'; }
     }

@@ -11,9 +11,12 @@ STORE_ID = "沈阳超级仓"
 
 
 def _safe_decimal(v, default=0):
+    """数值解析，支持千分位逗号（如 18,000.00）。"""
     if v is None or (isinstance(v, float) and pd.isna(v)):
         return default
     try:
+        if isinstance(v, str):
+            v = v.replace(",", "").strip()
         return float(v)
     except (TypeError, ValueError):
         return default
@@ -272,15 +275,17 @@ SALE_SUMMARY_FULL = [
 SALE_SUMMARY_COLS = {c[1]: c[0] for c in SALE_SUMMARY_FULL}
 
 def _read_excel_safe(path):
-    """读取 Excel，兼容 .xls / .xlsx"""
+    """读取 Excel，兼容 .xls（需 xlrd>=2.0.1）/ .xlsx（openpyxl）"""
     ext = os.path.splitext(path)[1].lower()
     last_err = None
-    for engine in (["openpyxl"] if ext == ".xlsx" else [None, "xlrd"]):
+    # .xls 优先用 xlrd，否则 pandas 会报错提示安装 xlrd
+    engines = (["openpyxl"] if ext == ".xlsx" else ["xlrd", None])
+    for engine in engines:
         try:
             return pd.read_excel(path, header=None, engine=engine)
         except Exception as e:
             last_err = e
-    raise last_err or RuntimeError("无法读取 Excel")
+    raise last_err or RuntimeError("无法读取 Excel（.xls 需安装 xlrd: pip install xlrd>=2.0.1）")
 
 
 def preview_sale_excel(excel_path, is_summary=False):
@@ -513,12 +518,16 @@ def import_sale_summary(excel_path, conn):
 
 
 def _detect_stock_cols(df, start_row, ncol):
-    """检测库存表列：货号、实时库存、库存金额及全部 24 列"""
-    default = {c[1]: c[0] for c in (STOCK_FULL + STOCK_V2_EXTRA) if c[1] in ("sku_code", "category", "stock_qty", "stock_amount")}
-    default["sku"] = default.get("sku_code", 4)
-    default.setdefault("category", 3)
-    default.setdefault("stock_qty", 15)
-    default.setdefault("stock_amount", 17)
+    """检测库存表列：货号、实时库存、库存金额及全部 24 列。格式二(库存查询_默认)货号=2、品类=3、库存数量=15、库存总金额=17"""
+    # 格式一默认：货号4 类别3 实时库存11 库存金额13；格式二默认：货号2 品类3 库存数量15 库存总金额17
+    default = {"sku_code": 4, "category": 3, "stock_qty": 11, "stock_amount": 13}
+    default["sku"] = default["sku_code"]
+    # 列数>=18 时可能是格式二，先按格式二默认，表头检测会覆盖
+    if ncol >= 18:
+        default["stock_qty"] = 15
+        default["stock_amount"] = 17
+        default["sku"] = default["sku_code"] = 2
+        default["category"] = 3
     if start_row >= df.shape[0] or ncol < 5:
         return default
     for h_idx in [start_row - 1, 0, 1]:
@@ -533,17 +542,21 @@ def _detect_stock_cols(df, start_row, ncol):
                 continue
             if any(k in v for k in ("货号", "商品编码", "品号", "SKU")):
                 cols["sku"] = cols["sku_code"] = c
+            elif "品名" in v:
+                cols["product_name"] = c
             elif any(k in v for k in ("类别", "品类")) and "名称" not in v:
                 cols["category"] = c
             elif "类别名称" in v or ("类别" in v and "名称" in v):
                 cols["category_name"] = c
-            elif "库存总金额" in v:
+            elif "库存总金额" in v or "库存售价金额" in v:
                 cols["stock_amount"] = c
+                if "售价" in v or "零售" in v:
+                    cols["stock_amount_retail"] = c
             elif any(k in v for k in ("库存金额", "零售价")):
                 cols["stock_amount_retail"] = c
                 if "stock_amount" not in cols:
                     cols["stock_amount"] = c
-            elif any(k in v for k in ("实时库存", "库存数量")) or ("库存" in v and "金额" not in v):
+            elif any(k in v for k in ("实时库存", "库存数量")) or ("库存" in v and "金额" not in v and "价" not in v):
                 cols["stock_qty"] = c
             elif "仓库编码" in v:
                 cols["warehouse_code"] = c
@@ -563,7 +576,7 @@ def _detect_stock_cols(df, start_row, ncol):
                 cols["branch_manage"] = c
             elif "库存箱数" in v:
                 cols["stock_boxes"] = c
-            elif "售价" in v:
+            elif "售价" in v or "零售价" in v:
                 cols["sale_price"] = c
             elif "商品简称" in v:
                 cols["short_name"] = c
@@ -599,9 +612,9 @@ def _detect_stock_cols(df, start_row, ncol):
                 cols["avg_price"] = c
             elif "账龄" in v:
                 cols["aging"] = c
-            elif "上次变动日期" in v:
+            elif "上次变动日期" in v or "库存最近变动日期" in v or "最近变动" in v:
                 cols["last_change_date"] = c
-            elif "平均入库价" in v:
+            elif "平均入库价" in v or "最后入库价格" in v:
                 cols["avg_inbound_price"] = c
             elif "品号" in v:
                 cols["product_code"] = c
@@ -630,12 +643,17 @@ def _parse_datetime(v):
 
 
 def _import_stock_full(row, data_date, cur, cols, full_map):
-    """完整导入：将 Excel 行按 full_map 映射写入 t_htma_stock 所有字段"""
+    """完整导入：将 Excel 行按 full_map 映射写入 t_htma_stock 所有字段。同一 (date, sku) 应由调用方先聚合。"""
     sku = _row_val(row, cols.get("sku", cols.get("sku_code", 2)))
     if not sku:
         return False
     qty = _row_val(row, cols.get("stock_qty", 15), as_decimal=True)
     amount = _row_val(row, cols.get("stock_amount", 17), as_decimal=True)
+    # 未识别到「库存总金额」或为 0 时，用 平均价×库存数量 作为金额
+    if (amount is None or amount == 0) and qty:
+        avg_price = _row_val(row, cols.get("avg_price", 16), as_decimal=True)
+        if avg_price:
+            amount = avg_price * qty
     extra_cols, extra_vals = [], []
     for excel_col, db_col, as_dec in full_map:
         if db_col in ("sku_code", "stock_qty", "stock_amount"):
@@ -668,17 +686,18 @@ def _import_stock_full(row, data_date, cur, cols, full_map):
         return True
     except Exception as e:
         if "Unknown column" in str(e):
+            # 格式二 品类在列3，格式一 类别在列2；fallback 用 3 更兼容格式二
             cur.execute("""
                 INSERT INTO t_htma_stock (data_date, sku_code, category, stock_qty, stock_amount, store_id)
                 VALUES (%s,%s,%s,%s,%s,%s)
                 ON DUPLICATE KEY UPDATE stock_qty=VALUES(stock_qty), stock_amount=VALUES(stock_amount)
-            """, (data_date, sku, _row_val(row, cols.get("category", 2)), qty, amount, STORE_ID))
+            """, (data_date, sku, _row_val(row, cols.get("category", 3)), qty, amount, STORE_ID))
             return True
         raise
 
 
 def import_stock(excel_path, conn):
-    """实时库存表：支持表头检测，完整导入所有 24 列。"""
+    """实时库存表：支持表头检测，完整导入。同一货号多行（多仓库/库位）会按货号汇总数量与金额后再写入，避免统计偏小。"""
     m = re.search(r"(\d{4})-(\d{2})-(\d{2})", os.path.basename(excel_path))
     data_date = m.group(0) if m else datetime.now().strftime("%Y-%m-%d")
     df = _read_excel_safe(excel_path)
@@ -688,10 +707,34 @@ def import_stock(excel_path, conn):
     start_row = _detect_header_row(df)
     cols = _detect_stock_cols(df, start_row, df.shape[1])
     data_rows = df.iloc[start_row:]
+    sku_idx = cols.get("sku_code", cols.get("sku", 2))
+    qty_idx = cols.get("stock_qty", 15)
+    amt_idx = cols.get("stock_amount", 17)
+    # 按货号聚合：同一货号多行（多仓库/库位）数量、金额相加，避免唯一键 (data_date, sku_code) 只保留最后一行导致统计偏小
+    agg = {}  # sku -> (qty_sum, amount_sum, first_row)
+    for _, row in data_rows.iterrows():
+        sku = _row_val(row, sku_idx)
+        if not sku:
+            continue
+        qty = _row_val(row, qty_idx, as_decimal=True) or 0
+        amount = _row_val(row, amt_idx, as_decimal=True) or 0
+        if amount == 0 and qty:
+            ap = _row_val(row, cols.get("avg_price", 16), as_decimal=True)
+            if ap:
+                amount = ap * qty
+        if sku not in agg:
+            agg[sku] = [0, 0, row.copy()]
+        agg[sku][0] += qty
+        agg[sku][1] += amount
     cur = conn.cursor()
     inserted = 0
-    for _, row in data_rows.iterrows():
-        if _import_stock_full(row, data_date, cur, cols, STOCK_FULL + STOCK_V2_EXTRA):
+    for sku, (qty_sum, amt_sum, first_row) in agg.items():
+        first_row = first_row.copy()
+        if qty_idx < len(first_row):
+            first_row.iloc[qty_idx] = qty_sum
+        if amt_idx < len(first_row):
+            first_row.iloc[amt_idx] = amt_sum
+        if _import_stock_full(first_row, data_date, cur, cols, STOCK_FULL + STOCK_V2_EXTRA):
             inserted += 1
     conn.commit()
     return inserted

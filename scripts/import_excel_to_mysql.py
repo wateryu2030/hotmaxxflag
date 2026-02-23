@@ -29,9 +29,12 @@ MYSQL = {
 
 
 def _safe_decimal(v, default=0):
+    """数值解析，支持千分位逗号（如 18,000.00）。"""
     if v is None or (isinstance(v, float) and pd.isna(v)):
         return default
     try:
+        if isinstance(v, str):
+            v = v.replace(",", "").strip()
         return float(v)
     except (TypeError, ValueError):
         return default

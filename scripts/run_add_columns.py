@@ -92,6 +92,18 @@ ALTERS = [
     ("t_htma_stock", "location_name", "VARCHAR(64) DEFAULT NULL COMMENT '库位名称'"),
     ("t_htma_stock", "contact", "VARCHAR(64) DEFAULT NULL COMMENT '联系方式'"),
     ("t_htma_stock", "biz_mode", "VARCHAR(32) DEFAULT NULL COMMENT '经营方式'"),
+    # t_htma_stock 格式二（库存查询_默认）所需列
+    ("t_htma_stock", "category_large_code", "VARCHAR(32) DEFAULT NULL COMMENT '大类编码'"),
+    ("t_htma_stock", "category_large", "VARCHAR(64) DEFAULT NULL COMMENT '大类名称'"),
+    ("t_htma_stock", "category_mid_code", "VARCHAR(32) DEFAULT NULL COMMENT '中类编码'"),
+    ("t_htma_stock", "category_mid", "VARCHAR(64) DEFAULT NULL COMMENT '中类名称'"),
+    ("t_htma_stock", "category_small_code", "VARCHAR(32) DEFAULT NULL COMMENT '小类编码'"),
+    ("t_htma_stock", "category_small", "VARCHAR(64) DEFAULT NULL COMMENT '小类名称'"),
+    ("t_htma_stock", "product_code", "VARCHAR(64) DEFAULT NULL COMMENT '品号'"),
+    ("t_htma_stock", "avg_price", "DECIMAL(14,4) DEFAULT NULL COMMENT '平均价'"),
+    ("t_htma_stock", "aging", "DECIMAL(10,4) DEFAULT NULL COMMENT '账龄'"),
+    ("t_htma_stock", "last_change_date", "DATETIME DEFAULT NULL COMMENT '上次变动日期'"),
+    ("t_htma_stock", "avg_inbound_price", "DECIMAL(14,4) DEFAULT NULL COMMENT '平均入库价'"),
     # t_htma_profit 分类层级
     ("t_htma_profit", "category_code", "VARCHAR(32) DEFAULT NULL COMMENT '类别编码'"),
     ("t_htma_profit", "category_large_code", "VARCHAR(32) DEFAULT NULL COMMENT '大类编码'"),

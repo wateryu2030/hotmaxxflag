@@ -1,0 +1,15 @@
+# Cloudflare 正式隧道示例配置（固定外网链接）
+# 使用前请：
+# 1. 执行 cloudflared tunnel login
+# 2. 执行 cloudflared tunnel create htma-dashboard
+# 3. 在 Cloudflare DNS 添加 CNAME：htma -> <隧道ID>.cfargotunnel.com
+# 4. 把下面 tunnel、credentials-file、hostname 改成你的实际值
+# 5. 复制到 ~/.cloudflared/config.yml 或本文件改好后用: cloudflared tunnel --config 本文件路径 run htma-dashboard
+
+tunnel: htma-dashboard
+credentials-file: /Users/YOUR_USERNAME/.cloudflared/TUNNEL_ID.json
+
+ingress:
+  - hostname: htma.yourdomain.com
+    service: http://127.0.0.1:5002
+  - service: http_status:404

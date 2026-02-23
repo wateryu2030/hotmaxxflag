@@ -31,10 +31,12 @@ downloads/
 # 环境变量（含密码）
 .env
 .env.local
+.tunnel-token
 
 # 日志
 *.log
 /tmp/
+logs/
 
 # 嵌套仓库（可后续改为 submodule）
 JimuReport/
