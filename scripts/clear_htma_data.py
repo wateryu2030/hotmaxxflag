@@ -11,7 +11,7 @@ import sys
 try:
     import pymysql
 except ImportError:
-    print("未找到 pymysql。请用: bash scripts/run_dedup.sh 同目录下的 run_clear_data.sh 会使用 .venv", flush=True)
+    print("未找到 pymysql。请用: bash scripts/run_clear_data.sh（会使用项目 .venv）", flush=True)
     sys.exit(1)
 
 

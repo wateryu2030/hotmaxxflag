@@ -256,10 +256,65 @@ def _detect_sale_cols(df, start_row, ncol, is_summary=False):
                 cols["category_small"] = c
             elif "经营方式" in v:
                 cols["biz_mode"] = c
+            # 退货/赠送：按表头识别，确保导入时能正确带入
+            elif "退货数量" in v or (v.strip() and "退货" in v and "数量" in v):
+                cols["return_qty"] = c
+            elif "退货金额" in v or (v.strip() and "退货" in v and "金额" in v):
+                cols["return_amount"] = c
+            elif "赠送数量" in v or (v.strip() and "赠送" in v and "数量" in v):
+                cols["gift_qty"] = c
+            elif "赠送金额" in v or (v.strip() and "赠送" in v and "金额" in v):
+                cols["gift_amount"] = c
+            elif "数量小计占比" in v or ("数量" in v and "占比" in v):
+                cols["qty_ratio"] = c
+            elif "金额小计占比" in v or ("金额" in v and "占比" in v and "小计" in v):
+                cols["amount_ratio"] = c
+            elif "进销差价金额" in v or "进销差价" in v:
+                cols["margin_amount"] = c
+            elif "当前库存" in v:
+                cols["current_stock"] = c
+            elif "性别" in v:
+                cols["gender"] = c
+            elif "上下装" in v:
+                cols["top_bottom"] = c
+            elif "风格" in v:
+                cols["style"] = c
+            elif "事业部" in v:
+                cols["division"] = c
+            elif "色系" in v:
+                cols["color_system"] = c
+            elif "色深" in v:
+                cols["color_depth"] = c
+            elif "标准码" in v:
+                cols["standard_code"] = c
+            elif "原条码" in v:
+                cols["original_barcode"] = c
+            elif "厚度" in v:
+                cols["thickness"] = c
+            elif "长度" in v:
+                cols["length"] = c
         if cols.get("sku") is not None and (cols.get("amount") is not None or cols.get("date") is not None):
             for k, v in default.items():
                 if k not in cols:
                     cols[k] = v
+            # 退货/赠送默认列索引（未检测到表头时按标准顺序：日报 30/31/32/33，汇总 32/33/34/35）
+            if cols.get("return_qty") is None and ncol > (33 if is_summary else 31):
+                cols["return_qty"] = 32 if is_summary else 30
+            if cols.get("return_amount") is None and ncol > (33 if is_summary else 31):
+                cols["return_amount"] = 33 if is_summary else 31
+            if cols.get("gift_qty") is None and ncol > (35 if is_summary else 33):
+                cols["gift_qty"] = 34 if is_summary else 32
+            if cols.get("gift_amount") is None and ncol > (35 if is_summary else 33):
+                cols["gift_amount"] = 35 if is_summary else 33
+            if is_summary:
+                if cols.get("qty_ratio") is None and ncol > 37:
+                    cols["qty_ratio"] = 37
+                if cols.get("amount_ratio") is None and ncol > 39:
+                    cols["amount_ratio"] = 39
+                if cols.get("margin_amount") is None and ncol > 42:
+                    cols["margin_amount"] = 42
+                if cols.get("current_stock") is None and ncol > 43:
+                    cols["current_stock"] = 43
             # 大类/中类/小类 编码与名称默认列索引（销售日报：大类10/11, 中类12/13, 小类14/15）
             if cols.get("category_large_code") is None and ncol > 10:
                 cols["category_large_code"] = 10
@@ -283,6 +338,7 @@ def _detect_sale_cols(df, start_row, ncol, is_summary=False):
 # 仓库编码0,仓库名称1,货号2,品名3,国际条码4,简称5,单位6,规格7,类别编码8,类别名称9,大类10,大类名称11,中类12,中类名称13,小类14,小类名称15,
 # 经营方式16,供应商17,供应商名称18,品牌19,品牌名称20,课组21,课组名称22,库位23,库位名称24,联营扣率25,销售日期26,售价27,销售数量28,销售金额29,
 # 退货数量30,退货金额31,赠送数量32,赠送金额33,数量小计34,金额小计35,退货价36,参考进价37,参考金额38
+# -1 表示“按表头识别或填空”，保证该列始终参与 INSERT，无数据时写 NULL/0
 SALE_DAILY_FULL = [
     (0, "warehouse_code", False), (1, "warehouse_name", False), (2, "sku_code", False), (3, "product_name", False),
     (4, "barcode", False), (5, "short_name", False), (6, "unit", False), (7, "spec", False),
@@ -293,6 +349,10 @@ SALE_DAILY_FULL = [
     (25, "joint_rate", True), (26, "data_date", False), (27, "sale_price", True), (28, "sale_qty", True), (29, "sale_amount", True),
     (30, "return_qty", True), (31, "return_amount", True), (32, "gift_qty", True), (33, "gift_amount", True),
     (34, "qty_total", True), (35, "amount_total", True), (36, "return_price", True), (38, "cost_amount", True),
+    (-1, "qty_ratio", True), (-1, "amount_ratio", True), (-1, "margin_amount", True), (-1, "current_stock", True),
+    (-1, "gender", False), (-1, "top_bottom", False), (-1, "style", False), (-1, "division", False),
+    (-1, "color_system", False), (-1, "color_depth", False), (-1, "standard_code", False), (-1, "original_barcode", False),
+    (-1, "thickness", False), (-1, "length", False),
 ]
 SALE_DAILY_COLS = {c[1]: c[0] for c in SALE_DAILY_FULL}
 
@@ -310,6 +370,9 @@ SALE_SUMMARY_FULL = [
     (32, "return_qty", True), (33, "return_amount", True), (34, "gift_qty", True), (35, "gift_amount", True),
     (36, "qty_total", True), (37, "qty_ratio", True), (38, "amount_total", True), (39, "amount_ratio", True),
     (40, "return_price", True), (41, "cost_amount", True), (42, "margin_amount", True), (43, "current_stock", True),
+    (-1, "gender", False), (-1, "top_bottom", False), (-1, "style", False), (-1, "division", False),
+    (-1, "color_system", False), (-1, "color_depth", False), (-1, "standard_code", False), (-1, "original_barcode", False),
+    (-1, "thickness", False), (-1, "length", False),
 ]
 SALE_SUMMARY_COLS = {c[1]: c[0] for c in SALE_SUMMARY_FULL}
 
@@ -350,6 +413,10 @@ def preview_sale_excel(excel_path, is_summary=False):
             issues.append("货号列为空或未识别")
         if not sample or all(not s["date"] for s in sample):
             issues.append("日期列为空或格式不支持")
+        # 退货/赠送列是否识别（经营分析依赖）
+        return_cols_ok = all(k in cols for k in ("return_qty", "return_amount", "gift_qty", "gift_amount"))
+        if not return_cols_ok:
+            issues.append("未识别到退货/赠送列（需表头含「退货数量」「退货金额」「赠送数量」「赠送金额」），经营分析中退货/赠送将为 0")
         return {
             "ok": True,
             "raw_rows": raw_rows, "raw_cols": raw_cols,
@@ -357,6 +424,7 @@ def preview_sale_excel(excel_path, is_summary=False):
             "cols": cols,
             "sample": sample,
             "issues": issues,
+            "return_gift_cols_detected": return_cols_ok,
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -431,7 +499,7 @@ def import_sale_daily(excel_path, conn, overwrite_on_duplicate=False):
                 update_parts = ["sale_qty=sale_qty+VALUES(sale_qty)", "sale_amount=sale_amount+VALUES(sale_amount)", "sale_cost=sale_cost+VALUES(sale_cost)", "gross_profit=gross_profit+VALUES(gross_profit)"]
             for c in col_list:
                 if c not in ("data_date", "sku_code", "store_id", "sale_qty", "sale_amount", "sale_cost", "gross_profit", "source_sheet"):
-                    update_parts.append(f"{c}=COALESCE(VALUES({c}),{c})")
+                    update_parts.append(f"{c}=VALUES({c})")
             update_parts.append("source_sheet=VALUES(source_sheet)")
             update_str = ", ".join(update_parts)
             sql_one = f"INSERT INTO t_htma_sale ({col_str}) VALUES ({one_ph}) ON DUPLICATE KEY UPDATE {update_str}"
@@ -509,17 +577,19 @@ _IMPORT_BATCH_SIZE = 1000
 
 
 def _build_sale_row_vals(row, dt, sku, sale_amount, cost, gross, cols, full_map, source_sheet="sale_daily", qty_override=None):
-    """构建单行销售数据 (all_cols, all_vals)，供单条 INSERT 或批量 INSERT 使用。qty_override 用于去重合并时传入合并后的数量。"""
+    """构建单行销售数据 (all_cols, all_vals)。所有 full_map 列均参与写入，缺列或空值用 0/NULL 保证数据完整。"""
     qty_idx = cols.get("qty", 28 if source_sheet == "sale_daily" else 30)
     qty_val = qty_override if qty_override is not None else _row_val(row, qty_idx, as_decimal=True)
     extra_cols, extra_vals = [], []
+    row_len = len(row)
     for excel_col, db_col, as_dec in full_map:
-        if db_col in ("data_date", "sku_code", "sale_amount", "cost_amount", "sale_qty"):
+        if db_col in ("data_date", "sku_code", "sale_amount", "sale_qty"):
             continue
-        idx = cols.get(db_col, excel_col)
-        if idx >= len(row):
-            continue
-        v = _row_val(row, idx, as_decimal=as_dec) if as_dec else _row_val(row, idx)
+        idx = cols.get(db_col, excel_col if isinstance(excel_col, int) and excel_col >= 0 else -1)
+        if idx is None or idx < 0 or idx >= row_len:
+            v = (0 if as_dec else None)
+        else:
+            v = _row_val(row, idx, as_decimal=as_dec) if as_dec else _row_val(row, idx)
         extra_cols.append(db_col)
         extra_vals.append(v)
     all_cols = ["data_date", "sku_code", "store_id"] + extra_cols + ["sale_qty", "sale_amount", "sale_cost", "gross_profit", "source_sheet"]
@@ -546,7 +616,7 @@ def _batch_insert_sale(cur, all_cols, vals_list, overwrite_on_duplicate=False):
         ]
     extra_cols = [c for c in all_cols if c not in ("data_date", "sku_code", "store_id", "sale_qty", "sale_amount", "sale_cost", "gross_profit", "source_sheet")]
     for c in extra_cols:
-        update_parts.append(f"{c}=COALESCE(VALUES({c}),{c})")
+        update_parts.append(f"{c}=VALUES({c})")
     update_parts.append("source_sheet=VALUES(source_sheet)")
     update_str = ", ".join(update_parts)
     flat = []
@@ -572,7 +642,7 @@ def _import_sale_full(row, dt, sku, sale_amount, cost, gross, cur, cols, full_ma
     ]
     extra_cols = [c for c in all_cols if c not in ("data_date", "sku_code", "store_id", "sale_qty", "sale_amount", "sale_cost", "gross_profit", "source_sheet")]
     for c in extra_cols:
-        update_parts.append(f"{c}=COALESCE(VALUES({c}),{c})")
+        update_parts.append(f"{c}=VALUES({c})")
     update_parts.append("source_sheet=VALUES(source_sheet)")
     update_str = ", ".join(update_parts)
     try:
@@ -634,7 +704,7 @@ def import_sale_summary(excel_path, conn, overwrite_on_duplicate=False):
                 update_parts = ["sale_qty=sale_qty+VALUES(sale_qty)", "sale_amount=sale_amount+VALUES(sale_amount)", "sale_cost=sale_cost+VALUES(sale_cost)", "gross_profit=gross_profit+VALUES(gross_profit)"]
             for c in col_list:
                 if c not in ("data_date", "sku_code", "store_id", "sale_qty", "sale_amount", "sale_cost", "gross_profit", "source_sheet"):
-                    update_parts.append(f"{c}=COALESCE(VALUES({c}),{c})")
+                    update_parts.append(f"{c}=VALUES({c})")
             update_parts.append("source_sheet=VALUES(source_sheet)")
             update_str = ", ".join(update_parts)
             sql_one = f"INSERT INTO t_htma_sale ({col_str}) VALUES ({one_ph}) ON DUPLICATE KEY UPDATE {update_str}"
@@ -853,21 +923,22 @@ def _parse_datetime(v):
 
 
 def _build_stock_row_vals(row, data_date, qty, amount, cols, full_map):
-    """构建单行库存数据 (all_cols, all_vals)，供单条或批量 INSERT 使用。qty/amount 可为聚合后的值。"""
+    """构建单行库存数据。所有 full_map 中且在 STOCK_NEW_COLS 的列均参与写入，缺列或空值用 0/NULL。"""
     sku = _row_val(row, cols.get("sku", cols.get("sku_code", 2)))
     if not sku:
         return None, None
     extra_cols, extra_vals = [], []
+    row_len = len(row)
     for excel_col, db_col, as_dec in full_map:
         if db_col in ("sku_code", "stock_qty", "stock_amount"):
             continue
         if db_col not in STOCK_NEW_COLS:
             continue
-        idx = cols.get(db_col, excel_col)
-        if idx >= len(row):
-            continue
-        if db_col == "last_change_date":
-            v = _parse_datetime(row.iloc[idx]) if idx < len(row) else None
+        idx = cols.get(db_col, excel_col if isinstance(excel_col, int) and excel_col >= 0 else -1)
+        if idx is None or idx < 0 or idx >= row_len:
+            v = (0 if as_dec else None)
+        elif db_col == "last_change_date":
+            v = _parse_datetime(row.iloc[idx]) if idx < row_len else None
         else:
             v = _row_val(row, idx, as_decimal=as_dec) if as_dec else _row_val(row, idx)
         extra_cols.append(db_col)
@@ -887,7 +958,7 @@ def _batch_insert_stock(cur, all_cols, vals_list):
     update_parts = ["stock_qty=VALUES(stock_qty)", "stock_amount=VALUES(stock_amount)"]
     extra_cols = [c for c in all_cols if c not in ("data_date", "sku_code", "store_id", "stock_qty", "stock_amount")]
     for c in extra_cols:
-        update_parts.append(f"{c}=COALESCE(VALUES({c}),{c})")
+        update_parts.append(f"{c}=VALUES({c})")
     update_str = ", ".join(update_parts)
     flat = []
     for v in vals_list:
@@ -915,7 +986,7 @@ def _import_stock_full(row, data_date, cur, cols, full_map):
     update_parts = ["stock_qty=VALUES(stock_qty)", "stock_amount=VALUES(stock_amount)"]
     extra_cols = [c for c in all_cols if c not in ("data_date", "sku_code", "store_id", "stock_qty", "stock_amount")]
     for c in extra_cols:
-        update_parts.append(f"{c}=COALESCE(VALUES({c}),{c})")
+        update_parts.append(f"{c}=VALUES({c})")
     update_str = ", ".join(update_parts)
     try:
         cur.execute(f"""
@@ -1094,6 +1165,84 @@ def import_category(excel_path, conn):
                 VALUES (%s,%s,%s,%s,%s,%s)
                 ON DUPLICATE KEY UPDATE category_large=VALUES(category_large), category_mid=VALUES(category_mid), category_small=VALUES(category_small)
             """, (lc, ln, mc, mn, sc, sn))
+            inserted += 1
+        except Exception:
+            pass
+    conn.commit()
+    return inserted
+
+
+def _detect_tax_burden_cols(df):
+    """检测税率负担表列：编码、名称、毛利率(0-1)、前台显示、微小店状态、税收分类编码、税率"""
+    default = {"code": 0, "name": 1, "gross_margin": 2, "front_display": 3, "minishop_status": 4, "tax_class_code": 5, "tax_rate": 6}
+    if df.shape[0] < 2 or df.shape[1] < 4:
+        return default, 1
+    for h_idx in range(min(8, df.shape[0])):
+        row = df.iloc[h_idx]
+        filled = _header_row_forward_fill(row)
+        cols = {}
+        for c in range(min(len(filled), 15)):
+            v = str(filled[c]).strip()
+            if not v:
+                continue
+            if v == "编码" or "编码" in v and "分类" not in v and "税收" not in v:
+                cols["code"] = c
+            elif v == "名称" or "名称" in v:
+                cols["name"] = c
+            elif "毛利率" in v or "毛利" in v:
+                cols["gross_margin"] = c
+            elif "前台显示" in v:
+                cols["front_display"] = c
+            elif "微小店" in v:
+                cols["minishop_status"] = c
+            elif "税收分类编码" in v:
+                cols["tax_class_code"] = c
+            elif v == "税率" or "税率" in v:
+                cols["tax_rate"] = c
+        if len(cols) >= 2:
+            for k, v in default.items():
+                if k not in cols:
+                    cols[k] = v
+            return cols, h_idx + 1
+    return default, 1
+
+
+def import_tax_burden(excel_path, conn):
+    """导入税率负担表 Excel 到 t_htma_tax_burden。按编码：已存在则覆盖，不存在则新增。"""
+    df = _read_excel_safe(excel_path)
+    df = _trim_leading_junk_rows(df, ("编码", "名称", "毛利率", "税率", "税收分类", "前台显示", "微小店"))
+    df = df.dropna(how="all", axis=0).reset_index(drop=True)
+    if df.shape[0] < 2:
+        return 0
+    cols, start_row = _detect_tax_burden_cols(df)
+    data_rows = df.iloc[start_row:]
+    cur = conn.cursor()
+    inserted = 0
+    for _, row in data_rows.iterrows():
+        code = _row_val(row, cols.get("code", 0))
+        name = _row_val(row, cols.get("name", 1))
+        if not code or not str(code).strip():
+            continue
+        code = str(code).strip()[:32]
+        name = (str(name).strip() or "未命名")[:128]
+        gross_margin = _safe_decimal(_row_val(row, cols.get("gross_margin", 2)), 0)
+        front_display = _row_val(row, cols.get("front_display", 3)) or "是"
+        front_display = str(front_display).strip()[:8] or "是"
+        minishop_status = _safe_str(_row_val(row, cols.get("minishop_status", 4)), 32)
+        tax_class_code = _safe_str(_row_val(row, cols.get("tax_class_code", 5)), 32)
+        tax_rate = _safe_decimal(_row_val(row, cols.get("tax_rate", 6)), 0)
+        try:
+            cur.execute("""
+                INSERT INTO t_htma_tax_burden (code, name, gross_margin, front_display, minishop_status, tax_class_code, tax_rate)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                    name = VALUES(name),
+                    gross_margin = VALUES(gross_margin),
+                    front_display = VALUES(front_display),
+                    minishop_status = VALUES(minishop_status),
+                    tax_class_code = VALUES(tax_class_code),
+                    tax_rate = VALUES(tax_rate)
+            """, (code, name, gross_margin, front_display, minishop_status, tax_class_code, tax_rate))
             inserted += 1
         except Exception:
             pass

@@ -154,6 +154,123 @@ def build_insights(conn, store_id="沈阳超级仓"):
                 "action": "建议定期导入最新数据以保持看板时效性",
             })
 
+    # 8. 退货/赠送（精细化：损耗与赠品占比）
+    cur.execute("""
+        SELECT COALESCE(SUM(sale_amount), 0) AS total_sale, COALESCE(SUM(return_amount), 0) AS return_amt,
+               COALESCE(SUM(gift_amount), 0) AS gift_amt
+        FROM t_htma_sale WHERE store_id = %s AND data_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+    """, (store_id,))
+    rg = cur.fetchone()
+    sale_30 = float(rg["total_sale"] or 0)
+    return_amt = float(rg["return_amt"] or 0)
+    gift_amt = float(rg["gift_amt"] or 0)
+    return_ratio = (return_amt / sale_30 * 100) if sale_30 > 0 else 0
+    gift_ratio = (gift_amt / sale_30 * 100) if sale_30 > 0 else 0
+    if sale_30 > 1000:
+        if return_ratio > 5:
+            insights.append({
+                "type": "warning",
+                "title": "退货占比偏高",
+                "desc": f"近30天退货金额占比 {return_ratio:.1f}%（退货约 {_fmt_money(return_amt)}），影响净销售。",
+                "action": "建议排查高退货品类与供应商质量，优化验收与陈列减少退货",
+            })
+        elif return_ratio > 0:
+            insights.append({
+                "type": "info",
+                "title": "退货与赠送概况",
+                "desc": f"近30天退货金额占比 {return_ratio:.1f}%，赠送金额占比 {gift_ratio:.1f}%。",
+                "action": "可在「经营分析」查看退货/赠送明细，做精细化管控",
+            })
+        if gift_ratio > 2 and gift_ratio < 15:
+            insights.append({
+                "type": "info",
+                "title": "赠送占比",
+                "desc": f"赠送金额占比 {gift_ratio:.1f}%（约 {_fmt_money(gift_amt)}），属促销与引流成本。",
+                "action": "可结合毛利与复购评估赠品 ROI，避免过度赠送",
+            })
+
+    # 9. 品牌/供应商集中度（精细化：供应链与品牌结构）
+    cur.execute("""
+        SELECT COALESCE(NULLIF(TRIM(brand_name), ''), '未填') AS brand_name, SUM(sale_amount) AS sale
+        FROM t_htma_sale WHERE store_id = %s AND data_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+        GROUP BY brand_name HAVING SUM(sale_amount) > 0 ORDER BY SUM(sale_amount) DESC LIMIT 5
+    """, (store_id,))
+    top_brands = cur.fetchall()
+    if top_brands and sale_30 > 0:
+        top3_sale = sum(float(b["sale"] or 0) for b in top_brands[:3])
+        top3_pct = top3_sale / sale_30 * 100
+        names = "、".join([(b["brand_name"] or "未填")[:8] for b in top_brands[:3]])
+        if top3_pct > 50:
+            insights.append({
+                "type": "info",
+                "title": "品牌集中度",
+                "desc": f"前3品牌（{names}）销售占比约 {top3_pct:.0f}%。",
+                "action": "可做品牌级毛利与周转分析，优化采购与陈列资源",
+            })
+
+    # 10. 库存周转（精细化：资金占用与周转效率）
+    cur.execute("""
+        SELECT COALESCE(SUM(stock_amount), 0) AS total_stock
+        FROM t_htma_stock WHERE store_id = %s AND data_date = (SELECT MAX(data_date) FROM t_htma_stock WHERE store_id = %s)
+    """, (store_id, store_id))
+    stock_row = cur.fetchone()
+    cur.execute("""
+        SELECT COALESCE(SUM(sale_amount), 0) AS sale, COALESCE(SUM(sale_cost), 0) AS cost
+        FROM t_htma_sale WHERE store_id = %s AND data_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+    """, (store_id,))
+    sale_row = cur.fetchone()
+    total_stock = float(stock_row["total_stock"] or 0)
+    cost_30 = float(sale_row["cost"] or 0)
+    daily_cost = cost_30 / 30 if cost_30 > 0 else 0
+    turnover_days = (total_stock / daily_cost) if daily_cost > 0 else None
+    if turnover_days is not None and total_stock > 0:
+        if turnover_days > 60:
+            insights.append({
+                "type": "warning",
+                "title": "库存周转偏慢",
+                "desc": f"按当前销速估算周转天数约 {turnover_days:.0f} 天，库存资金占用较高。",
+                "action": "建议压缩滞销品、加快促销与清仓，提升周转",
+            })
+        elif turnover_days < 30 and total_stock > 50000:
+            insights.append({
+                "type": "success",
+                "title": "周转表现良好",
+                "desc": f"估算周转天数约 {turnover_days:.0f} 天，资金使用效率较好。",
+                "action": "保持补货与动销监控，避免断货",
+            })
+
+    # 11. 数据质量（精细化：数据可信度与整改优先级）
+    cur.execute("""
+        SELECT COUNT(*) AS cnt FROM t_htma_sale
+        WHERE store_id = %s AND (sale_cost IS NULL OR sale_cost = 0) AND sale_amount > 0
+    """, (store_id,))
+    missing_cost = cur.fetchone()["cnt"] or 0
+    cur.execute("""
+        SELECT COUNT(*) AS cnt FROM t_htma_sale
+        WHERE store_id = %s AND (sale_price IS NULL OR sale_price = 0) AND sale_qty > 0
+    """, (store_id,))
+    missing_price = cur.fetchone()["cnt"] or 0
+    cur.execute("""
+        SELECT COUNT(*) AS cnt FROM (
+            SELECT sku_code FROM t_htma_sale WHERE store_id = %s GROUP BY sku_code HAVING COUNT(DISTINCT COALESCE(category, '')) > 1
+        ) t
+    """, (store_id,))
+    inconsistent = cur.fetchone()["cnt"] or 0
+    if missing_cost > 100 or missing_price > 100 or inconsistent > 50:
+        parts = []
+        if missing_cost > 100:
+            parts.append(f"成本缺失{missing_cost}条")
+        if missing_price > 100:
+            parts.append(f"售价缺失{missing_price}条")
+        if inconsistent > 50:
+            parts.append(f"同SKU多品类{inconsistent}个")
+        insights.append({
+            "type": "warning",
+            "title": "数据质量待优化",
+            "desc": "存在 " + "、".join(parts) + "，可能影响毛利与经营分析准确性。",
+            "action": "建议在「经营分析-数据质量」查看明细，优先补全成本与售价",
+        })
+
     cur.close()
     return insights
 
@@ -705,6 +822,64 @@ def _ai_fetch_context(conn, store_id="沈阳超级仓", days=30, include_monthly
     """, (store_id, store_id, days) + tuple(exc_sale_params))
     ctx["value_skus"] = cur.fetchall()
 
+    # 退货/赠送（精细化：损耗与赠品）
+    cur.execute(f"""
+        SELECT COALESCE(SUM(sale_amount), 0) AS total_sale, COALESCE(SUM(return_amount), 0) AS return_amt,
+               COALESCE(SUM(gift_amount), 0) AS gift_amt
+        FROM t_htma_sale WHERE store_id = %s AND {date_cond}
+    """, (store_id, days))
+    rg = cur.fetchone()
+    ctx["return_amt"] = float(rg["return_amt"] or 0)
+    ctx["gift_amt"] = float(rg["gift_amt"] or 0)
+    ctx["return_ratio_pct"] = (ctx["return_amt"] / ctx["total_sale"] * 100) if ctx["total_sale"] > 0 else 0
+    ctx["gift_ratio_pct"] = (ctx["gift_amt"] / ctx["total_sale"] * 100) if ctx["total_sale"] > 0 else 0
+
+    # 品牌/供应商 Top（精细化：供应链结构）
+    cur.execute(f"""
+        SELECT COALESCE(NULLIF(TRIM(brand_name), ''), '未填') AS brand_name, SUM(sale_amount) AS sale
+        FROM t_htma_sale WHERE store_id = %s AND {date_cond}
+        GROUP BY brand_name HAVING SUM(sale_amount) > 0 ORDER BY SUM(sale_amount) DESC LIMIT 5
+    """, (store_id, days))
+    ctx["top_brands"] = cur.fetchall()
+    cur.execute(f"""
+        SELECT COALESCE(NULLIF(TRIM(supplier_name), ''), '未填') AS supplier_name, SUM(sale_amount) AS sale
+        FROM t_htma_sale WHERE store_id = %s AND {date_cond}
+        GROUP BY supplier_name HAVING SUM(sale_amount) > 0 ORDER BY SUM(sale_amount) DESC LIMIT 5
+    """, (store_id, days))
+    ctx["top_suppliers"] = cur.fetchall()
+
+    # 库存周转天数（按近 period 销速估算）
+    cur.execute("""
+        SELECT COALESCE(SUM(stock_amount), 0) AS total_stock
+        FROM t_htma_stock WHERE store_id = %s AND data_date = (SELECT MAX(data_date) FROM t_htma_stock WHERE store_id = %s)
+    """, (store_id, store_id))
+    total_stock = float(cur.fetchone()["total_stock"] or 0)
+    cur.execute(f"""
+        SELECT COALESCE(SUM(sale_cost), 0) AS cost FROM t_htma_sale WHERE store_id = %s AND {date_cond}
+    """, (store_id, days))
+    cost_in_period = float(cur.fetchone()["cost"] or 0)
+    daily_cost = cost_in_period / days if cost_in_period > 0 else 0
+    ctx["inventory_turnover_days"] = (total_stock / daily_cost) if daily_cost > 0 else None
+    ctx["total_stock_amount"] = total_stock
+
+    # 数据质量（缺失成本/售价、同 SKU 多品类）
+    cur.execute("""
+        SELECT COUNT(*) AS cnt FROM t_htma_sale
+        WHERE store_id = %s AND (sale_cost IS NULL OR sale_cost = 0) AND sale_amount > 0
+    """, (store_id,))
+    ctx["missing_cost_rows"] = cur.fetchone()["cnt"] or 0
+    cur.execute("""
+        SELECT COUNT(*) AS cnt FROM t_htma_sale
+        WHERE store_id = %s AND (sale_price IS NULL OR sale_price = 0) AND sale_qty > 0
+    """, (store_id,))
+    ctx["missing_price_rows"] = cur.fetchone()["cnt"] or 0
+    cur.execute("""
+        SELECT COUNT(*) AS cnt FROM (
+            SELECT sku_code FROM t_htma_sale WHERE store_id = %s GROUP BY sku_code HAVING COUNT(DISTINCT COALESCE(category, '')) > 1
+        ) t
+    """, (store_id,))
+    ctx["inconsistent_sku_count"] = cur.fetchone()["cnt"] or 0
+
     # 本月至今（用于与「月目标」同口径对比）
     cur.execute("""
         SELECT COALESCE(SUM(sale_amount), 0) AS sale, COALESCE(SUM(gross_profit), 0) AS profit
@@ -766,6 +941,9 @@ def ai_chat_response(conn, user_message, report_summary=None):
             "neg_count": 0, "neg_loss": 0, "neg_top": [],
             "high_margin_cats": [], "top_sale_cats": [], "low_stock_cats": [],
             "value_skus": [], "monthly": [],
+            "return_amt": 0, "gift_amt": 0, "return_ratio_pct": 0, "gift_ratio_pct": 0,
+            "top_brands": [], "top_suppliers": [], "inventory_turnover_days": None, "total_stock_amount": 0,
+            "missing_cost_rows": 0, "missing_price_rows": 0, "inconsistent_sku_count": 0,
         }
 
     profit_wan = ctx["total_profit"] / 10000
@@ -864,6 +1042,83 @@ def ai_chat_response(conn, user_message, report_summary=None):
                 actions.append("（以上为按上月结构静态推算，实际需结合断货补货与促销节奏）")
         return "\n".join(actions)
 
+    # 2a. 退货 / 赠送 / 损耗（精细化）
+    if "退货" in msg or "赠送" in msg or "损耗" in msg:
+        return_amt = ctx.get("return_amt") or 0
+        gift_amt = ctx.get("gift_amt") or 0
+        rr = ctx.get("return_ratio_pct") or 0
+        gr = ctx.get("gift_ratio_pct") or 0
+        lines = ["【退货与赠送概况】近30天数据："]
+        lines.append(f"  退货金额 {_fmt_money(return_amt)}，占销售额 {rr:.1f}%；赠送金额 {_fmt_money(gift_amt)}，占销售额 {gr:.1f}%")
+        if rr > 5:
+            lines.append("退货占比偏高，建议：① 排查高退货品类与供应商质量 ② 优化验收与陈列 ③ 在「经营分析-退货/赠送」看明细做精细化管控")
+        elif rr > 0 or gr > 0:
+            lines.append("建议：在「经营分析」查看退货/赠送明细，按品类与供应商做精细化管控；赠送可结合毛利与复购评估 ROI。")
+        else:
+            lines.append("当前退货/赠送占比较低。建议定期查看经营分析中的退货与赠送报表，做好事前管控。")
+        return "\n".join(lines)
+
+    # 2b. 品牌 / 供应商（精细化）
+    if "品牌" in msg and ("集中" in msg or "哪些" in msg or "占比" in msg or "排行" in msg):
+        brands = ctx.get("top_brands") or []
+        if not brands or not ctx["total_sale"]:
+            return "【品牌】暂无品牌销售数据或销售额为 0。建议在导入数据时补全 brand_name 字段。"
+        total = ctx["total_sale"]
+        lines = ["【品牌销售占比】近30天前5品牌："]
+        for r in brands[:5]:
+            s = float(r.get("sale") or 0)
+            pct = (s / total * 100) if total > 0 else 0
+            lines.append(f"  · {(r.get('brand_name') or '未填')[:12]} 销售额 {_fmt_money(s)} 占比 {pct:.1f}%")
+        lines.append("建议：可做品牌级毛利与周转分析，优化采购与陈列资源；在「经营分析-品牌分析」查看明细。")
+        return "\n".join(lines)
+    if "供应商" in msg and ("集中" in msg or "哪些" in msg or "占比" in msg or "排行" in msg):
+        suppliers = ctx.get("top_suppliers") or []
+        if not suppliers or not ctx["total_sale"]:
+            return "【供应商】暂无供应商销售数据或销售额为 0。建议在导入数据时补全 supplier_name 字段。"
+        total = ctx["total_sale"]
+        lines = ["【供应商销售占比】近30天前5供应商："]
+        for r in suppliers[:5]:
+            s = float(r.get("sale") or 0)
+            pct = (s / total * 100) if total > 0 else 0
+            lines.append(f"  · {(r.get('supplier_name') or '未填')[:12]} 销售额 {_fmt_money(s)} 占比 {pct:.1f}%")
+        lines.append("建议：结合毛利与周转做供应商评估，在「经营分析」查看供应商明细。")
+        return "\n".join(lines)
+
+    # 2c. 周转 / 库存周转（精细化）
+    if "周转" in msg or "库存周转" in msg:
+        days_val = ctx.get("inventory_turnover_days")
+        stock_amt = ctx.get("total_stock_amount") or 0
+        if days_val is None or stock_amt <= 0:
+            return "【库存周转】当前无法估算周转天数（需有库存金额与近30天销售成本）。请在「经营分析-库存周转」查看明细。"
+        lines = [f"【库存周转】按近30天销速估算，当前库存金额约 {_fmt_money(stock_amt)}，周转天数约 {days_val:.0f} 天。"]
+        if days_val > 60:
+            lines.append("周转偏慢，建议：压缩滞销品、加快促销与清仓，提升周转。")
+        elif days_val < 30:
+            lines.append("周转表现较好，建议保持补货与动销监控，避免断货。")
+        else:
+            lines.append("建议结合品类做周转分析，在「经营分析-库存周转」查看各品类/品牌明细。")
+        return "\n".join(lines)
+
+    # 2d. 数据质量 / 精细化（数据可信度）
+    if "数据质量" in msg or ("精细化" in msg and ("管理" in msg or "数据" in msg or "经营" in msg)):
+        mc = ctx.get("missing_cost_rows") or 0
+        mp = ctx.get("missing_price_rows") or 0
+        inc = ctx.get("inconsistent_sku_count") or 0
+        lines = ["【数据质量与精细化】"]
+        if mc > 100 or mp > 100 or inc > 50:
+            parts = []
+            if mc > 100:
+                parts.append(f"成本缺失 {mc} 条")
+            if mp > 100:
+                parts.append(f"售价缺失 {mp} 条")
+            if inc > 50:
+                parts.append(f"同 SKU 多品类 {inc} 个")
+            lines.append("当前存在：" + "、".join(parts) + "，可能影响毛利与经营分析准确性。")
+            lines.append("建议：在「经营分析-数据质量」查看明细，优先补全成本与售价；同 SKU 多品类可统一归类便于分析。")
+        else:
+            lines.append("当前数据质量尚可。建议：① 定期在「经营分析-数据质量」巡检 ② 退货/赠送、品牌/供应商、周转等维度已支持，可做精细化管控。")
+        return "\n".join(lines)
+
     # 2. 负毛利 / 亏损
     if "负毛利" in msg or "亏损" in msg:
         if ctx["neg_count"] == 0:
@@ -934,15 +1189,29 @@ def ai_chat_response(conn, user_message, report_summary=None):
             lines.append("完整货盘分析请执行: bash scripts/openclaw_price_compare.sh")
             return "\n".join(lines)
 
-    # 9. 通用 / 无匹配：基于数据给综合建议，不再推荐「可尝试提问」
+    # 9. 通用 / 无匹配：基于数据给综合建议（含退货/周转/数据质量等精细化维度）
     lines = [f"【综合建议】基于近30天数据：销售额{_fmt_money(ctx['total_sale'])}、毛利{_fmt_money(ctx['total_profit'])}、毛利率{ctx['avg_margin']:.1f}%"]
     if ctx["neg_count"] > 0:
         lines.append(f"① 负毛利：{ctx['neg_count']} 个商品损失约{_fmt_money(ctx['neg_loss'])}，优先核查或清仓")
+    rr = ctx.get("return_ratio_pct") or 0
+    gr = ctx.get("gift_ratio_pct") or 0
+    if rr > 0 or gr > 0:
+        lines.append(f"② 退货占比 {rr:.1f}%、赠送占比 {gr:.1f}%，可在「经营分析」看退货/赠送明细做精细化管控")
     if ctx["high_margin_cats"]:
         cats = "、".join([r["cat"][:6] for r in ctx["high_margin_cats"][:3]])
-        lines.append(f"② 高毛利品类（{cats}）可加大陈列与促销")
+        lines.append(f"③ 高毛利品类（{cats}）可加大陈列与促销")
     if ctx["low_stock_cats"]:
         cats = "、".join([r["category"][:6] for r in ctx["low_stock_cats"][:3]])
-        lines.append(f"③ 断货风险：{cats} 等需优先补货")
-    lines.append("④ 移动异业合作可零成本拉新、放大黄金品类销售")
+        lines.append(f"④ 断货风险：{cats} 等需优先补货")
+    turn = ctx.get("inventory_turnover_days")
+    if turn is not None and turn > 0:
+        if turn > 60:
+            lines.append(f"⑤ 库存周转约 {turn:.0f} 天偏慢，建议压缩滞销、加快清仓")
+        else:
+            lines.append(f"⑤ 库存周转约 {turn:.0f} 天，可结合「经营分析-库存周转」做品类优化")
+    dq = (ctx.get("missing_cost_rows") or 0) + (ctx.get("missing_price_rows") or 0)
+    if dq > 100:
+        lines.append("⑥ 数据质量：存在成本/售价缺失，建议在「经营分析-数据质量」补全以提升分析准确性")
+    if not any("移动" in ln or "异业" in ln for ln in lines):
+        lines.append("⑦ 移动异业合作可零成本拉新、放大黄金品类销售")
     return "\n".join(lines)

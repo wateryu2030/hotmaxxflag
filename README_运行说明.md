@@ -39,6 +39,22 @@ bash scripts/deploy_htma_standalone.sh
 npm run htma:import
 ```
 
+### 从下载目录自动导入（推荐：含去重与数据完整性）
+
+将 **销售日报**、**销售汇总**、**实时库存** Excel 放入指定目录后，可一键完成导入、去重、刷新毛利/品类/商品，确保数据完整可靠。
+
+- **本机命令行**（默认目录 `~/Downloads`）：
+  ```bash
+  bash scripts/run_auto_import.sh
+  # 或指定目录
+  bash scripts/run_auto_import.sh /path/to/excel
+  ```
+- **导入页按钮**：打开 http://127.0.0.1:5002/import ，点击「从下载目录自动导入」。此时使用**服务器**上的目录：项目下的 `downloads/` 或环境变量 `IMPORT_DOWNLOADS_DIR`。将 Excel 放到该目录后点击即可。
+- **定时自动执行**（macOS）：每日 6:00 从 ~/Downloads 自动导入（有文件则执行）：
+  ```bash
+  bash scripts/install_launchd_auto_import.sh
+  ```
+
 ## 前置条件
 
 - MySQL 运行中，已创建数据库 `htma_dashboard`

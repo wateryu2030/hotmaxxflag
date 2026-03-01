@@ -6,8 +6,8 @@
 - 库存表 t_htma_stock: 主键 (data_date, sku_code)，合并时累加 stock_qty/stock_amount
 - 毛利表 t_htma_profit: 主键 (data_date, category, store_id)，合并时累加 total_sale/total_profit
 
-用法: python3 scripts/dedup_htma_tables.py [--dry-run]
-需先安装依赖: pip3 install pymysql  或  pip3 install -r htma_dashboard/requirements.txt
+用法: bash scripts/run_dedup.sh [--dry-run]  或  python3 scripts/dedup_htma_tables.py [--dry-run]
+建议用 run_dedup.sh（会使用项目 .venv，避免系统 Python 的 externally-managed-environment）。
 """
 import os
 import sys

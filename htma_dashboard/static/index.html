@@ -32,6 +32,8 @@
     td { color: #e2e8f0; }
     tr:hover { background: #334155; }
     .num { text-align: right; font-variant-numeric: tabular-nums; }
+    table tr.tax-cat-detail { background: rgba(15,23,42,0.5); }
+    table tr.tax-cat-detail td { font-size: 0.85em; }
     .loading { text-align: center; padding: 40px; color: #64748b; }
     .error { color: #f87171; padding: 12px; }
     .period-tabs { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; flex-wrap: wrap; }
@@ -167,6 +169,8 @@
       .page-panel tbody tr:hover td:first-child { background: #334155; }
       .page-panel thead th:not(:first-child) { background: #334155; }
       .page-panel table .num { font-weight: 600; color: #e2e8f0; }
+      .page-panel table tr.tax-cat-detail { background: rgba(15,23,42,0.5); }
+      .page-panel table tr.tax-cat-detail td { font-size: 0.85em; }
       .page-panel .detail-tabs { flex-wrap: wrap; }
       .page-panel .detail-tabs .tab-btn { flex: 1; min-width: 80px; padding: 8px 12px; }
       .page-panel .pagination { flex-wrap: wrap; gap: 6px; }
@@ -183,7 +187,7 @@
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
     <div>
       <h1>好特卖沈阳超级仓运营看板</h1>
-      <p class="subtitle">临期折扣零售 · 数据来自 MySQL htma_dashboard · <a href="/import" style="color:#38bdf8;">数据导入</a></p>
+      <p class="subtitle" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">临期折扣零售 · 数据来自 MySQL htma_dashboard · <a href="/import" style="color:#38bdf8;">数据导入</a> · <a href="/login" style="color:#38bdf8;">登录</a> <span id="authUserBar"></span></p>
     </div>
     <div style="display:flex;gap:8px;">
       <button id="btnAiInsight" class="btn-ai" title="基于当前数据生成智能分析建议">
@@ -242,6 +246,8 @@
       <button class="nav-tab" data-page="category">📈 品类排行</button>
       <button class="nav-tab" data-page="detail">📋 销售明细</button>
       <button class="nav-tab" data-page="inventory">⚠️ 库存预警</button>
+      <button class="nav-tab" data-page="tax">🧮 税率计算</button>
+      <button class="nav-tab" data-page="biz">📌 经营分析</button>
     </div>
     <div class="export-btns">
       <a class="btn-export" id="btnExportProduct" href="#" download="htma_商品明细.csv">导出商品</a>
@@ -434,6 +440,87 @@
       </table>
       <div id="invPagination" class="pagination" style="display:none;"></div>
     </div>
+    </div>
+  </div>
+  </div>
+
+  <div class="page-panel" id="pageTax" data-page="tax">
+  <div class="section scroll-table">
+    <h2>税率计算 · 实际销售下的税务负担</h2>
+    <p style="margin-bottom:8px;color:#94a3b8;font-size:0.75rem;">按销售商品编码对应税率负担表，按税率汇总销售额、不含税、税额。数据周期与上方 KPI 周期一致。</p>
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:12px;">
+      <div class="kpi-row" style="margin-bottom:0;">
+        <div class="kpi-card"><div class="label">周期销售额</div><div class="value" id="taxKpiSale">-</div></div>
+        <div class="kpi-card"><div class="label">周期税额</div><div class="value" id="taxKpiTax">-</div></div>
+        <div class="kpi-card"><div class="label">综合税负率</div><div class="value" id="taxKpiRate">-</div></div>
+      </div>
+      <button type="button" id="taxExportExcel" class="btn-export" style="margin-left:8px;cursor:pointer;background:transparent;border:none;color:inherit;text-decoration:underline;">导出 Excel</button>
+      <button type="button" id="taxExportPdf" class="btn btn-secondary" style="padding:8px 16px;">导出 PDF</button>
+    </div>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>税率</th><th class="num">销售额</th><th class="num">不含税</th><th class="num">税额</th></tr></thead>
+      <tbody id="taxCategoryBody"></tbody>
+    </table>
+    <p id="taxMessage" style="font-size:0.85rem;color:#64748b;margin-top:8px;"></p>
+    </div>
+  </div>
+  </div>
+
+  <div class="page-panel" id="pageBiz" data-page="biz">
+  <div class="section scroll-table">
+    <h2>经营分析</h2>
+    <p class="section-desc">退货/赠送、品牌与供应商贡献、价格带、SKU 周转与 ABC、负毛利明细、品类结构趋势、库存周转、数据质量。数据周期与上方 KPI 周期一致。</p>
+    <div class="detail-tabs" style="margin-bottom:8px;">
+      <button class="tab-btn biz-sub active" data-biz="return_gift">退货/赠送</button>
+      <button class="tab-btn biz-sub" data-biz="brand">品牌</button>
+      <button class="tab-btn biz-sub" data-biz="supplier">供应商</button>
+      <button class="tab-btn biz-sub" data-biz="price_band">价格带</button>
+      <button class="tab-btn biz-sub" data-biz="turnover">周转</button>
+      <button class="tab-btn biz-sub" data-biz="abc">ABC</button>
+      <button class="tab-btn biz-sub" data-biz="negative_margin">负毛利明细</button>
+      <button class="tab-btn biz-sub" data-biz="category_trend">品类趋势</button>
+      <button class="tab-btn biz-sub" data-biz="inv_turnover">库存周转</button>
+      <button class="tab-btn biz-sub" data-biz="data_quality">数据质量</button>
+    </div>
+    <div id="bizDataStatusBar" class="data-status-bar" style="margin-bottom:8px;"></div>
+    <div id="bizReturnGift" class="biz-block">
+      <div class="kpi-row" style="margin-bottom:8px;" id="returnGiftKpi"></div>
+      <p id="returnGiftMsg" class="section-desc"></p>
+    </div>
+    <div id="bizBrand" class="biz-block" style="display:none;">
+      <div class="table-wrap"><table><thead><tr><th>品牌</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">销量</th><th class="num">毛利率%</th><th class="num">贡献%</th></tr></thead><tbody id="brandSummaryBody"></tbody></table></div>
+    </div>
+    <div id="bizSupplier" class="biz-block" style="display:none;">
+      <div class="table-wrap"><table><thead><tr><th>供应商</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">销量</th><th class="num">毛利率%</th><th class="num">贡献%</th></tr></thead><tbody id="supplierSummaryBody"></tbody></table></div>
+    </div>
+    <div id="bizPriceBand" class="biz-block" style="display:none;">
+      <div id="priceBandChart" class="chart" style="height:260px;"></div>
+      <div class="table-wrap"><table><thead><tr><th>价格带</th><th class="num">销售额</th><th class="num">销量</th><th class="num">销售贡献%</th><th class="num">销量贡献%</th></tr></thead><tbody id="priceBandBody"></tbody></table></div>
+    </div>
+    <div id="bizTurnover" class="biz-block" style="display:none;">
+      <div class="table-wrap"><table><thead><tr><th>商品编码</th><th>品名</th><th>品类</th><th class="num">销量</th><th class="num">销售额</th><th class="num">库存</th><th class="num">周转天数</th></tr></thead><tbody id="skuTurnoverBody"></tbody></table></div>
+    </div>
+    <div id="bizAbc" class="biz-block" style="display:none;">
+      <div class="kpi-row" style="margin-bottom:8px;" id="abcSummaryKpi"></div>
+      <div class="table-wrap"><table><thead><tr><th>分类</th><th>商品编码</th><th>品名</th><th>品类</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">累计贡献%</th></tr></thead><tbody id="skuAbcBody"></tbody></table></div>
+    </div>
+    <div id="bizNegativeMargin" class="biz-block" style="display:none;">
+      <p style="margin-bottom:6px;"><a id="negativeMarginExport" class="btn-export" href="#">导出 CSV</a></p>
+      <div class="table-wrap"><table><thead><tr><th>商品编码</th><th>品名</th><th>品类</th><th class="num">销量</th><th class="num">销售额</th><th class="num">成本</th><th class="num">毛利</th><th class="num">毛利率%</th></tr></thead><tbody id="negativeMarginBody"></tbody></table></div>
+    </div>
+    <div id="bizCategoryTrend" class="biz-block" style="display:none;">
+      <div class="chart-tabs" style="margin-bottom:6px;"><button class="tab-btn cat-trend-gran active" data-gran="week">按周</button><button class="tab-btn cat-trend-gran" data-gran="month">按月</button></div>
+      <div id="categoryTrendChart" class="chart" style="height:280px;"></div>
+      <div class="table-wrap" style="max-height:200px;overflow-y:auto;"><table><thead><tr><th>周期</th><th>品类</th><th class="num">销售额</th><th class="num">占比%</th></tr></thead><tbody id="categoryTrendBody"></tbody></table></div>
+    </div>
+    <div id="bizInvTurnover" class="biz-block" style="display:none;">
+      <div class="kpi-row" id="invTurnoverKpi"></div>
+      <p class="section-desc">周转天数 = 期末库存金额 ÷ (周期内销售成本 ÷ 天数)。</p>
+    </div>
+    <div id="bizDataQuality" class="biz-block" style="display:none;">
+      <div class="kpi-row" id="dataQualityKpi"></div>
+      <p id="dataQualitySample" class="section-desc"></p>
     </div>
   </div>
   </div>
@@ -838,6 +925,17 @@
       el.appendChild(nextBtn);
     }
 
+    async function loadAuthUser() {
+      const bar = document.getElementById('authUserBar');
+      if (!bar) return;
+      try {
+        const r = await fetch(API + '/api/auth/me');
+        if (r.ok) {
+          const d = await r.json();
+          if (d.name) bar.innerHTML = '· 欢迎，' + (d.name || '').replace(/</g, '&lt;') + ' <a href="/api/auth/logout" style="color:#38bdf8;">退出</a>';
+        }
+      } catch (e) {}
+    }
     async function loadDataStatus() {
       const el = document.getElementById('dataStatusText');
       if (!el) return;
@@ -1068,6 +1166,313 @@
           </tr>`).join('');
         renderPagination(pagEl, total, currentInvPage, PAGE_SIZE, (p) => loadInvDetailPage(largeCode, p));
       } catch (e) { tbody.innerHTML = '<tr><td colspan="6" class="error">加载失败</td></tr>'; }
+    }
+
+    async function loadTaxBurdenSummary() {
+      const saleEl = document.getElementById('taxKpiSale');
+      const taxEl = document.getElementById('taxKpiTax');
+      const rateEl = document.getElementById('taxKpiRate');
+      const tbody = document.getElementById('taxCategoryBody');
+      const msgEl = document.getElementById('taxMessage');
+      if (!tbody) return;
+      tbody.innerHTML = '<tr><td colspan="4" class="loading">加载中...</td></tr>';
+      if (saleEl) saleEl.textContent = '-';
+      if (taxEl) taxEl.textContent = '-';
+      if (rateEl) rateEl.textContent = '-';
+      try {
+        const r = await fetch(API + '/api/tax_burden_summary?' + queryParams(), { method: 'GET' });
+        const text = await r.text();
+        let d;
+        try {
+          d = text ? JSON.parse(text) : {};
+        } catch (_) {
+          if (!r.ok) throw new Error(r.status === 405 ? '请求方法不允许(405)，请刷新页面重试' : ('HTTP ' + r.status + (text && text.length < 200 ? ': ' + text : '')));
+          throw new Error('返回数据格式异常');
+        }
+        if (!r.ok && (d.message || d.error)) throw new Error(d.message || d.error);
+        if (d.error) throw new Error(d.error);
+        if (d.message && !d.by_tax_rate) {
+          tbody.innerHTML = '<tr><td colspan="4" class="loading">' + (d.message || '').replace(/</g,'&lt;') + '</td></tr>';
+          if (msgEl) msgEl.textContent = d.message;
+          return;
+        }
+        const list = d.by_tax_rate || [];
+        if (saleEl) saleEl.textContent = fmtNum(d.total_sale_amount || 0);
+        if (taxEl) taxEl.textContent = fmtNum(d.total_tax_amount || 0);
+        if (rateEl) {
+          rateEl.textContent = (d.tax_rate_pct != null ? d.tax_rate_pct : 0) + '%';
+          rateEl.className = 'value';
+        }
+        tbody.innerHTML = list.length === 0
+          ? '<tr><td colspan="4" class="loading">暂无数据（请先导入销售数据与税率负担表）</td></tr>'
+          : list.map(row => {
+              const ratePct = (row.tax_rate_pct != null ? row.tax_rate_pct : 0);
+              const cats = row.by_category || [];
+              const summaryTr = `<tr class="tax-rate-summary">
+                <td><strong>${ratePct}%</strong></td>
+                <td class="num">${fmtMoney(row.sale_amount)}</td>
+                <td class="num">${fmtMoney(row.amount_excluding_tax)}</td>
+                <td class="num">${fmtMoney(row.tax_amount)}</td>
+              </tr>`;
+              const detailTrs = cats.map(c => `<tr class="tax-cat-detail">
+                <td style="padding-left:1.6em;color:#94a3b8;">↳ ${(c.category || '未分类').replace(/</g,'&lt;')}</td>
+                <td class="num">${fmtMoney(c.sale_amount)}</td>
+                <td class="num">${fmtMoney(c.amount_excluding_tax)}</td>
+                <td class="num">${fmtMoney(c.tax_amount)}</td>
+              </tr>`).join('');
+              return summaryTr + detailTrs;
+            }).join('');
+        if (list.length > 0) {
+          const totalRow = `<tr><th>合计</th><td class="num">${fmtMoney(d.total_sale_amount)}</td><td class="num">${fmtMoney((d.total_sale_amount || 0) - (d.total_tax_amount || 0))}</td><td class="num">${fmtMoney(d.total_tax_amount)}</td></tr>`;
+          tbody.insertAdjacentHTML('beforeend', totalRow);
+        }
+        if (msgEl) msgEl.textContent = '周期：' + (d.date_range || '-') + ' · 按税率汇总，各行下方缩进为该税率下的品类缴税明细';
+        const excelBtn = document.getElementById('taxExportExcel');
+        const pdfBtn = document.getElementById('taxExportPdf');
+        const q = queryParams();
+        if (excelBtn) excelBtn.onclick = () => { window.location.href = API + '/api/tax_burden_export?format=csv&' + q; };
+        if (pdfBtn) pdfBtn.onclick = () => { window.open(API + '/api/tax_burden_export?format=pdf&' + q, '_blank', 'noopener'); };
+      } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="4" class="error">加载失败: ' + (e.message || '').replace(/</g,'&lt;') + '</td></tr>';
+        if (msgEl) msgEl.textContent = '';
+      }
+    }
+
+    async function loadBizDataStatus() {
+      const bar = document.getElementById('bizDataStatusBar');
+      if (!bar) return;
+      bar.textContent = '加载中...';
+      try {
+        const r = await fetch(API + '/api/data_status');
+        const d = await r.json();
+        const saleCount = d.sale_count != null ? d.sale_count : 0;
+        const minDate = d.min_date || '';
+        const maxDate = d.max_date || '';
+        const stockCount = d.stock_count != null ? d.stock_count : 0;
+        if (saleCount === 0 || !minDate) {
+          bar.innerHTML = '未检测到销售数据，请先到 <a href="/import" style="color:#38bdf8;">数据导入</a> 页导入「销售日报」或「销售汇总」Excel，并导入库存数据。';
+          bar.style.color = '#fbbf24';
+        } else {
+          bar.innerHTML = '数据范围：<strong>' + minDate + '</strong> ~ <strong>' + maxDate + '</strong> · 销售 <strong>' + saleCount + '</strong> 条 · 库存 <strong>' + stockCount + '</strong> 条';
+          bar.style.color = '';
+        }
+      } catch (e) {
+        bar.textContent = '数据状态加载失败';
+        bar.style.color = '#f87171';
+      }
+    }
+
+    async function loadReturnGiftSummary() {
+      const kpiEl = document.getElementById('returnGiftKpi');
+      const msgEl = document.getElementById('returnGiftMsg');
+      if (!kpiEl) return;
+      kpiEl.innerHTML = '<div class="loading">加载中...</div>';
+      try {
+        const r = await fetch(API + '/api/return_gift_summary?' + queryParams());
+        const d = await r.json();
+        kpiEl.innerHTML = `
+          <div class="kpi-card"><div class="label">周期销售额</div><div class="value">${fmtNum(d.total_sale_amount || 0)}</div></div>
+          <div class="kpi-card"><div class="label">退货金额</div><div class="value">${fmtNum(d.return_amount || 0)}</div></div>
+          <div class="kpi-card"><div class="label">退货金额占比</div><div class="value">${(d.return_ratio_amt_pct != null ? d.return_ratio_amt_pct : 0)}%</div></div>
+          <div class="kpi-card"><div class="label">赠送金额</div><div class="value">${fmtNum(d.gift_amount || 0)}</div></div>
+          <div class="kpi-card"><div class="label">赠送金额占比</div><div class="value">${(d.gift_ratio_amt_pct != null ? d.gift_ratio_amt_pct : 0)}%</div></div>
+        `;
+        if (msgEl) {
+          const totalSale = parseFloat(d.total_sale_amount) || 0;
+          if (totalSale === 0) {
+            msgEl.innerHTML = '当前周期内无销售数据。请检查：① 是否已在<a href="/import" style="color:#38bdf8;">数据导入</a>页导入「销售日报」或「销售汇总」Excel；② 数据日期是否在所选周期内（如近30天）。可尝试切换「本月」或自定义日期。';
+            msgEl.style.color = '#fbbf24';
+          } else {
+            msgEl.textContent = '退货件数 ' + (d.return_qty != null ? d.return_qty : 0) + '，退货件数占比 ' + (d.return_ratio_qty_pct != null ? d.return_ratio_qty_pct : 0) + '%；赠送件数 ' + (d.gift_qty != null ? d.gift_qty : 0) + '，赠送件数占比 ' + (d.gift_ratio_qty_pct != null ? d.gift_ratio_qty_pct : 0) + '%。';
+            msgEl.style.color = '';
+          }
+        }
+      } catch (e) { kpiEl.innerHTML = '<div class="error">加载失败: ' + (e.message || '').replace(/</g,'&lt;') + '</div>'; if (msgEl) msgEl.textContent = ''; }
+    }
+    async function loadBrandSummary() {
+      const tbody = document.getElementById('brandSummaryBody');
+      if (!tbody) return;
+      tbody.innerHTML = '<tr><td colspan="6" class="loading">加载中...</td></tr>';
+      try {
+        const r = await fetch(API + '/api/brand_summary?' + queryParams());
+        const data = await r.json();
+        const list = safeArray(data);
+        tbody.innerHTML = list.length === 0 ? '<tr><td colspan="6" class="loading">暂无数据</td></tr>' : list.map(row => `
+          <tr><td>${(row.brand_name || '').replace(/</g,'&lt;')}</td><td class="num">${fmtMoney(row.sale_amount)}</td><td class="num">${fmtMoney(row.profit)}</td><td class="num">${row.qty}</td><td class="num">${row.margin_pct}%</td><td class="num">${row.contrib_pct}%</td></tr>
+        `).join('');
+      } catch (e) { tbody.innerHTML = '<tr><td colspan="6" class="error">加载失败</td></tr>'; }
+    }
+    async function loadSupplierSummary() {
+      const tbody = document.getElementById('supplierSummaryBody');
+      if (!tbody) return;
+      tbody.innerHTML = '<tr><td colspan="6" class="loading">加载中...</td></tr>';
+      try {
+        const r = await fetch(API + '/api/supplier_summary?' + queryParams());
+        const data = await r.json();
+        const list = safeArray(data);
+        tbody.innerHTML = list.length === 0 ? '<tr><td colspan="6" class="loading">暂无数据</td></tr>' : list.map(row => `
+          <tr><td>${(row.supplier_name || '').replace(/</g,'&lt;').slice(0,40)}</td><td class="num">${fmtMoney(row.sale_amount)}</td><td class="num">${fmtMoney(row.profit)}</td><td class="num">${row.qty}</td><td class="num">${row.margin_pct}%</td><td class="num">${row.contrib_pct}%</td></tr>
+        `).join('');
+      } catch (e) { tbody.innerHTML = '<tr><td colspan="6" class="error">加载失败</td></tr>'; }
+    }
+    async function loadPriceBandSummary() {
+      const chartEl = document.getElementById('priceBandChart');
+      const tbody = document.getElementById('priceBandBody');
+      if (!tbody) return;
+      tbody.innerHTML = '<tr><td colspan="5" class="loading">加载中...</td></tr>';
+      try {
+        const r = await fetch(API + '/api/price_band_summary?' + queryParams());
+        const data = await r.json();
+        const list = safeArray(data);
+        tbody.innerHTML = list.length === 0 ? '<tr><td colspan="5" class="loading">暂无数据</td></tr>' : list.map(row => `
+          <tr><td>${(row.band || '').replace(/</g,'&lt;')} 元</td><td class="num">${fmtMoney(row.sale_amount)}</td><td class="num">${row.qty}</td><td class="num">${row.sale_contrib_pct}%</td><td class="num">${row.qty_contrib_pct}%</td></tr>
+        `).join('');
+        if (chartEl && typeof echarts !== 'undefined' && list.length > 0) {
+          ensureEcharts(function() {
+            const ch = echarts.init(chartEl);
+            ch.setOption({
+              tooltip: { trigger: 'item' },
+              legend: { bottom: 0, textStyle: { color: '#94a3b8' } },
+              series: [{ type: 'pie', radius: '60%', data: list.map(x => ({ name: (x.band || '') + '元', value: x.sale_amount })), label: { color: '#e2e8f0' } }]
+            });
+          });
+        }
+      } catch (e) { tbody.innerHTML = '<tr><td colspan="5" class="error">加载失败</td></tr>'; }
+    }
+    async function loadSkuTurnover() {
+      const tbody = document.getElementById('skuTurnoverBody');
+      if (!tbody) return;
+      tbody.innerHTML = '<tr><td colspan="7" class="loading">加载中...</td></tr>';
+      try {
+        const r = await fetch(API + '/api/sku_turnover?' + queryParams());
+        const data = await r.json();
+        const list = safeArray(data);
+        tbody.innerHTML = list.length === 0 ? '<tr><td colspan="7" class="loading">暂无数据</td></tr>' : list.map(row => `
+          <tr><td>${(row.sku_code || '').replace(/</g,'&lt;')}</td><td>${(row.product_name || '').replace(/</g,'&lt;').slice(0,24)}</td><td>${(row.category || '').replace(/</g,'&lt;').slice(0,16)}</td><td class="num">${row.sale_qty}</td><td class="num">${fmtMoney(row.sale_amount)}</td><td class="num">${row.stock_qty}</td><td class="num">${row.turnover_days != null ? row.turnover_days : '-'}</td></tr>
+        `).join('');
+      } catch (e) { tbody.innerHTML = '<tr><td colspan="7" class="error">加载失败</td></tr>'; }
+    }
+    async function loadSkuAbc() {
+      const kpiEl = document.getElementById('abcSummaryKpi');
+      const tbody = document.getElementById('skuAbcBody');
+      if (!tbody) return;
+      tbody.innerHTML = '<tr><td colspan="7" class="loading">加载中...</td></tr>';
+      if (kpiEl) kpiEl.innerHTML = '<div class="loading">加载中...</div>';
+      try {
+        const r = await fetch(API + '/api/sku_abc?' + queryParams());
+        const d = await r.json();
+        const summary = d.summary || {};
+        const list = safeArray(d.items);
+        if (kpiEl) kpiEl.innerHTML = `
+          <div class="kpi-card"><div class="label">A 类 (前80%销售额) SKU 数</div><div class="value">${summary.A_count != null ? summary.A_count : 0}</div></div>
+          <div class="kpi-card"><div class="label">B 类 (80-95%) SKU 数</div><div class="value">${summary.B_count != null ? summary.B_count : 0}</div></div>
+          <div class="kpi-card"><div class="label">C 类 (其余) SKU 数</div><div class="value">${summary.C_count != null ? summary.C_count : 0}</div></div>
+          <div class="kpi-card"><div class="label">周期总销售额</div><div class="value">${fmtNum(summary.total_sale || 0)}</div></div>
+        `;
+        tbody.innerHTML = list.length === 0 ? '<tr><td colspan="7" class="loading">暂无数据</td></tr>' : list.map(row => `
+          <tr><td>${(row.abc_class || '').replace(/</g,'&lt;')}</td><td>${(row.sku_code || '').replace(/</g,'&lt;')}</td><td>${(row.product_name || '').replace(/</g,'&lt;').slice(0,24)}</td><td>${(row.category || '').replace(/</g,'&lt;').slice(0,16)}</td><td class="num">${fmtMoney(row.sale_amount)}</td><td class="num">${fmtMoney(row.profit)}</td><td class="num">${row.cum_contrib_pct}%</td></tr>
+        `).join('');
+      } catch (e) { tbody.innerHTML = '<tr><td colspan="7" class="error">加载失败</td></tr>'; if (kpiEl) kpiEl.innerHTML = '<div class="error">加载失败</div>'; }
+    }
+    async function loadNegativeMarginDetail() {
+      const tbody = document.getElementById('negativeMarginBody');
+      const exportEl = document.getElementById('negativeMarginExport');
+      if (!tbody) return;
+      tbody.innerHTML = '<tr><td colspan="8" class="loading">加载中...</td></tr>';
+      try {
+        const r = await fetch(API + '/api/negative_margin_detail?' + queryParams());
+        const data = await r.json();
+        const list = safeArray(data);
+        tbody.innerHTML = list.length === 0 ? '<tr><td colspan="8" class="loading">暂无负毛利 SKU</td></tr>' : list.map(row => `
+          <tr><td>${(row.sku_code || '').replace(/</g,'&lt;')}</td><td>${(row.product_name || '').replace(/</g,'&lt;').slice(0,24)}</td><td>${(row.category || '').replace(/</g,'&lt;').slice(0,16)}</td><td class="num">${row.qty}</td><td class="num">${fmtMoney(row.sale_amount)}</td><td class="num">${fmtMoney(row.cost)}</td><td class="num" style="color:#f87171;">${fmtMoney(row.profit)}</td><td class="num" style="color:#f87171;">${row.margin_pct}%</td></tr>
+        `).join('');
+        if (exportEl) exportEl.href = API + '/api/negative_margin_detail?format=csv&' + queryParams();
+      } catch (e) { tbody.innerHTML = '<tr><td colspan="8" class="error">加载失败</td></tr>'; }
+    }
+    let categoryTrendGran = 'week';
+    let currentBizSub = 'return_gift';
+    async function loadCategoryStructureTrend() {
+      const chartEl = document.getElementById('categoryTrendChart');
+      const tbody = document.getElementById('categoryTrendBody');
+      if (!tbody) return;
+      tbody.innerHTML = '<tr><td colspan="4" class="loading">加载中...</td></tr>';
+      try {
+        const r = await fetch(API + '/api/category_structure_trend?granularity=' + categoryTrendGran + '&' + queryParams());
+        const data = await r.json();
+        const list = safeArray(data);
+        let rows = [];
+        list.forEach(p => { (p.by_category || []).slice(0, 8).forEach(c => rows.push({ period: p.period, category: c.category, sale_amount: c.sale_amount, share_pct: c.share_pct })); });
+        tbody.innerHTML = rows.length === 0 ? '<tr><td colspan="4" class="loading">暂无数据</td></tr>' : rows.map(row => `
+          <tr><td>${(row.period || '').replace(/</g,'&lt;')}</td><td>${(row.category || '').replace(/</g,'&lt;').slice(0,20)}</td><td class="num">${fmtMoney(row.sale_amount)}</td><td class="num">${row.share_pct}%</td></tr>
+        `).join('');
+        if (chartEl && typeof echarts !== 'undefined' && list.length > 0) {
+          ensureEcharts(function() {
+            const ch = echarts.init(chartEl);
+            const periods = list.map(p => p.period);
+            const catSet = new Set();
+            list.forEach(p => (p.by_category || []).forEach(c => catSet.add(c.category)));
+            const cats = Array.from(catSet).slice(0, 8);
+            const series = cats.map((cat, i) => ({
+              name: cat,
+              type: 'line',
+              data: list.map(p => { const c = (p.by_category || []).find(x => x.category === cat); return c ? c.share_pct : 0; }),
+              smooth: true
+            }));
+            ch.setOption({
+              tooltip: { trigger: 'axis' },
+              legend: { bottom: 0, textStyle: { color: '#94a3b8' }, type: 'scroll' },
+              grid: { left: 50, right: 30, top: 24, bottom: 60 },
+              xAxis: { type: 'category', data: periods, axisLabel: { color: '#94a3b8' } },
+              yAxis: { type: 'value', name: '占比%', axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: '#334155' } } },
+              series: series
+            });
+          });
+        }
+      } catch (e) { tbody.innerHTML = '<tr><td colspan="4" class="error">加载失败</td></tr>'; }
+    }
+    async function loadInventoryTurnoverSummary() {
+      const kpiEl = document.getElementById('invTurnoverKpi');
+      if (!kpiEl) return;
+      kpiEl.innerHTML = '<div class="loading">加载中...</div>';
+      try {
+        const r = await fetch(API + '/api/inventory_turnover_summary?' + queryParams());
+        const d = await r.json();
+        kpiEl.innerHTML = `
+          <div class="kpi-card"><div class="label">期末库存金额</div><div class="value">${fmtNum(d.total_stock_amount || 0)}</div></div>
+          <div class="kpi-card"><div class="label">周期销售成本</div><div class="value">${fmtNum(d.period_cost_amount || 0)}</div></div>
+          <div class="kpi-card"><div class="label">周转天数</div><div class="value">${d.turnover_days != null ? d.turnover_days : '-'}</div></div>
+          <div class="kpi-card"><div class="label">统计天数</div><div class="value">${d.days != null ? d.days : '-'}</div></div>
+        `;
+      } catch (e) { kpiEl.innerHTML = '<div class="error">加载失败</div>'; }
+    }
+    async function loadDataQuality() {
+      const kpiEl = document.getElementById('dataQualityKpi');
+      const sampleEl = document.getElementById('dataQualitySample');
+      if (!kpiEl) return;
+      kpiEl.innerHTML = '<div class="loading">加载中...</div>';
+      try {
+        const r = await fetch(API + '/api/data_quality');
+        const d = await r.json();
+        kpiEl.innerHTML = `
+          <div class="kpi-card"><div class="label">成本缺失(有销无成本)条数</div><div class="value">${d.missing_cost_rows != null ? d.missing_cost_rows : 0}</div></div>
+          <div class="kpi-card"><div class="label">售价缺失(有量无价)条数</div><div class="value">${d.missing_price_rows != null ? d.missing_price_rows : 0}</div></div>
+          <div class="kpi-card"><div class="label">同SKU多品类异常数</div><div class="value">${d.inconsistent_category_sku_count != null ? d.inconsistent_category_sku_count : 0}</div></div>
+        `;
+        const sample = d.inconsistent_sku_sample || [];
+        if (sampleEl) sampleEl.textContent = sample.length > 0 ? '同 SKU 多品类示例编码: ' + sample.slice(0, 10).join(', ') : '无同 SKU 多品类异常样本。';
+      } catch (e) { kpiEl.innerHTML = '<div class="error">加载失败</div>'; if (sampleEl) sampleEl.textContent = ''; }
+    }
+    var bizBlockIds = { return_gift: 'bizReturnGift', brand: 'bizBrand', supplier: 'bizSupplier', price_band: 'bizPriceBand', turnover: 'bizTurnover', abc: 'bizAbc', negative_margin: 'bizNegativeMargin', category_trend: 'bizCategoryTrend', inv_turnover: 'bizInvTurnover', data_quality: 'bizDataQuality' };
+    function showBizBlock(id) {
+      currentBizSub = id || currentBizSub;
+      document.querySelectorAll('.biz-block').forEach(el => { el.style.display = 'none'; });
+      const bid = bizBlockIds[id];
+      if (bid) { const el = document.getElementById(bid); if (el) el.style.display = 'block'; }
+      document.querySelectorAll('.biz-sub').forEach(b => { b.classList.remove('active'); if (b.dataset.biz === id) b.classList.add('active'); });
+    }
+    function loadBizSub(sub) {
+      const f = { return_gift: loadReturnGiftSummary, brand: loadBrandSummary, supplier: loadSupplierSummary, price_band: loadPriceBandSummary, turnover: loadSkuTurnover, abc: loadSkuAbc, negative_margin: loadNegativeMarginDetail, category_trend: loadCategoryStructureTrend, inv_turnover: loadInventoryTurnoverSummary, data_quality: loadDataQuality }[sub];
+      if (f) f();
     }
 
     function fmtAxisVal(v) {
@@ -1493,6 +1898,7 @@
       loadDowChart();
       currentInvPage = 1;
       loadInvAlert(1);
+      if (document.querySelector('.page-panel.active[data-page="biz"]')) loadBizSub(currentBizSub);
     }
 
     function updatePeriodTabActive() {
@@ -1519,6 +1925,7 @@
       await loadProducts();
       await loadDateRange();
       loadDataStatus();
+      loadAuthUser();
       updatePeriodTabActive();
       updateExportLinks();
       await Promise.all([loadKpi(), loadPie(), loadBar(), loadCategoryRank(), loadProfitDetail(), loadProductDetail(1), loadInvAlert(), loadTrendAnalysis(), loadDowChart()]);
@@ -1551,6 +1958,8 @@
           document.querySelectorAll('.page-panel').forEach(p => p.classList.remove('active'));
           const panel = document.querySelector('.page-panel[data-page="' + page + '"]');
           if (panel) panel.classList.add('active');
+          if (page === 'tax') loadTaxBurdenSummary();
+          if (page === 'biz') { loadBizDataStatus(); showBizBlock('return_gift'); loadReturnGiftSummary(); }
           if (page === 'overview' && typeof echarts !== 'undefined') {
             ['pieChart', 'barChart', 'dowChart'].forEach(id => {
               const el = document.getElementById(id);
@@ -1560,6 +1969,23 @@
               }
             });
           }
+        });
+      });
+
+      document.querySelectorAll('.biz-sub').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const sub = btn.dataset.biz;
+          if (!sub) return;
+          showBizBlock(sub);
+          loadBizSub(sub);
+        });
+      });
+      document.querySelectorAll('.cat-trend-gran').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.cat-trend-gran').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          categoryTrendGran = btn.dataset.gran || 'week';
+          loadCategoryStructureTrend();
         });
       });
 
@@ -1639,6 +2065,7 @@
           loadTrendAnalysis();
           loadDowChart();
           loadInvAlert(1);
+          if (document.querySelector('.page-panel.active[data-page="biz"]')) loadBizSub(currentBizSub);
         });
       });
 

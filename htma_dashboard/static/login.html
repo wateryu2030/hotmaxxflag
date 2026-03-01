@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>登录 - 好特卖运营看板</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 16px;
+      padding: 40px;
+      max-width: 400px;
+      width: 100%;
+      text-align: center;
+    }
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 8px;
+      color: #f8fafc;
+    }
+    .sub {
+      color: #94a3b8;
+      font-size: 0.9rem;
+      margin-bottom: 32px;
+    }
+    .btn-feishu {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      padding: 14px 24px;
+      background: #1d4ed8;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .btn-feishu:hover { background: #2563eb; }
+    .btn-feishu:disabled { background: #64748b; cursor: not-allowed; }
+    .btn-wecom {
+      margin-top: 12px;
+      background: #334155;
+      color: #94a3b8;
+      cursor: not-allowed;
+    }
+    .error {
+      margin-top: 16px;
+      padding: 12px;
+      background: rgba(248, 113, 113, 0.15);
+      border: 1px solid #f87171;
+      border-radius: 8px;
+      color: #fca5a5;
+      font-size: 0.9rem;
+    }
+    .tip {
+      margin-top: 24px;
+      color: #64748b;
+      font-size: 0.85rem;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>好特卖运营看板</h1>
+    <p class="sub">请使用飞书或企业微信扫码登录</p>
+    <button type="button" class="btn-feishu" id="btnFeishu">飞书扫码登录</button>
+    <button type="button" class="btn-feishu btn-wecom" disabled>企业微信扫码登录（敬请期待）</button>
+    <div id="error" class="error" style="display:none;"></div>
+    <p class="tip">登录后即可查看经营数据与 AI 分析。数据仅限授权人员访问。</p>
+    <p class="tip" style="margin-top:8px;">若提示「没有 hotmaxxblog 使用权限」或需选择企业，请联系管理员在飞书开放平台为贵司开通该应用可用性（见文档：飞书扫码登录配置）。</p>
+  </div>
+  <script>
+    (function () {
+      const btn = document.getElementById('btnFeishu');
+      const errEl = document.getElementById('error');
+      function showError(msg) {
+        errEl.textContent = msg || '登录失败';
+        errEl.style.display = 'block';
+      }
+      function hideError() {
+        errEl.style.display = 'none';
+      }
+      btn.addEventListener('click', async function () {
+        hideError();
+        btn.disabled = true;
+        btn.textContent = '跳转中…';
+        try {
+          const base = window.location.origin;
+          const next = new URLSearchParams(window.location.search).get('next') || '/';
+          const r = await fetch(base + '/api/auth/feishu_url?next=' + encodeURIComponent(next));
+          const d = await r.json();
+          if (d.success && d.url) {
+            window.location.href = d.url;
+            return;
+          }
+          showError(d.message || '获取登录链接失败');
+        } catch (e) {
+          showError('网络错误：' + e.message);
+        }
+        btn.disabled = false;
+        btn.textContent = '飞书扫码登录';
+      });
+      const params = new URLSearchParams(window.location.search);
+      const error = params.get('error');
+      if (error) {
+        showError(decodeURIComponent(error));
+      }
+    })();
+  </script>
+</body>
+</html>

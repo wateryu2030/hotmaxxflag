@@ -33,6 +33,7 @@
   <h1>数据导入</h1>
   <div class="nav">
     <a href="/">← 返回看板</a>
+    <span id="authUserBar" style="margin-left:12px;color:#94a3b8;"></span>
   </div>
   <div class="data-status-bar" id="dataStatusBar">
     <span id="dataStatusText">数据加载中...</span>
@@ -40,7 +41,8 @@
 
   <div class="section">
     <p class="tip" style="margin-bottom:12px;padding:10px;background:#0f172a;border-radius:6px;border:1px solid #334155;">
-      <strong>说明：</strong>只要通过当前网址（如 htma.greatagain.com.cn 或本机 127.0.0.1:5002）打开本页，上传的数据<strong>一律导入到该网址对应服务器的数据库</strong>，与您使用的电脑无关。外网访问时导入到跑看板的那台机器，不会导入到您本机。
+      <strong>说明：</strong>只要通过当前网址（如 htma.greatagain.com.cn 或本机 127.0.0.1:5002）打开本页，上传的数据<strong>一律导入到该网址对应服务器的数据库</strong>，与您使用的电脑无关。外网访问时导入到跑看板的那台机器，不会导入到您本机。<br/>
+      <strong>全列导入：</strong>销售/库存导入会将 Excel 中<strong>所有可识别列</strong>写入 MySQL（按表头或标准列位），缺列或空单元格以 NULL/0 写入，保证数据完整供经营分析使用。
     </p>
     <h2>上传 Excel 文件（覆盖原有数据）</h2>
     <form id="importForm">
@@ -68,6 +70,11 @@
         <input type="file" name="profit" accept=".xls,.xlsx" />
         <span style="color:#64748b;font-size:0.85rem;">（大类名称、类别名称、销售金额、参考进价金额）</span>
       </div>
+      <div class="file-row">
+        <label>税率负担表</label>
+        <input type="file" name="tax_burden" accept=".xls,.xlsx" />
+        <span style="color:#64748b;font-size:0.85rem;">（编码、名称、毛利率、前台显示、微小店状态、税收分类编码、税率；同编码覆盖，新编码新增）</span>
+      </div>
       <div class="file-row" style="margin-top:16px;">
         <label>列映射（默认金额/进价为单价，销售额=金额×数量）：</label>
         <div style="display:flex;flex-wrap:wrap;gap:12px 16px;align-items:center;">
@@ -79,9 +86,11 @@
       <p class="tip">文件名需包含对应关键词。至少上传一个文件。导入前会清空对应表，再写入新数据。</p>
       <p class="tip" style="color:#fbbf24;">① 外网若「Failed to fetch」可一次只传一个文件。② <strong>销售日报与销售汇总请同一次一起上传</strong>（否则第二次会清空第一次）；同传时相同日期+货号会覆盖不累加，避免销售额翻倍。③ 库存金额列已支持千分位。</p>
       <button type="submit" class="btn" id="submitBtn">开始导入</button>
+      <button type="button" class="btn btn-secondary" id="btnImportFromDownloads" style="margin-left:8px;" title="从服务器配置的下载目录自动导入 Excel（含去重与刷新）">从下载目录自动导入</button>
       <button type="button" class="btn btn-secondary" id="btnRepairSwap" style="margin-left:8px;">修复：对调金额/成本</button>
       <button type="button" class="btn btn-secondary" id="btnRepairUnit" style="margin-left:8px;">修复：按单价×数量重算</button>
     </form>
+    <p class="tip" style="margin-top:8px;">「从下载目录自动导入」：将销售日报/销售汇总/实时库存 Excel 放入服务器上的下载目录（默认项目/downloads 或环境变量 IMPORT_DOWNLOADS_DIR），点击后自动导入、去重并刷新毛利/品类/商品，确保数据完整可靠。</p>
     <div id="result" class="result" style="display:none;"></div>
   </div>
 
@@ -98,7 +107,7 @@
 
       const fd = new FormData();
       let hasFile = false;
-      for (const key of ['sale_daily', 'sale_summary', 'stock', 'category', 'profit']) {
+      for (const key of ['sale_daily', 'sale_summary', 'stock', 'category', 'profit', 'tax_burden']) {
         const el = form.elements[key];
         if (el && el.files && el.files.length) {
           fd.append(key, el.files[0]);
@@ -148,6 +157,7 @@
           msg += `品类表(从销售透视): ${d.category_refreshed ?? '-'} 条\n`;
           msg += `毛利汇总: ${d.profit || 0} 条\n`;
           msg += `毛利表刷新: ${d.profit_refreshed || 0} 条\n`;
+          msg += `税率负担表: ${d.tax_burden || 0} 条（表内合计: ${d.tax_burden_total ?? '-'} 条）\n`;
           msg += `商品表同步: ${d.products_synced ?? '-'} 条\n`;
           msg += `品类毛利表同步: ${d.category_synced ?? '-'} 条\n`;
           msg += `--- 当前数据（可核对：销售日报约112579条/金额10114734.17，库存48356条/金额26537604.6）---\n`;
@@ -203,6 +213,45 @@
     document.getElementById('btnRepairSwap').onclick = () => callRepair('/api/repair_swap_amount_cost', '将对调销售额与成本列并重算毛利，是否继续？');
     document.getElementById('btnRepairUnit').onclick = () => callRepair('/api/repair_recalc_unit_price', '将按「单价×数量」重算销售额与成本，是否继续？');
 
+    document.getElementById('btnImportFromDownloads').onclick = async () => {
+      const btn = document.getElementById('btnImportFromDownloads');
+      const resultEl = document.getElementById('result');
+      btn.disabled = true;
+      resultEl.style.display = 'block';
+      resultEl.className = 'result';
+      resultEl.textContent = '正在从下载目录导入（查找 Excel → 导入 → 去重 → 刷新），请稍候…';
+      try {
+        const r = await fetch(apiBase() + '/api/import_from_downloads', { method: 'POST', headers: { 'Accept': 'application/json' } });
+        const text = await r.text();
+        let d;
+        try { d = JSON.parse(text); } catch (_) { d = { success: false, message: text.slice(0, 200) }; }
+        loadDataStatus();
+        if (d.success) {
+          let msg = '从下载目录导入完成\n';
+          msg += `目录: ${d.directory || '-'}\n`;
+          msg += `销售日报: ${d.sale_daily || 0} 条  销售汇总: ${d.sale_summary || 0} 条  库存: ${d.stock || 0} 条\n`;
+          msg += `去重: ${d.dedup_done ? '已执行' : '未执行/失败'}\n`;
+          msg += `--- 当前数据 ---\n`;
+          msg += `销售表: ${d.sale_total || 0} 条，销售金额合计: ${(d.sale_total_amount != null) ? Number(d.sale_total_amount).toLocaleString('zh-CN') : '-'}\n`;
+          msg += `库存表: ${d.stock_total || 0} 条，库存金额合计: ${(d.stock_total_amount != null) ? Number(d.stock_total_amount).toLocaleString('zh-CN') : '-'}\n`;
+          msg += `毛利表: ${d.profit_total || 0} 条  日期范围: ${d.date_range || '-'}`;
+          if (d.errors && d.errors.length) msg += '\n警告: ' + d.errors.join('; ');
+          if (d.diagnostics && d.diagnostics.length) msg += '\n' + d.diagnostics.join('; ');
+          resultEl.textContent = msg;
+          resultEl.className = 'result success';
+        } else {
+          resultEl.textContent = (d.message || '导入失败') + (d.hint ? '\n' + d.hint : '') + (d.directory ? '\n目录: ' + d.directory : '');
+          resultEl.className = 'result error';
+        }
+      } catch (e) {
+        loadDataStatus();
+        resultEl.textContent = '请求失败: ' + e.message;
+        resultEl.className = 'result error';
+      }
+      resultEl.style.display = 'block';
+      btn.disabled = false;
+    };
+
     // 与看板一致：始终用当前页面的域名请求接口，保证本机/外网都导入到同一台服务器
     function apiBase() {
       const o = window.location.origin;
@@ -221,6 +270,7 @@
       } catch (e) { el.textContent = '数据状态加载失败'; }
     }
     loadDataStatus();
+    fetch(apiBase() + '/api/auth/me').then(function(r){ if(r.ok) return r.json(); }).then(function(d){ var bar = document.getElementById('authUserBar'); if(bar && d && d.name) bar.innerHTML = '欢迎，' + (d.name||'').replace(/</g,'&lt;') + ' <a href="/api/auth/logout" style="color:#38bdf8;">退出</a>'; }).catch(function(){});
 
     async function doPreview(type) {
       const input = type === 'sale_summary' ? document.getElementById('fileSaleSummary') : document.getElementById('fileSaleDaily');
@@ -249,16 +299,21 @@
             resultEl.className = 'result error';
           } else {
             let msg = `原始: ${p.raw_rows}行×${p.raw_cols}列 → 保留${p.trimmed_rows}行, 表头行${p.header_row}, 数据${p.data_rows}行\n`;
-            msg += `检测列: 货号=${p.cols.sku}, 日期=${p.cols.date}, 金额=${p.cols.amount}, 成本=${p.cols.cost}\n`;
-            msg += `前3行: ${JSON.stringify(p.sample, null, 2)}`;
+            msg += `检测列: 货号=${p.cols.sku}, 日期=${p.cols.date}, 金额=${p.cols.amount}, 成本=${p.cols.cost}`;
+            if (p.cols.return_qty != null) msg += `, 退货数量=${p.cols.return_qty}, 退货金额=${p.cols.return_amount}, 赠送数量=${p.cols.gift_qty}, 赠送金额=${p.cols.gift_amount}`;
+            msg += `\n前3行: ${JSON.stringify(p.sample, null, 2)}`;
+            if (p.return_gift_cols_detected) msg += '\n✅ 退货/赠送列已识别，经营分析可显示退货与赠送数据';
+            else msg += '\n❌ 未识别退货/赠送列（表头需含「退货数量」「退货金额」「赠送数量」「赠送金额」），经营分析中退货/赠送将为 0';
             if (p.issues && p.issues.length) msg += '\n⚠️ ' + p.issues.join('; ');
             resultEl.textContent = msg;
             resultEl.className = 'result success';
           }
         } else if (d.ok) {
           let msg = `原始: ${d.raw_rows}行×${d.raw_cols}列 → 保留${d.trimmed_rows}行, 表头行${d.header_row}, 数据${d.data_rows}行\n`;
-          msg += `检测列: 货号=${d.cols.sku}, 日期=${d.cols.date}, 金额=${d.cols.amount}, 成本=${d.cols.cost}\n`;
-          msg += `前3行: ${JSON.stringify(d.sample, null, 2)}`;
+          msg += `检测列: 货号=${d.cols.sku}, 日期=${d.cols.date}, 金额=${d.cols.amount}, 成本=${d.cols.cost}`;
+          if (d.cols && d.cols.return_qty != null) msg += `, 退货/赠送列=${d.cols.return_qty}/${d.cols.return_amount}/${d.cols.gift_qty}/${d.cols.gift_amount}`;
+          msg += `\n前3行: ${JSON.stringify(d.sample, null, 2)}`;
+          if (d.return_gift_cols_detected) msg += '\n✅ 退货/赠送列已识别';
           if (d.issues && d.issues.length) msg += '\n⚠️ ' + d.issues.join('; ');
           resultEl.textContent = msg;
           resultEl.className = 'result success';

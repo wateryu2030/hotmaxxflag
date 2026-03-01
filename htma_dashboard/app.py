@@ -5,24 +5,177 @@
 直接读取 MySQL htma_dashboard，提供 API 与看板页面。
 """
 import os
+import urllib.parse
 from datetime import date, timedelta, datetime
 
-# 加载 .env（货盘比价等需 JUHE_PRICE_KEY 等）
+# 加载 .env（货盘比价、飞书登录等）；多路径、先 dotenv 再逐键解析，确保飞书登录能读到
+_env_dir = os.path.dirname(os.path.abspath(os.path.realpath(__file__)))
+_project_root = os.path.abspath(os.path.join(_env_dir, ".."))
+_env_path = os.path.join(_project_root, ".env")
+_ENV_KEYS = ("FEISHU_APP_ID", "FEISHU_APP_SECRET", "HTMA_PUBLIC_URL", "FLASK_SECRET_KEY")
+
+
+def _load_env_from_file(path, force_keys=None):
+    """从 path 读 .env，将 _ENV_KEYS 注入 os.environ。force_keys 若给出则强制覆盖这些键。"""
+    if not path or not os.path.isfile(path):
+        return
+    force_set = set(force_keys or [])
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                line = line.strip().strip("\r\n").strip("\r")
+                if not line or line.startswith("#"):
+                    continue
+                if "=" not in line:
+                    continue
+                key, _, val = line.partition("=")
+                key = key.strip().lstrip("\ufeff")  # BOM
+                key = key.strip()
+                val = val.strip().strip("'\"").strip()
+                if key not in _ENV_KEYS:
+                    continue
+                if not val:
+                    continue
+                if key in force_set or not (os.environ.get(key) or "").strip():
+                    os.environ[key] = val
+    except Exception:
+        pass
+
+
+def _read_feishu_from_env_file(path):
+    """从指定路径的 .env 文件读取飞书配置，返回 (app_id, app_secret)。"""
+    out_id, out_secret = "", ""
+    if not path or not os.path.isfile(path):
+        return out_id, out_secret
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                line = line.strip().strip("\r\n").strip("\r")
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, val = line.partition("=")
+                key = key.strip().lstrip("\ufeff").strip()
+                val = val.strip().strip("'\"").strip()
+                if key == "FEISHU_APP_ID" and val:
+                    out_id = val
+                elif key == "FEISHU_APP_SECRET" and val:
+                    out_secret = val
+    except Exception:
+        pass
+    return out_id, out_secret
+
+
+def _read_feishu_from_project_env():
+    """从项目根 .env 强制读取飞书配置；多路径尝试（__file__ 与 getcwd）。"""
+    cwd = os.getcwd()
+    candidates = [
+        _env_path,
+        os.path.join(cwd, ".env"),
+        os.path.abspath(os.path.join(cwd, "..", ".env")),
+    ]
+    for p in candidates:
+        if not p:
+            continue
+        a, b = _read_feishu_from_env_file(p)
+        if a and b:
+            return a, b
+    return "", ""
+
+
 try:
     from dotenv import load_dotenv
-    load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+    load_dotenv(_env_path)
 except ImportError:
     pass
+# 先强制从项目根 .env 注入飞书相关（覆盖空值），再按原逻辑补其他
+_load_env_from_file(_env_path, force_keys=("FEISHU_APP_ID", "FEISHU_APP_SECRET"))
+for _p in (_env_path, os.path.join(os.getcwd(), ".env"), os.path.abspath(os.path.join(os.getcwd(), "..", ".env"))):
+    _load_env_from_file(_p)
+import subprocess
 import tempfile
 import pymysql
-from flask import Flask, jsonify, send_from_directory, request
+from flask import Flask, Response, jsonify, send_from_directory, request, session, redirect
 from werkzeug.utils import secure_filename
 
-from import_logic import import_sale_daily, import_sale_summary, import_stock, import_category, import_profit, refresh_profit, refresh_category_from_sale, sync_products_table, sync_category_table, preview_sale_excel
+from import_logic import import_sale_daily, import_sale_summary, import_stock, import_category, import_profit, import_tax_burden, refresh_profit, refresh_category_from_sale, sync_products_table, sync_category_table, preview_sale_excel
 from analytics import build_insights, category_rank_data
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024  # 200MB，避免大 Excel 413
+app.config["PROJECT_ROOT"] = _project_root
+app.config["ENV_PATH"] = _env_path
+# 飞书登录：启动时从项目根 .env 直接读 + os.environ 写入 app.config（保证子进程未继承 env 时也能用）
+_direct_id, _direct_secret = _read_feishu_from_project_env()
+app.config["FEISHU_APP_ID"] = (_direct_id or (os.environ.get("FEISHU_APP_ID") or "").strip()).strip()
+app.config["FEISHU_APP_SECRET"] = (_direct_secret or (os.environ.get("FEISHU_APP_SECRET") or "").strip()).strip()
+if not app.config["FEISHU_APP_ID"]:
+    for _p in (_env_path, os.path.abspath(os.path.join(os.getcwd(), "..", ".env"))):
+        _load_env_from_file(_p)
+        app.config["FEISHU_APP_ID"] = (os.environ.get("FEISHU_APP_ID") or "").strip()
+        app.config["FEISHU_APP_SECRET"] = (os.environ.get("FEISHU_APP_SECRET") or "").strip()
+        if app.config["FEISHU_APP_ID"]:
+            break
+if not app.config["FEISHU_APP_ID"] and (os.environ.get("FEISHU_APP_ID") or "").strip():
+    app.config["FEISHU_APP_ID"] = (os.environ.get("FEISHU_APP_ID") or "").strip()
+    app.config["FEISHU_APP_SECRET"] = (os.environ.get("FEISHU_APP_SECRET") or "").strip()
+app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY") or os.environ.get("SECRET_KEY") or "htma-dev-secret-change-in-production"
+# 登录态：session cookie 同站有效，HTTPS 下可设 SESSION_COOKIE_SECURE=1
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+if os.environ.get("SESSION_COOKIE_SECURE", "").strip().lower() in ("1", "true", "yes"):
+    app.config["SESSION_COOKIE_SECURE"] = True
+else:
+    _pu = (os.environ.get("HTMA_PUBLIC_URL") or os.environ.get("PUBLIC_URL") or "").strip()
+    if _pu.lower().startswith("https://"):
+        app.config["SESSION_COOKIE_SECURE"] = True
+
+
+def _auth_enabled():
+    """是否启用登录（配置了飞书应用则启用）；优先以 app.config 为准，避免进程未继承 shell 变量"""
+    try:
+        from auth import is_feishu_configured
+        return is_feishu_configured(
+            app_id=app.config.get("FEISHU_APP_ID"),
+            app_secret=app.config.get("FEISHU_APP_SECRET"),
+        )
+    except Exception:
+        return False
+
+
+def _is_logged_in():
+    return bool(session.get("user_id") or session.get("open_id"))
+
+
+@app.before_request
+def _require_auth():
+    """未配置登录时放行；已配置则未登录用户只能访问登录页与 auth 接口，必须登录后才能看运营看板"""
+    # 从 app.config 回填飞书配置到 os.environ（解决启动时 .env 未加载到进程的情况）
+    for _k in ("FEISHU_APP_ID", "FEISHU_APP_SECRET"):
+        _v = (app.config.get(_k) or "").strip()
+        if _v and not (os.environ.get(_k) or "").strip():
+            os.environ[_k] = _v
+    if not _auth_enabled():
+        return None
+    path = request.path.rstrip("/") or "/"
+    # 放行：根路径（由路由内根据是否登录决定展示登录页或看板）、登录页、auth 回调、auth 接口、健康检查、静态资源
+    if path == "/":
+        return None
+    if path == "/login":
+        return None
+    if path.startswith("/api/auth/"):
+        return None
+    if path == "/api/health":
+        return None
+    if path.startswith("/static/") or (path != "/" and not path.startswith("/api/") and "." in path.split("/")[-1]):
+        return None
+    if _is_logged_in():
+        return None
+    # 未登录：页面请求重定向到登录页，API 返回 401
+    if path in ("/import") or path.startswith("/api/"):
+        if request.path.startswith("/api/"):
+            return jsonify({"success": False, "message": "请先登录", "login_required": True}), 401
+        return redirect("/login?next=" + (urllib.parse.quote(request.url) if request.url else "/"))
+    return None
 
 
 @app.after_request
@@ -40,15 +193,190 @@ def api_options(path):
     return "", 204
 
 
+def _get_tax_burden_data():
+    """税率计算数据：按税率汇总 销售额、不含税、税额。返回 dict 或抛出异常。"""
+    date_cond, _, params, category_cond, _ = _query_filters()
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            try:
+                cur.execute("SELECT 1 FROM t_htma_tax_burden LIMIT 1")
+            except Exception:
+                return {
+                    "total_sale_amount": 0, "total_tax_amount": 0, "tax_rate_pct": 0,
+                    "by_tax_rate": [], "date_range": "",
+                    "message": "请先导入税率负担表并执行 scripts/12_create_tax_burden_table.sql",
+                }
+            # 按税率汇总：每行取匹配到的税率，计算税额；再在 Python 里按税率分组得 销售额、不含税、税额
+            cur.execute(f"""
+                SELECT
+                    COALESCE(NULLIF(TRIM(s.category_large), ''), NULLIF(TRIM(s.category_mid), ''), NULLIF(TRIM(s.category_small), ''), NULLIF(TRIM(s.category), ''), '未分类') AS category_display,
+                    SUM(s.sale_amount) AS sale_amount,
+                    COALESCE(
+                        (SELECT tb.tax_rate FROM t_htma_category c JOIN t_htma_tax_burden tb ON tb.code = c.category_small_code WHERE TRIM(COALESCE(c.category_small,'')) != '' AND c.category_small = COALESCE(s.category_small, s.category) LIMIT 1),
+                        (SELECT tb.tax_rate FROM t_htma_category c JOIN t_htma_tax_burden tb ON tb.code = c.category_mid_code WHERE TRIM(COALESCE(c.category_mid,'')) != '' AND c.category_mid = COALESCE(s.category_mid, s.category) LIMIT 1),
+                        (SELECT tb.tax_rate FROM t_htma_category c JOIN t_htma_tax_burden tb ON tb.code = c.category_large_code WHERE TRIM(COALESCE(c.category_large,'')) != '' AND c.category_large = COALESCE(s.category_large, s.category) LIMIT 1),
+                        0
+                    ) AS tax_rate
+                FROM t_htma_sale s
+                WHERE s.store_id = %s AND {date_cond}{category_cond}
+                GROUP BY category_display, tax_rate
+                ORDER BY sale_amount DESC
+            """, params)
+            rows = cur.fetchall()
+        # 按税率分组汇总，并保留各税率下的品类明细（销售额、不含税、税额）
+        rate_map = {}
+        for r in rows:
+            sale_amt = float(r["sale_amount"] or 0)
+            rate = float(r["tax_rate"] or 0)
+            key = round(rate, 4)
+            if key not in rate_map:
+                rate_map[key] = {"sale_amount": 0, "tax_amount": 0, "categories": []}
+            # 税额 = 销售额 - 销售额/(1+税率)
+            if rate >= 0 and rate < 1:
+                excl = sale_amt / (1 + rate)
+                tax_row = round(sale_amt - excl, 2)
+            else:
+                tax_row = round(sale_amt * rate, 2)
+            rate_map[key]["sale_amount"] += sale_amt
+            rate_map[key]["tax_amount"] += tax_row
+            rate_map[key]["categories"].append({
+                "category": (r["category_display"] or "未分类").strip(),
+                "sale_amount": round(sale_amt, 2),
+                "amount_excluding_tax": round(sale_amt - tax_row, 2),
+                "tax_amount": tax_row,
+            })
+        by_tax_rate = []
+        total_sale = 0.0
+        total_tax = 0.0
+        for rate in sorted(rate_map.keys(), reverse=True):
+            sale_amt = round(rate_map[rate]["sale_amount"], 2)
+            tax_amt = round(rate_map[rate]["tax_amount"], 2)
+            excl_amt = round(sale_amt - tax_amt, 2)
+            total_sale += sale_amt
+            total_tax += tax_amt
+            # 品类明细按税额从高到低排序
+            cats = sorted(rate_map[rate]["categories"], key=lambda x: -(x["tax_amount"] or 0))
+            by_tax_rate.append({
+                "tax_rate": rate,
+                "tax_rate_pct": round(rate * 100, 2),
+                "sale_amount": sale_amt,
+                "amount_excluding_tax": excl_amt,
+                "tax_amount": tax_amt,
+                "by_category": cats,
+            })
+        tax_rate_pct = round((total_tax / total_sale * 100), 2) if total_sale else 0
+        start_d = request.args.get("start_date", "").strip()
+        end_d = request.args.get("end_date", "").strip()
+        period = request.args.get("period", "recent30")
+        date_range = f"{start_d} ~ {end_d}" if (start_d and end_d) else {"day": "今日", "week": "本周", "month": "本月", "recent30": "近30天"}.get(period, "近30天")
+        return {
+            "total_sale_amount": round(total_sale, 2),
+            "total_tax_amount": round(total_tax, 2),
+            "tax_rate_pct": tax_rate_pct,
+            "by_tax_rate": by_tax_rate,
+            "date_range": date_range,
+        }
+    except Exception as e:
+        raise
+    finally:
+        conn.close()
+
+
+@app.route("/api/tax_burden_summary", methods=["GET", "HEAD", "OPTIONS"])
+def api_tax_burden_summary():
+    """税率计算：按税率汇总 销售额、不含税、税额。GET 返回 JSON；OPTIONS 返回 204 避免 405。"""
+    if request.method == "OPTIONS":
+        return "", 204
+    if request.method == "HEAD":
+        return "", 200
+    try:
+        data = _get_tax_burden_data()
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"total_sale_amount": 0, "total_tax_amount": 0, "tax_rate_pct": 0, "by_tax_rate": [], "date_range": "", "error": str(e)}), 500
+
+
+@app.route("/api/tax_burden_export", methods=["GET"])
+def api_tax_burden_export():
+    """导出税率汇总：format=csv 返回 Excel 可打开的 CSV；format=pdf 返回 HTML 供打印为 PDF。"""
+    fmt = request.args.get("format", "csv").strip().lower()
+    try:
+        data = _get_tax_burden_data()
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+    if data.get("message") and not data.get("by_tax_rate"):
+        return jsonify({"success": False, "message": data.get("message")}), 400
+    by_tax_rate = data.get("by_tax_rate") or []
+    date_range = data.get("date_range", "")
+    total_sale = data.get("total_sale_amount", 0)
+    total_tax = data.get("total_tax_amount", 0)
+    total_excl = round(total_sale - total_tax, 2)
+
+    if fmt == "csv":
+        import csv
+        import io
+        buf = io.StringIO()
+        buf.write("\ufeff")
+        w = csv.writer(buf)
+        w.writerow(["税率", "销售额", "不含税", "税额"])
+        for row in by_tax_rate:
+            w.writerow([
+                str(row.get("tax_rate_pct", 0)) + "%",
+                row.get("sale_amount", 0),
+                row.get("amount_excluding_tax", 0),
+                row.get("tax_amount", 0),
+            ])
+        w.writerow(["合计", total_sale, total_excl, total_tax])
+        fname = f"税率负担汇总_{date_range.replace(' ', '').replace('~', '-')}.csv"
+        return Response(
+            buf.getvalue(),
+            mimetype="text/csv; charset=utf-8-sig",
+            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{fname}"},
+        )
+    if fmt == "pdf" or fmt == "html":
+        def _num(x):
+            if x is None:
+                return "0.00"
+            try:
+                return "{:,.2f}".format(float(x))
+            except (TypeError, ValueError):
+                return "0.00"
+        rows_html = "".join(
+            "<tr><td>{}%</td><td class='num'>{}</td><td class='num'>{}</td><td class='num'>{}</td></tr>".format(
+                row.get("tax_rate_pct", 0), _num(row.get("sale_amount")), _num(row.get("amount_excluding_tax")), _num(row.get("tax_amount"))
+            )
+            for row in by_tax_rate
+        )
+        safe_date_range = str(date_range).replace("<", "&lt;").replace(">", "&gt;") if date_range else ""
+        export_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+        html = (
+            "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>税率负担汇总</title>"
+            "<style>body{font-family:system-ui,sans-serif;margin:24px;} table{border-collapse:collapse;width:100%;} th,td{border:1px solid #333;padding:8px;text-align:left;} th{background:#eee;} .num{text-align:right;} @media print{body{margin:12px;}}</style></head><body>"
+            "<h2>税率负担汇总（" + safe_date_range + "）</h2>"
+            "<table><thead><tr><th>税率</th><th class=\"num\">销售额</th><th class=\"num\">不含税</th><th class=\"num\">税额</th></tr></thead><tbody>"
+            + rows_html +
+            "<tr><th>合计</th><td class=\"num\">" + _num(total_sale) + "</td><td class=\"num\">" + _num(total_excl) + "</td><td class=\"num\">" + _num(total_tax) + "</td></tr>"
+            "</tbody></table><p style=\"margin-top:16px;color:#666;\">导出时间：" + export_time + " · 使用浏览器「打印」→「另存为 PDF」保存为 PDF。</p></body></html>"
+        )
+        if fmt == "pdf":
+            return Response(html, mimetype="text/html; charset=utf-8", headers={"Content-Disposition": "inline; filename=tax_summary.html"})
+        return Response(html, mimetype="text/html; charset=utf-8")
+    return jsonify({"success": False, "error": "format 仅支持 csv 或 pdf"}), 400
+
+
 @app.errorhandler(404)
+@app.errorhandler(405)
 @app.errorhandler(500)
 @app.errorhandler(413)
 def json_error(e):
-    """API 请求返回 JSON；未知路径返回 404 避免 500；413 返回文件过大提示"""
+    """API 请求返回 JSON；405 方法不允许时也返回 JSON 避免前端解析到 HTML"""
     if request.path.startswith("/api/"):
         code = getattr(e, "code", 500)
         msg = str(e)
-        if code == 413:
+        if code == 405:
+            msg = "请求方法不允许，请使用 GET 或 POST"
+        elif code == 413:
             msg = "文件过大，请上传小于 200MB 的 Excel 文件"
         return jsonify({"success": False, "message": msg}), code
     code = getattr(e, "code", 500)
@@ -99,7 +427,142 @@ def get_conn():
 
 @app.route("/")
 def index():
+    """根路径：未登录展示登录页，已登录展示运营看板（登录前置，必须登录后才能看详细数据）"""
+    if not _is_logged_in():
+        return send_from_directory("static", "login.html")
     return send_from_directory("static", "index.html")
+
+
+@app.route("/login")
+def login_page():
+    """登录页：已登录则跳转到看板首页；未登录则展示飞书/企微扫码"""
+    if _is_logged_in():
+        next_url = request.args.get("next", "").strip()
+        return redirect(next_url if next_url.startswith("/") and not next_url.startswith("//") else "/")
+    return send_from_directory("static", "login.html")
+
+
+@app.route("/api/auth/me")
+def api_auth_me():
+    """当前登录用户信息；未登录返回 401"""
+    if not _is_logged_in():
+        return jsonify({"success": False, "login_required": True}), 401
+    return jsonify({
+        "success": True,
+        "user_id": session.get("open_id") or session.get("user_id"),
+        "name": session.get("user_name", ""),
+        "avatar_url": session.get("avatar_url"),
+    })
+
+
+def _feishu_callback_base_url():
+    """飞书回调 redirect_uri 的站点根 URL。代理/Cloudflare 后请设置 HTMA_PUBLIC_URL 与飞书控制台一致（如 https://htma.greatagain.com.cn）"""
+    base = (os.environ.get("HTMA_PUBLIC_URL") or os.environ.get("PUBLIC_URL") or "").strip()
+    if base:
+        return base.rstrip("/")
+    return request.url_root.rstrip("/")
+
+
+def _ensure_env_loaded():
+    """请求时若飞书未配置则再次从 .env 注入，并写入 app.config 供后续请求使用"""
+    if not (app.config.get("FEISHU_APP_ID") or "").strip() and (os.environ.get("FEISHU_APP_ID") or "").strip():
+        app.config["FEISHU_APP_ID"] = (os.environ.get("FEISHU_APP_ID") or "").strip()
+        app.config["FEISHU_APP_SECRET"] = (os.environ.get("FEISHU_APP_SECRET") or "").strip()
+    if not (app.config.get("FEISHU_APP_ID") or "").strip():
+        direct_id, direct_secret = _read_feishu_from_project_env()
+        if direct_id and direct_secret:
+            app.config["FEISHU_APP_ID"] = direct_id
+            app.config["FEISHU_APP_SECRET"] = direct_secret
+    if _auth_enabled():
+        return True
+    root = app.config.get("PROJECT_ROOT") or _project_root
+    candidates = [
+        app.config.get("ENV_PATH"),
+        os.path.join(root, ".env") if root else None,
+        os.path.join(os.getcwd(), ".env"),
+        os.path.abspath(os.path.join(os.getcwd(), "..", ".env")),
+    ]
+    for path in candidates:
+        if path:
+            _load_env_from_file(path, force_keys=("FEISHU_APP_ID", "FEISHU_APP_SECRET"))
+        if not (app.config.get("FEISHU_APP_ID") or "").strip() and (os.environ.get("FEISHU_APP_ID") or "").strip():
+            app.config["FEISHU_APP_ID"] = (os.environ.get("FEISHU_APP_ID") or "").strip()
+            app.config["FEISHU_APP_SECRET"] = (os.environ.get("FEISHU_APP_SECRET") or "").strip()
+        if _auth_enabled():
+            return True
+    return False
+
+
+@app.route("/api/auth/feishu_url")
+def api_auth_feishu_url():
+    """获取飞书授权 URL，前端跳转后用户扫码授权"""
+    _ensure_env_loaded()
+    env_path = app.config.get("ENV_PATH", "")
+    if env_path:
+        direct_id, direct_secret = _read_feishu_from_env_file(env_path)
+        if direct_id and direct_secret:
+            app.config["FEISHU_APP_ID"] = direct_id
+            app.config["FEISHU_APP_SECRET"] = direct_secret
+    feishu_id = (app.config.get("FEISHU_APP_ID") or "").strip()
+    feishu_secret = (app.config.get("FEISHU_APP_SECRET") or "").strip()
+    if not feishu_id or not feishu_secret:
+        return jsonify({
+            "success": False,
+            "message": "未配置飞书登录。请确认项目根目录 .env 中已填写 FEISHU_APP_ID 与 FEISHU_APP_SECRET，并完全重启看板（先 Ctrl+C 停掉再 npm run htma:run）",
+            "env_path": env_path,
+            "env_exists": os.path.isfile(env_path) if env_path else False,
+        }), 400
+    from auth import get_feishu_authorize_url
+    base = _feishu_callback_base_url()
+    redirect_uri = request.args.get("redirect_uri") or (base + "/api/auth/feishu_callback")
+    url, err = get_feishu_authorize_url(
+        redirect_uri,
+        state=request.args.get("state") or request.args.get("next"),  # 用 state 携带登录后跳转路径
+        app_id=feishu_id,
+        app_secret=feishu_secret,
+    )
+    if err:
+        return jsonify({"success": False, "message": err}), 400
+    return jsonify({"success": True, "url": url})
+
+
+@app.route("/api/auth/feishu_callback")
+def api_auth_feishu_callback():
+    """飞书授权回调：code 换用户信息并写 session，再重定向到首页或 next"""
+    from auth import feishu_exchange_code_and_user
+    code = request.args.get("code")
+    if not code:
+        return redirect("/login?error=missing_code")
+    base = _feishu_callback_base_url()
+    redirect_uri = base + "/api/auth/feishu_callback"
+    user, err = feishu_exchange_code_and_user(
+        code,
+        redirect_uri,
+        app_id=app.config.get("FEISHU_APP_ID"),
+        app_secret=app.config.get("FEISHU_APP_SECRET"),
+    )
+    if err:
+        return redirect("/login?error=" + urllib.parse.quote(err))
+    session["open_id"] = user["open_id"]
+    session["user_id"] = user["open_id"]
+    session["user_name"] = user.get("name", "")
+    session["avatar_url"] = user.get("avatar_url") or ""
+    session.permanent = True
+    next_url = (request.args.get("next", "").strip() or request.args.get("state", "").strip() or "/")
+    if not next_url or not next_url.startswith("/") or next_url.startswith("//"):
+        next_url = "/"
+    if next_url.startswith("http"):
+        allow_base = base
+        if not next_url.startswith(allow_base):
+            next_url = "/"
+    return redirect(next_url or "/")
+
+
+@app.route("/api/auth/logout")
+def api_auth_logout():
+    """退出登录"""
+    session.clear()
+    return redirect("/login")
 
 
 @app.route("/undefined")
@@ -141,11 +604,18 @@ def api_import():
                 return jsonify({"success": False, "error": "仅支持 .xls / .xlsx"}), 400
         return jsonify({"success": False, "error": "请选择销售日报或销售汇总文件"}), 400
 
-    if "sale_daily" not in request.files and "sale_summary" not in request.files and "stock" not in request.files and "category" not in request.files and "profit" not in request.files:
+    # 至少有一个已选中的文件（有 filename），避免仅选税率表时被误判为“未上传”
+    def _has_any_file():
+        for key in ("sale_daily", "sale_summary", "stock", "category", "profit", "tax_burden"):
+            f = request.files.get(key)
+            if f and getattr(f, "filename", None) and str(f.filename).strip():
+                return True
+        return False
+    if not _has_any_file():
         return jsonify({"success": False, "message": "请至少上传一个 Excel 文件"}), 400
 
     conn = None
-    result = {"sale_daily": 0, "sale_summary": 0, "stock": 0, "category": 0, "profit": 0, "profit_refreshed": 0, "errors": []}
+    result = {"sale_daily": 0, "sale_summary": 0, "stock": 0, "category": 0, "profit": 0, "profit_refreshed": 0, "tax_burden": 0, "errors": []}
 
     try:
         conn = get_conn()
@@ -219,6 +689,8 @@ def api_import():
                                 result.setdefault("diagnostics", []).append(diag)
                         elif key == "category":
                             result["category"] = import_category(tmp.name, conn)
+                        elif key == "tax_burden":
+                            result["tax_burden"] = import_tax_burden(tmp.name, conn)
                         elif key == "profit":
                             cnt, diag = import_profit(tmp.name, conn)
                             result["profit"] = cnt
@@ -286,6 +758,11 @@ def api_import():
             result["stock_total_amount"] = 0.0
         cur.execute("SELECT COUNT(*) FROM t_htma_profit")
         result["profit_total"] = cur.fetchone()["COUNT(*)"]
+        try:
+            cur.execute("SELECT COUNT(*) FROM t_htma_tax_burden")
+            result["tax_burden_total"] = cur.fetchone()["COUNT(*)"]
+        except Exception:
+            result["tax_burden_total"] = 0
         cur.execute("SELECT MIN(data_date), MAX(data_date) FROM t_htma_sale")
         dr = cur.fetchone()
         if dr["MIN(data_date)"]:
@@ -316,6 +793,174 @@ def api_import():
             "message": str(e),
             "data_import_target": "server",
             "traceback": tb[-2000:] if len(tb) > 2000 else tb  # 限制长度，避免响应过大导致前端超时
+        }), 500
+
+
+def _import_downloads_directory():
+    """服务端「从下载目录导入」使用的目录：环境变量 IMPORT_DOWNLOADS_DIR 或 项目/downloads"""
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    return os.environ.get("IMPORT_DOWNLOADS_DIR") or os.path.join(root, "downloads")
+
+
+def _find_excel_files_in_dir(directory):
+    """在指定目录查找销售日报、销售汇总、实时库存/库存查询（取最新），返回 {sale_daily?, sale_summary?, stock?} 路径"""
+    if not directory or not os.path.isdir(directory):
+        return {}
+    files = {}
+    for f in os.listdir(directory):
+        if f.startswith(".") or f.startswith("~"):
+            continue
+        path = os.path.join(directory, f)
+        if not os.path.isfile(path):
+            continue
+        low = f.lower()
+        if "销售日报" in f and "品项" not in f and (low.endswith(".xls") or low.endswith(".xlsx")):
+            if "sale_daily" not in files or os.path.getmtime(path) > os.path.getmtime(files["sale_daily"]):
+                files["sale_daily"] = path
+        elif "销售汇总" in f and "品项" not in f and (low.endswith(".xls") or low.endswith(".xlsx")):
+            if "sale_summary" not in files or os.path.getmtime(path) > os.path.getmtime(files["sale_summary"]):
+                files["sale_summary"] = path
+        elif ("实时库存" in f or "库存查询" in f) and (low.endswith(".xls") or low.endswith(".xlsx")):
+            if "stock" not in files or os.path.getmtime(path) > os.path.getmtime(files["stock"]):
+                files["stock"] = path
+    return files
+
+
+@app.route("/api/import_from_downloads", methods=["POST", "OPTIONS"])
+def api_import_from_downloads():
+    """从配置的下载目录（IMPORT_DOWNLOADS_DIR 或 项目/downloads）自动导入 Excel，并执行去重与刷新，确保数据完整可靠"""
+    if request.method == "OPTIONS":
+        return "", 204
+    directory = _import_downloads_directory()
+    try:
+        os.makedirs(directory, exist_ok=True)
+    except Exception as e:
+        return jsonify({"success": False, "message": f"下载目录不可用: {e}", "directory": directory}), 400
+    files = _find_excel_files_in_dir(directory)
+    if not files:
+        return jsonify({
+            "success": False,
+            "message": "未在下载目录找到销售日报/销售汇总/实时库存 Excel",
+            "directory": directory,
+            "hint": "请将 Excel 放入该目录后重试，或使用「数据导入」页面上传",
+        }), 400
+
+    conn = None
+    result = {"sale_daily": 0, "sale_summary": 0, "stock": 0, "profit_refreshed": 0, "errors": [], "from_downloads": True, "directory": directory}
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        has_sale_daily = "sale_daily" in files
+        has_sale_summary = "sale_summary" in files
+        if has_sale_daily and has_sale_summary:
+            cur.execute("TRUNCATE TABLE t_htma_sale")
+            cur.execute("TRUNCATE TABLE t_htma_profit")
+            conn.commit()
+        if "stock" in files:
+            cur.execute("TRUNCATE TABLE t_htma_stock")
+            conn.commit()
+
+        if has_sale_daily:
+            cnt, diag = import_sale_daily(files["sale_daily"], conn)
+            result["sale_daily"] = cnt
+            if diag:
+                result.setdefault("diagnostics", []).append(diag)
+        if has_sale_summary:
+            cnt, diag = import_sale_summary(files["sale_summary"], conn, overwrite_on_duplicate=has_sale_daily)
+            result["sale_summary"] = cnt
+            if diag:
+                result.setdefault("diagnostics", []).append(diag)
+        if "stock" in files:
+            cnt, diag = import_stock(files["stock"], conn)
+            result["stock"] = cnt
+            if diag:
+                result.setdefault("diagnostics", []).append(diag)
+
+        if result["sale_daily"] > 0 or result["sale_summary"] > 0:
+            result["profit_refreshed"] = refresh_profit(conn)
+            try:
+                result["category_refreshed"] = refresh_category_from_sale(conn)
+            except Exception as e:
+                result["errors"].append(f"品类表刷新: {str(e)}")
+            try:
+                result["products_synced"] = sync_products_table(conn, store_id=STORE_ID)
+            except Exception as e:
+                result["errors"].append(f"商品表同步: {str(e)}")
+            try:
+                result["category_synced"] = sync_category_table(conn, store_id=STORE_ID)
+            except Exception as e:
+                result["errors"].append(f"品类表同步: {str(e)}")
+
+        conn.commit()
+        conn.close()
+        conn = None
+
+        # 去重：合并同主键重复行
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        run_dedup_sh = os.path.join(project_root, "scripts", "run_dedup.sh")
+        if os.path.isfile(run_dedup_sh):
+            try:
+                subprocess.run(["/bin/bash", run_dedup_sh], cwd=project_root, check=True, timeout=300, capture_output=True)
+                result["dedup_done"] = True
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+                result["dedup_done"] = False
+                result.setdefault("diagnostics", []).append(f"去重: {e}")
+
+        # 统计
+        conn2 = get_conn()
+        cur = conn2.cursor()
+        cur.execute("SELECT COUNT(*) AS c FROM t_htma_sale")
+        row = cur.fetchone()
+        result["sale_total"] = row["c"] if isinstance(row, dict) else row[0]
+        try:
+            cur.execute("SELECT COALESCE(SUM(sale_amount), 0) AS v FROM t_htma_sale")
+            row = cur.fetchone()
+            result["sale_total_amount"] = round(float(row.get("v", 0) or 0 if isinstance(row, dict) else (row[0] or 0)), 2)
+        except Exception:
+            result["sale_total_amount"] = 0.0
+        cur.execute("SELECT COUNT(*) AS c FROM t_htma_stock")
+        row = cur.fetchone()
+        result["stock_total"] = row["c"] if isinstance(row, dict) else row[0]
+        try:
+            cur.execute("""
+                SELECT COALESCE(SUM(stock_amount), 0) AS v FROM t_htma_stock
+                WHERE store_id = %s AND data_date = (SELECT MAX(data_date) FROM t_htma_stock WHERE store_id = %s)
+            """, (STORE_ID, STORE_ID))
+            row = cur.fetchone()
+            result["stock_total_amount"] = round(float(row.get("v", 0) or 0 if isinstance(row, dict) else (row[0] or 0)), 2)
+        except Exception:
+            result["stock_total_amount"] = 0.0
+        cur.execute("SELECT COUNT(*) AS c FROM t_htma_profit")
+        row = cur.fetchone()
+        result["profit_total"] = row["c"] if isinstance(row, dict) else row[0]
+        cur.execute("SELECT MIN(data_date) AS min_d, MAX(data_date) AS max_d FROM t_htma_sale")
+        dr = cur.fetchone()
+        if dr and (dr.get("min_d") if isinstance(dr, dict) else dr[0]):
+            result["date_range"] = f"{dr.get('min_d')} ~ {dr.get('max_d')}" if isinstance(dr, dict) else f"{dr[0]} ~ {dr[1]}"
+        else:
+            result["date_range"] = "-"
+        conn2.close()
+
+        result["success"] = True
+        result["data_import_target"] = "server"
+        if result.get("sale_total", 0) > 0 or result.get("stock_total", 0) > 0:
+            msg = f"好特卖数据导入完成（下载目录）\n销售表: {result.get('sale_total', 0)} 条\n库存表: {result.get('stock_total', 0)} 条\n毛利表: {result.get('profit_total', 0)} 条\n日期范围: {result.get('date_range', '-')}"
+            _notify_feishu(msg)
+        return jsonify(result)
+    except Exception as e:
+        import traceback
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        return jsonify({
+            "success": False,
+            "message": str(e),
+            "data_import_target": "server",
+            "from_downloads": True,
+            "directory": directory,
+            "traceback": traceback.format_exc()[-2000:],
         }), 500
 
 
@@ -1620,6 +2265,493 @@ def api_data_status():
         conn.close()
 
 
+# ---------- 经营性分析 API（见 docs/现有数据还能做哪些经营性分析.md） ----------
+
+@app.route("/api/return_gift_summary")
+def api_return_gift_summary():
+    """退货与赠送汇总：退货/赠送金额与件数占比，支持 period/start_date/end_date"""
+    date_cond, _, params, category_cond, _ = _query_filters()
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(f"""
+                SELECT COALESCE(SUM(sale_amount), 0) AS total_sale, COALESCE(SUM(sale_qty), 0) AS total_qty,
+                       COALESCE(SUM(return_amount), 0) AS return_amt, COALESCE(SUM(return_qty), 0) AS return_qty,
+                       COALESCE(SUM(gift_amount), 0) AS gift_amt, COALESCE(SUM(gift_qty), 0) AS gift_qty
+                FROM t_htma_sale WHERE store_id = %s AND {date_cond}{category_cond}
+            """, params)
+            row = cur.fetchone()
+        total_sale = float(row["total_sale"] or 0)
+        total_qty = float(row["total_qty"] or 0)
+        return_amt = float(row["return_amt"] or 0)
+        return_qty = float(row["return_qty"] or 0)
+        gift_amt = float(row["gift_amt"] or 0)
+        gift_qty = float(row["gift_qty"] or 0)
+        return_ratio_amt = (return_amt / total_sale * 100) if total_sale > 0 else 0
+        return_ratio_qty = (return_qty / total_qty * 100) if total_qty > 0 else 0
+        gift_ratio_amt = (gift_amt / total_sale * 100) if total_sale > 0 else 0
+        gift_ratio_qty = (gift_qty / total_qty * 100) if total_qty > 0 else 0
+        return jsonify({
+            "total_sale_amount": round(total_sale, 2),
+            "total_sale_qty": round(total_qty, 2),
+            "return_amount": round(return_amt, 2),
+            "return_qty": round(return_qty, 2),
+            "gift_amount": round(gift_amt, 2),
+            "gift_qty": round(gift_qty, 2),
+            "return_ratio_amt_pct": round(return_ratio_amt, 2),
+            "return_ratio_qty_pct": round(return_ratio_qty, 2),
+            "gift_ratio_amt_pct": round(gift_ratio_amt, 2),
+            "gift_ratio_qty_pct": round(gift_ratio_qty, 2),
+            "data_hint": "无数据时请检查：1) 是否已导入销售日报/销售汇总 Excel；2) 所选周期是否覆盖数据日期。可用 /api/data_status 查看库内数据范围。" if total_sale == 0 else None,
+        })
+    finally:
+        conn.close()
+
+
+@app.route("/api/brand_summary")
+def api_brand_summary():
+    """品牌贡献：按品牌汇总销售额、毛利、销量、毛利率、贡献占比。支持 period/start_date/end_date"""
+    date_cond, _, params, category_cond, _ = _query_filters()
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(f"""
+                SELECT COALESCE(NULLIF(TRIM(brand_name), ''), '未填') AS brand_name,
+                       SUM(sale_amount) AS sale_amount, SUM(gross_profit) AS profit, SUM(sale_qty) AS qty
+                FROM t_htma_sale WHERE store_id = %s AND {date_cond}{category_cond}
+                GROUP BY brand_name
+                HAVING SUM(sale_amount) > 0
+                ORDER BY SUM(sale_amount) DESC
+                LIMIT 50
+            """, params)
+            rows = cur.fetchall()
+            cur.execute(f"""
+                SELECT COALESCE(SUM(sale_amount), 0) AS total_sale, COALESCE(SUM(gross_profit), 0) AS total_profit
+                FROM t_htma_sale WHERE store_id = %s AND {date_cond}{category_cond}
+            """, params)
+            tot = cur.fetchone()
+        total_sale = float(tot["total_sale"] or 0)
+        total_profit = float(tot["total_profit"] or 0)
+        out = []
+        for r in rows:
+            sale = float(r["sale_amount"] or 0)
+            profit = float(r["profit"] or 0)
+            contrib = (sale / total_sale * 100) if total_sale > 0 else 0
+            margin = (profit / sale * 100) if sale > 0 else 0
+            out.append({
+                "brand_name": r["brand_name"] or "未填",
+                "sale_amount": round(sale, 2),
+                "profit": round(profit, 2),
+                "qty": round(float(r["qty"] or 0), 2),
+                "margin_pct": round(margin, 2),
+                "contrib_pct": round(contrib, 2),
+            })
+        return jsonify(out)
+    finally:
+        conn.close()
+
+
+@app.route("/api/supplier_summary")
+def api_supplier_summary():
+    """供应商贡献：按供应商汇总销售额、毛利、销量、毛利率、贡献占比"""
+    date_cond, _, params, category_cond, _ = _query_filters()
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(f"""
+                SELECT COALESCE(NULLIF(TRIM(supplier_name), ''), '未填') AS supplier_name,
+                       SUM(sale_amount) AS sale_amount, SUM(gross_profit) AS profit, SUM(sale_qty) AS qty
+                FROM t_htma_sale WHERE store_id = %s AND {date_cond}{category_cond}
+                GROUP BY supplier_name
+                HAVING SUM(sale_amount) > 0
+                ORDER BY SUM(sale_amount) DESC
+                LIMIT 50
+            """, params)
+            rows = cur.fetchall()
+            cur.execute(f"""
+                SELECT COALESCE(SUM(sale_amount), 0) AS total_sale, COALESCE(SUM(gross_profit), 0) AS total_profit
+                FROM t_htma_sale WHERE store_id = %s AND {date_cond}{category_cond}
+            """, params)
+            tot = cur.fetchone()
+        total_sale = float(tot["total_sale"] or 0)
+        total_profit = float(tot["total_profit"] or 0)
+        out = []
+        for r in rows:
+            sale = float(r["sale_amount"] or 0)
+            profit = float(r["profit"] or 0)
+            contrib = (sale / total_sale * 100) if total_sale > 0 else 0
+            margin = (profit / sale * 100) if sale > 0 else 0
+            out.append({
+                "supplier_name": r["supplier_name"] or "未填",
+                "sale_amount": round(sale, 2),
+                "profit": round(profit, 2),
+                "qty": round(float(r["qty"] or 0), 2),
+                "margin_pct": round(margin, 2),
+                "contrib_pct": round(contrib, 2),
+            })
+        return jsonify(out)
+    finally:
+        conn.close()
+
+
+@app.route("/api/price_band_summary")
+def api_price_band_summary():
+    """价格带分布：按件单价分段（0-10/10-30/30-50/50-100/100+）的销售额与销量占比"""
+    date_cond, _, params, category_cond, _ = _query_filters()
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(f"""
+                SELECT
+                    CASE
+                        WHEN COALESCE(sale_qty, 0) <= 0 THEN '0'
+                        WHEN (sale_amount / sale_qty) < 10 THEN '0-10'
+                        WHEN (sale_amount / sale_qty) < 30 THEN '10-30'
+                        WHEN (sale_amount / sale_qty) < 50 THEN '30-50'
+                        WHEN (sale_amount / sale_qty) < 100 THEN '50-100'
+                        ELSE '100+'
+                    END AS band,
+                    SUM(sale_amount) AS sale_amount,
+                    SUM(sale_qty) AS qty
+                FROM t_htma_sale
+                WHERE store_id = %s AND {date_cond}{category_cond} AND sale_qty > 0 AND sale_amount > 0
+                GROUP BY band
+            """, params)
+            rows = cur.fetchall()
+            cur.execute(f"""
+                SELECT COALESCE(SUM(sale_amount), 0) AS total_sale, COALESCE(SUM(sale_qty), 0) AS total_qty
+                FROM t_htma_sale WHERE store_id = %s AND {date_cond}{category_cond} AND sale_qty > 0 AND sale_amount > 0
+            """, params)
+            tot = cur.fetchone()
+        total_sale = float(tot["total_sale"] or 0)
+        total_qty = float(tot["total_qty"] or 0)
+        band_order = ["0", "0-10", "10-30", "30-50", "50-100", "100+"]
+        out = []
+        for r in rows:
+            band = r["band"] or "0"
+            sale = float(r["sale_amount"] or 0)
+            qty = float(r["qty"] or 0)
+            out.append({
+                "band": band,
+                "sale_amount": round(sale, 2),
+                "qty": round(qty, 2),
+                "sale_contrib_pct": round((sale / total_sale * 100), 2) if total_sale > 0 else 0,
+                "qty_contrib_pct": round((qty / total_qty * 100), 2) if total_qty > 0 else 0,
+            })
+        out.sort(key=lambda x: (band_order.index(x["band"]) if x["band"] in band_order else 99, x["band"]))
+        return jsonify(out)
+    finally:
+        conn.close()
+
+
+@app.route("/api/sku_turnover")
+def api_sku_turnover():
+    """SKU 周转：近 N 天销量、最新库存、周转天数（库存/日均销量）。limit 默认 100"""
+    date_cond, _, params, category_cond, _ = _query_filters()
+    limit = min(int(request.args.get("limit", 100)), 500)
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(f"""
+                SELECT s.sku_code,
+                       COALESCE(st.product_name, s.product_name, s.sku_code) AS product_name,
+                       s.category,
+                       SUM(s.sale_qty) AS sale_qty,
+                       SUM(s.sale_amount) AS sale_amount,
+                       COALESCE(st.stock_qty, 0) AS stock_qty
+                FROM t_htma_sale s
+                LEFT JOIN (
+                    SELECT sku_code, stock_qty, product_name
+                    FROM t_htma_stock
+                    WHERE store_id = %s AND data_date = (SELECT MAX(data_date) FROM t_htma_stock WHERE store_id = %s)
+                ) st ON st.sku_code = s.sku_code
+                WHERE s.store_id = %s AND {date_cond}{category_cond}
+                GROUP BY s.sku_code, st.product_name, s.product_name, s.category, st.stock_qty
+                HAVING SUM(s.sale_qty) > 0
+                ORDER BY SUM(s.sale_qty) DESC
+                LIMIT %s
+            """, (STORE_ID, STORE_ID) + tuple(params) + (limit,))
+            rows = cur.fetchall()
+        days = 30
+        if request.args.get("start_date") and request.args.get("end_date"):
+            try:
+                from datetime import datetime
+                e = datetime.strptime(request.args.get("end_date"), "%Y-%m-%d").date()
+                s = datetime.strptime(request.args.get("start_date"), "%Y-%m-%d").date()
+                days = max(1, (e - s).days + 1)
+            except Exception:
+                pass
+        elif request.args.get("period") == "week":
+            days = 7
+        elif request.args.get("period") == "month":
+            days = 31
+        out = []
+        for r in rows:
+            sale_qty = float(r["sale_qty"] or 0)
+            stock_qty = float(r["stock_qty"] or 0)
+            daily_sale = sale_qty / days if days > 0 else 0
+            turnover_days = (stock_qty / daily_sale) if daily_sale > 0 else (9999 if stock_qty > 0 else 0)
+            out.append({
+                "sku_code": r["sku_code"],
+                "product_name": (r["product_name"] or r["sku_code"])[:64],
+                "category": (r["category"] or "")[:32],
+                "sale_qty": round(sale_qty, 2),
+                "sale_amount": round(float(r["sale_amount"] or 0), 2),
+                "stock_qty": round(stock_qty, 2),
+                "turnover_days": round(turnover_days, 1) if turnover_days < 9999 else None,
+            })
+        return jsonify(out)
+    finally:
+        conn.close()
+
+
+@app.route("/api/sku_abc")
+def api_sku_abc():
+    """SKU ABC 分类：按销售额累计占比 A(前80%)/B(80-95%)/C(其余)。返回每类数量及明细（可 limit）"""
+    date_cond, _, params, category_cond, _ = _query_filters()
+    limit = min(int(request.args.get("limit", 200)), 500)
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(f"""
+                SELECT s.sku_code,
+                       COALESCE(st.product_name, s.product_name, s.sku_code) AS product_name,
+                       s.category,
+                       SUM(s.sale_amount) AS sale_amount,
+                       SUM(s.gross_profit) AS profit
+                FROM t_htma_sale s
+                LEFT JOIN (
+                    SELECT sku_code, product_name FROM t_htma_stock
+                    WHERE store_id = %s AND data_date = (SELECT MAX(data_date) FROM t_htma_stock WHERE store_id = %s)
+                ) st ON st.sku_code = s.sku_code
+                WHERE s.store_id = %s AND {date_cond}{category_cond}
+                GROUP BY s.sku_code, st.product_name, s.product_name, s.category
+                HAVING SUM(s.sale_amount) > 0
+                ORDER BY SUM(s.sale_amount) DESC
+            """, (STORE_ID, STORE_ID) + tuple(params))
+            rows = cur.fetchall()
+        total_sale = sum(float(r["sale_amount"] or 0) for r in rows)
+        cum = 0
+        out = []
+        a_cnt, b_cnt, c_cnt = 0, 0, 0
+        for i, r in enumerate(rows):
+            sale = float(r["sale_amount"] or 0)
+            cum += sale
+            pct = (cum / total_sale * 100) if total_sale > 0 else 0
+            if pct <= 80:
+                cls = "A"
+                a_cnt += 1
+            elif pct <= 95:
+                cls = "B"
+                b_cnt += 1
+            else:
+                cls = "C"
+                c_cnt += 1
+            if len(out) < limit:
+                out.append({
+                    "sku_code": r["sku_code"],
+                    "product_name": (r["product_name"] or r["sku_code"])[:64],
+                    "category": (r["category"] or "")[:32],
+                    "sale_amount": round(sale, 2),
+                    "profit": round(float(r["profit"] or 0), 2),
+                    "cum_contrib_pct": round(pct, 2),
+                    "abc_class": cls,
+                })
+        return jsonify({
+            "summary": {"A_count": a_cnt, "B_count": b_cnt, "C_count": c_cnt, "total_sale": round(total_sale, 2)},
+            "items": out,
+        })
+    finally:
+        conn.close()
+
+
+@app.route("/api/negative_margin_detail")
+def api_negative_margin_detail():
+    """负毛利明细：销售额>0 且毛利<0 的 SKU 列表。format=csv 时返回 CSV 下载"""
+    date_cond, _, params, category_cond, _ = _query_filters()
+    limit = min(int(request.args.get("limit", 200)), 1000)
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(f"""
+                SELECT s.sku_code,
+                       COALESCE(st.product_name, s.product_name, s.sku_code) AS product_name,
+                       s.category,
+                       SUM(s.sale_qty) AS qty,
+                       SUM(s.sale_amount) AS sale_amount,
+                       SUM(s.sale_cost) AS cost,
+                       SUM(s.gross_profit) AS profit
+                FROM t_htma_sale s
+                LEFT JOIN (
+                    SELECT sku_code, product_name FROM t_htma_stock
+                    WHERE store_id = %s AND data_date = (SELECT MAX(data_date) FROM t_htma_stock WHERE store_id = %s)
+                ) st ON st.sku_code = s.sku_code
+                WHERE s.store_id = %s AND {date_cond}{category_cond}
+                GROUP BY s.sku_code, st.product_name, s.product_name, s.category
+                HAVING SUM(s.sale_amount) > 0 AND SUM(s.gross_profit) < 0
+                ORDER BY SUM(s.gross_profit) ASC
+                LIMIT %s
+            """, (STORE_ID, STORE_ID) + tuple(params) + (limit,))
+            rows = cur.fetchall()
+        out = []
+        for r in rows:
+            sale = float(r["sale_amount"] or 0)
+            profit = float(r["profit"] or 0)
+            margin = (profit / sale * 100) if sale > 0 else 0
+            out.append({
+                "sku_code": r["sku_code"],
+                "product_name": (r["product_name"] or r["sku_code"])[:64],
+                "category": (r["category"] or "")[:32],
+                "qty": round(float(r["qty"] or 0), 2),
+                "sale_amount": round(sale, 2),
+                "cost": round(float(r["cost"] or 0), 2),
+                "profit": round(profit, 2),
+                "margin_pct": round(margin, 2),
+            })
+        if request.args.get("format") == "csv":
+            import io
+            import csv
+            buf = io.StringIO()
+            writer = csv.writer(buf)
+            writer.writerow(["商品编码", "品名", "品类", "销量", "销售额", "成本", "毛利", "毛利率%"])
+            for row in out:
+                writer.writerow([
+                    row["sku_code"], row["product_name"], row["category"],
+                    row["qty"], row["sale_amount"], row["cost"], row["profit"], row["margin_pct"],
+                ])
+            return Response(buf.getvalue(), mimetype="text/csv; charset=utf-8-sig",
+                           headers={"Content-Disposition": "attachment; filename=negative_margin_detail.csv"})
+        return jsonify(out)
+    finally:
+        conn.close()
+
+
+@app.route("/api/category_structure_trend")
+def api_category_structure_trend():
+    """品类结构趋势：按周或月汇总各品类销售额占比。granularity=week|month，默认 week"""
+    granularity = request.args.get("granularity", "week")
+    date_cond, _, params, category_cond, _ = _query_filters()
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            if granularity == "month":
+                cur.execute(f"""
+                    SELECT DATE_FORMAT(data_date, '%%Y-%%m') AS period,
+                           COALESCE(category, '未分类') AS category,
+                           SUM(sale_amount) AS sale_amount
+                    FROM t_htma_sale
+                    WHERE store_id = %s AND {date_cond}{category_cond}
+                    GROUP BY DATE_FORMAT(data_date, '%%Y-%%m'), COALESCE(category, '未分类')
+                    ORDER BY period, sale_amount DESC
+                """, params)
+            else:
+                cur.execute(f"""
+                    SELECT CONCAT(YEAR(data_date), '-W', LPAD(WEEK(data_date, 3), 2, '0')) AS period,
+                           COALESCE(category, '未分类') AS category,
+                           SUM(sale_amount) AS sale_amount
+                    FROM t_htma_sale
+                    WHERE store_id = %s AND {date_cond}{category_cond}
+                    GROUP BY CONCAT(YEAR(data_date), '-W', LPAD(WEEK(data_date, 3), 2, '0')), COALESCE(category, '未分类')
+                    ORDER BY period, sale_amount DESC
+                """, params)
+            rows = cur.fetchall()
+        from collections import defaultdict
+        period_totals = defaultdict(float)
+        period_cats = defaultdict(list)
+        for r in rows:
+            period = r["period"] or ""
+            cat = r["category"] or "未分类"
+            amt = float(r["sale_amount"] or 0)
+            period_totals[period] += amt
+            period_cats[period].append({"category": cat, "sale_amount": round(amt, 2)})
+        out = []
+        for period in sorted(period_totals.keys()):
+            total = period_totals[period]
+            cats = period_cats[period]
+            for c in cats:
+                pct = (c["sale_amount"] / total * 100) if total > 0 else 0
+                c["share_pct"] = round(pct, 2)
+            out.append({"period": period, "total_sale": round(total, 2), "by_category": cats})
+        return jsonify(out)
+    finally:
+        conn.close()
+
+
+@app.route("/api/inventory_turnover_summary")
+def api_inventory_turnover_summary():
+    """库存周转汇总：期末库存金额、周期内销售成本（或销售额）、周转天数"""
+    date_cond, _, params, category_cond, _ = _query_filters()
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT COALESCE(SUM(stock_amount), 0) AS total_stock
+                FROM t_htma_stock
+                WHERE store_id = %s AND data_date = (SELECT MAX(data_date) FROM t_htma_stock WHERE store_id = %s)
+            """, (STORE_ID, STORE_ID))
+            stock_row = cur.fetchone()
+            cur.execute(f"""
+                SELECT COALESCE(SUM(sale_amount), 0) AS sale_amount, COALESCE(SUM(sale_cost), 0) AS cost_amount
+                FROM t_htma_sale WHERE store_id = %s AND {date_cond}{category_cond}
+            """, params)
+            sale_row = cur.fetchone()
+        total_stock = float(stock_row["total_stock"] or 0)
+        total_sale = float(sale_row["sale_amount"] or 0)
+        total_cost = float(sale_row["cost_amount"] or 0)
+        days = 30
+        if request.args.get("start_date") and request.args.get("end_date"):
+            try:
+                e = datetime.strptime(request.args.get("end_date"), "%Y-%m-%d").date()
+                s = datetime.strptime(request.args.get("start_date"), "%Y-%m-%d").date()
+                days = max(1, (e - s).days + 1)
+            except Exception:
+                pass
+        daily_cost = total_cost / days if days > 0 else 0
+        turnover_days = (total_stock / daily_cost) if daily_cost > 0 else None
+        return jsonify({
+            "total_stock_amount": round(total_stock, 2),
+            "period_sale_amount": round(total_sale, 2),
+            "period_cost_amount": round(total_cost, 2),
+            "turnover_days": round(turnover_days, 1) if turnover_days is not None else None,
+            "days": days,
+        })
+    finally:
+        conn.close()
+
+
+@app.route("/api/data_quality")
+def api_data_quality():
+    """数据质量：成本/售价缺失条数、同 SKU 多品类异常数（与 data_status 互补）"""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT COUNT(*) AS cnt FROM t_htma_sale
+                WHERE store_id = %s AND (sale_cost IS NULL OR sale_cost = 0) AND sale_amount > 0
+            """, (STORE_ID,))
+            missing_cost = cur.fetchone()["cnt"] or 0
+            cur.execute("""
+                SELECT COUNT(*) AS cnt FROM t_htma_sale
+                WHERE store_id = %s AND (sale_price IS NULL OR sale_price = 0) AND sale_qty > 0
+            """, (STORE_ID,))
+            missing_price = cur.fetchone()["cnt"] or 0
+            cur.execute("""
+                SELECT sku_code, COUNT(DISTINCT COALESCE(category, '')) AS cat_cnt
+                FROM t_htma_sale WHERE store_id = %s
+                GROUP BY sku_code HAVING cat_cnt > 1
+            """, (STORE_ID,))
+            inconsistent = cur.fetchall()
+        inconsistent_sku_count = len(inconsistent)
+        return jsonify({
+            "missing_cost_rows": missing_cost,
+            "missing_price_rows": missing_price,
+            "inconsistent_category_sku_count": inconsistent_sku_count,
+            "inconsistent_sku_sample": [r["sku_code"] for r in inconsistent[:20]],
+        })
+    finally:
+        conn.close()
+
+
 @app.route("/api/category_rank_by_large")
 def api_category_rank_by_large():
     """品类排行按大类汇总：大类名称、销售额、毛利、毛利率、贡献度。支持 start_date、end_date、category 及 hierarchy"""
@@ -1878,16 +3010,30 @@ def api_marketing_report():
     mode = request.args.get("mode", "internal").strip() or "internal"
     try:
         from analytics import build_marketing_report
-        from feishu_util import send_feishu
         conn = get_conn()
         try:
             report = build_marketing_report(conn, STORE_ID, mode=mode)
             send_ok = False
             send_err = None
+            wecom_ok = dingtalk_ok = False
             if send_feishu_flag:
-                send_ok, send_err = send_feishu(report, at_user_id="ou_8db735f2", at_user_name="余为军")
+                try:
+                    from notify_util import notify_all
+                    results, _ = notify_all(report, title="好特卖进销存营销分析",
+                        feishu_at_user_id="ou_8db735f2", feishu_at_user_name="余为军")
+                    send_ok = results.get("feishu", (False,))[0]
+                    wecom_ok = results.get("wecom", (False,))[0]
+                    dingtalk_ok = results.get("dingtalk", (False,))[0]
+                    send_err = None if send_ok else (results.get("feishu", (False, ""))[1])
+                except Exception as e:
+                    from feishu_util import send_feishu
+                    send_ok, send_err = send_feishu(report, at_user_id="ou_8db735f2", at_user_name="余为军")
             _save_report_log(conn, report, send_ok, send_err)
-            return jsonify({"success": True, "report": report, "feishu_sent": send_feishu_flag, "feishu_ok": send_ok})
+            return jsonify({
+                "success": True, "report": report,
+                "feishu_sent": send_feishu_flag, "feishu_ok": send_ok,
+                "wecom_ok": wecom_ok, "dingtalk_ok": dingtalk_ok,
+            })
         finally:
             conn.close()
     except Exception as e:
@@ -2168,11 +3314,20 @@ def api_price_compare_daily():
             report = format_report(result)
             items = result.get("items", [])
             feishu_sent = False
-            feishu_ok = False
+            feishu_ok = wecom_ok = dingtalk_ok = False
             if send_feishu_flag and items:
-                feishu_ok, feishu_err = send_feishu(
-                    report, at_user_id=at_user_id, at_user_name=at_user_name, title="好特卖商品比价报告"
-                )
+                try:
+                    from notify_util import notify_all
+                    results, _ = notify_all(report, title="好特卖商品比价报告",
+                        feishu_at_user_id=at_user_id, feishu_at_user_name=at_user_name)
+                    feishu_ok = results.get("feishu", (False,))[0]
+                    wecom_ok = results.get("wecom", (False,))[0]
+                    dingtalk_ok = results.get("dingtalk", (False,))[0]
+                except Exception:
+                    from feishu_util import send_feishu
+                    feishu_ok, _ = send_feishu(
+                        report, at_user_id=at_user_id, at_user_name=at_user_name, title="好特卖商品比价报告"
+                    )
                 feishu_sent = True
             table_rows = []
             for it in items:
@@ -2196,6 +3351,8 @@ def api_price_compare_daily():
                 "summary": result.get("portfolio", {}).get("summary", {}),
                 "feishu_sent": feishu_sent,
                 "feishu_ok": feishu_ok,
+                "wecom_ok": wecom_ok,
+                "dingtalk_ok": dingtalk_ok,
             })
         finally:
             conn.close()
