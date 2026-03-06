@@ -16,6 +16,8 @@
     .kpi-card .value { font-size: 1.2rem; font-weight: 700; color: #38bdf8; }
     .kpi-card .value.warn { color: #fbbf24; }
     .kpi-card .value.danger { color: #f87171; }
+    .labor-total-card { border-left: 4px solid #38bdf8; }
+    .labor-total-card .value { font-size: 1.35rem; }
     .section { background: #1e293b; border-radius: 6px; padding: 6px 8px; margin-bottom: 4px; border: 1px solid #334155; }
     .section h2 { font-size: 0.88rem; color: #94a3b8; margin-bottom: 4px; }
     .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 4px; }
@@ -57,13 +59,15 @@
     .chart-tabs .tab-btn { padding: 4px 12px; font-size: 0.85rem; }
     .filter-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; flex-wrap: wrap; }
     .filter-bar .period-tabs { display: flex; align-items: center; gap: 4px; margin: 0; }
-    .filter-bar .date-range-inline { display: flex; align-items: center; gap: 4px; }
+    .filter-bar .date-range-inline { display: flex; align-items: center; gap: 4px; position: relative; z-index: 2; }
+    .filter-bar .date-range-inline input[type="date"] { cursor: pointer; min-width: 120px; min-height: 36px; }
     .filter-sep { color: #475569; margin: 0 4px; font-size: 0.9rem; }
     .filter-bar label { color: #94a3b8; font-size: 0.9rem; }
     .filter-bar input[type="date"], .filter-bar select { padding: 6px 10px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; font-size: 0.85rem; }
     .filter-bar select { min-width: 110px; cursor: pointer; }
     .filter-bar .btn-query { padding: 8px 20px; border-radius: 8px; border: none; background: #38bdf8; color: #0f172a; font-weight: 600; cursor: pointer; font-size: 0.9rem; }
     .filter-bar .btn-query:hover { background: #7dd3fc; }
+    .filter-bar .btn-query-inline { padding: 6px 12px; font-size: 0.85rem; margin-left: 4px; }
     .export-btns { display: flex; gap: 8px; margin-left: auto; }
     .btn-export { padding: 6px 12px; border-radius: 6px; background: #334155; color: #38bdf8; text-decoration: none; font-size: 0.8rem; border: 1px solid #475569; }
     .btn-export:hover { background: #475569; color: #7dd3fc; }
@@ -131,28 +135,39 @@
       .chart-row { grid-template-columns: 1fr; }
       .trend-section { grid-template-columns: 1fr; }
       .dashboard-grid { grid-template-columns: 1fr; }
-      .nav-row { flex-direction: column; align-items: stretch; }
-      .nav-row .export-btns { margin-left: 0; margin-top: 4px; }
-      .page-nav .nav-tab { padding: 6px 12px; font-size: 0.85rem; }
-      body { padding: 6px; font-size: 0.8rem; }
-      .sticky-top { padding-bottom: 4px; }
-      h1 { font-size: 0.95rem; }
-      .subtitle { font-size: 0.68rem; }
-      .filter-bar-toggle-row { display: flex; }
-      .filter-bar-content { display: none; flex-direction: column; align-items: stretch; gap: 8px; padding: 8px 0; border-top: 1px solid #334155; margin-top: 4px; }
+      .nav-row { flex-direction: column; align-items: stretch; gap: 4px; }
+      .nav-row .export-btns { margin-left: 0; margin-top: 2px; }
+      .page-nav { gap: 2px !important; }
+      .page-nav .nav-tab { padding: 5px 8px; font-size: 0.78rem; }
+      body { padding: 4px 6px; font-size: 0.8rem; }
+      .sticky-top { padding-bottom: 2px; position: sticky; top: 0; z-index: 9; }
+      h1 { font-size: 0.9rem; margin: 2px 0; }
+      .subtitle { font-size: 0.65rem; }
+      .filter-bar-toggle-row { display: flex; align-items: center; gap: 6px; padding: 4px 0; min-height: 32px; }
+      .filter-bar-toggle-row .period-summary { font-size: 0.8rem; flex: 1; min-width: 0; }
+      .filter-bar-toggle-row .btn-filter { padding: 5px 10px; font-size: 0.8rem; }
+      .filter-bar-content { display: none; flex-direction: column; align-items: stretch; gap: 6px; padding: 6px 0; border-top: 1px solid #334155; margin-top: 2px; }
       .filter-bar-content.is-open { display: flex; }
-      .filter-bar .period-tabs { flex-wrap: wrap; }
+      .filter-bar .period-tabs { flex-wrap: wrap; gap: 2px; }
+      .filter-bar .tab-btn { padding: 4px 8px; font-size: 0.75rem; }
       .filter-bar .filter-sep { display: none; }
-      .filter-bar label { min-width: 60px; }
-      .filter-bar select { min-width: 0; flex: 1; }
-      .btn-query { width: 100%; }
-      .sticky-top > div[style*="display:flex"] { flex-direction: column; align-items: stretch; gap: 6px; }
-      .sticky-top .btn-ai { justify-content: center; }
+      .filter-bar label { min-width: 56px; font-size: 0.8rem; }
+      .filter-bar select, .filter-bar input[type="date"] { min-width: 0; flex: 1; font-size: 0.8rem; padding: 5px 8px; }
+      .filter-bar .btn-query { width: 100%; padding: 6px 12px; font-size: 0.85rem; }
+      .filter-bar .date-range-inline { flex-wrap: wrap; gap: 4px; }
+      .filter-bar .btn-query-inline { flex: 0 0 auto; }
+      .sticky-top > div[style*="display:flex"] { flex-direction: column; align-items: stretch; gap: 4px; }
+      .sticky-top .btn-ai { justify-content: center; padding: 5px 10px; font-size: 0.8rem; }
+      .section { margin-bottom: 8px; }
+      .section h2 { font-size: 0.88rem; margin-bottom: 4px; }
     }
     @media (max-width: 480px) {
-      .kpi-row { grid-template-columns: 1fr; }
-      .filter-bar-toggle-row .period-summary { font-size: 0.8rem; }
-      div[style*="display:flex"][style*="gap:8px"] .btn-ai { padding: 6px 10px; font-size: 0.8rem; }
+      .kpi-row { grid-template-columns: 1fr; gap: 4px; }
+      .kpi-card { padding: 6px 8px; }
+      .kpi-card .value { font-size: 0.95rem; }
+      .filter-bar-toggle-row .period-summary { font-size: 0.75rem; }
+      .page-nav .nav-tab { padding: 4px 6px; font-size: 0.72rem; }
+      div[style*="display:flex"][style*="gap:8px"] .btn-ai { padding: 5px 8px; font-size: 0.75rem; }
     }
     /* 各页列表/表格移动端：横向滚动 + 首列固定，关键数据更醒目 */
     .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -178,6 +193,17 @@
       #categoryRankDetailWrap table, #invDetailWrap table { min-width: 480px; }
       #categoryRankDetailWrap th:first-child, #categoryRankDetailWrap td:first-child { position: sticky; left: 0; background: #0f172a; z-index: 1; }
       #invDetailWrap th:first-child, #invDetailWrap td:first-child { position: sticky; left: 0; background: #0f172a; z-index: 1; }
+      .cat-rank-mid-wrap td { padding: 0; vertical-align: top; background: #1e293b; }
+      .cat-rank-mid-wrap .category-mid-detail { padding: 8px 12px 12px 32px; }
+      .cat-rank-mid-wrap table.cat-mid-table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+      .cat-rank-mid-wrap table.cat-mid-table th { text-align: left; padding: 6px 8px; color: #94a3b8; }
+      .cat-rank-mid-wrap table.cat-mid-table td { padding: 6px 8px; }
+      .cat-rank-mid-wrap .cat-mid-row { cursor: pointer; }
+      .cat-rank-mid-wrap .cat-mid-row:hover { background: #334155; }
+      .cat-rank-mid-wrap .cat-mid-row.expanded .expand-icon { transform: rotate(90deg); }
+      .cat-rank-mid-wrap .cat-mid-small-wrap td { padding: 0; background: #0f172a; }
+      .cat-rank-mid-wrap .cat-mid-small-wrap .category-small-detail { padding: 6px 8px 8px 24px; font-size: 0.85em; }
+      .cat-rank-mid-wrap .cat-mid-small-wrap table { width: 100%; border-collapse: collapse; }
       .page-panel .table-wrap::before { content: '← 左右滑动查看更多'; display: block; font-size: 0.7rem; color: #64748b; margin-bottom: 4px; }
     }
   </style>
@@ -187,7 +213,7 @@
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
     <div>
       <h1>好特卖沈阳超级仓运营看板</h1>
-      <p class="subtitle" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">临期折扣零售 · 数据来自 MySQL htma_dashboard · <a href="/import" style="color:#38bdf8;">数据导入</a> · <a href="/login" style="color:#38bdf8;">登录</a> <span id="authUserBar"></span></p>
+      <p class="subtitle" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">临期折扣零售 · 数据来自 MySQL htma_dashboard · <a href="/import" id="linkImport" style="color:#38bdf8;">数据导入</a> · <a href="/labor" id="linkLabor" style="color:#38bdf8;">人力成本</a> · <a href="/labor_analysis" id="linkLaborAnalysis" style="color:#38bdf8;">人力分析</a> · <a href="/product_master" id="linkProductMaster" style="color:#38bdf8;">商品档案</a>（与 KPI 周期无关） · <a href="/login" style="color:#38bdf8;">登录</a> <span id="authUserBar"></span></p>
     </div>
     <div style="display:flex;gap:8px;">
       <button id="btnAiInsight" class="btn-ai" title="基于当前数据生成智能分析建议">
@@ -214,28 +240,28 @@
       <button class="tab-btn" data-period="day">今日</button>
     </div>
     <div class="date-range-inline" id="dateRangeInline" style="display:none;">
-      <label>起止日期：</label>
-      <input type="date" id="startDate" />
+      <label for="startDate" style="cursor:pointer;">起止日期：</label>
+      <input type="date" id="startDate" aria-label="起始日期" tabindex="0" title="点击选择或输入 YYYY-MM-DD" />
       <span style="color:#64748b;">至</span>
-      <input type="date" id="endDate" />
+      <input type="date" id="endDate" aria-label="结束日期" tabindex="0" title="点击选择或输入 YYYY-MM-DD" />
     </div>
     <span class="filter-sep">|</span>
-    <label>大类：</label>
+    <span id="categoryRowLarge"><label>大类：</label>
     <select id="categoryLargeSelect">
       <option value="">全部大类</option>
-    </select>
-    <label>中类：</label>
+    </select></span>
+    <span id="categoryRowMid" class="filter-cascade" style="display:none;"><label>中类：</label>
     <select id="categoryMidSelect">
       <option value="">全部中类</option>
-    </select>
-    <label>小类：</label>
+    </select></span>
+    <span id="categoryRowSmall" class="filter-cascade" style="display:none;"><label>小类：</label>
     <select id="categorySmallSelect">
       <option value="">全部小类</option>
-    </select>
-    <label>商品：</label>
+    </select></span>
+    <span id="categoryRowProduct" class="filter-cascade" style="display:none;"><label>商品：</label>
     <select id="productSelect">
       <option value="">全部商品</option>
-    </select>
+    </select></span>
     <button class="btn-query" id="btnQuery">查询</button>
     </div>
   </div>
@@ -248,6 +274,7 @@
       <button class="nav-tab" data-page="inventory">⚠️ 库存预警</button>
       <button class="nav-tab" data-page="tax">🧮 税率计算</button>
       <button class="nav-tab" data-page="biz">📌 经营分析</button>
+      <button class="nav-tab" data-page="insight">🔍 消费洞察</button>
     </div>
     <div class="export-btns">
       <a class="btn-export" id="btnExportProduct" href="#" download="htma_商品明细.csv">导出商品</a>
@@ -467,6 +494,32 @@
   </div>
   </div>
 
+  <div class="page-panel" id="pageInsight" data-page="insight">
+  <div class="section scroll-table">
+    <h2>消费洞察</h2>
+    <p class="section-desc">商品贡献、价格策略、品牌效能、经销模式、新品表现。数据周期与上方 KPI 周期一致。</p>
+    <div class="kpi-row" style="margin-bottom:12px;" id="insightKpiRow">
+      <div class="kpi-card"><div class="label">总销售额</div><div class="value" id="insightTotalSale">-</div></div>
+      <div class="kpi-card"><div class="label">总毛利</div><div class="value" id="insightTotalProfit">-</div></div>
+      <div class="kpi-card"><div class="label">毛利率</div><div class="value" id="insightMarginPct">-</div></div>
+      <div class="kpi-card"><div class="label">动销商品数</div><div class="value" id="insightSkuSold">-</div></div>
+      <div class="kpi-card"><div class="label">件单价</div><div class="value" id="insightUnitPrice">-</div></div>
+      <div class="kpi-card"><div class="label">动销率</div><div class="value" id="insightSellThrough">-</div></div>
+    </div>
+    <p id="insightDateRange" style="font-size:0.85rem;color:#94a3b8;margin-bottom:12px;"></p>
+    <h3 class="label" style="margin-top:12px;">品类贡献（销售额 Top10）</h3>
+    <div class="table-wrap"><table><thead><tr><th>品类</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">毛利率%</th></tr></thead><tbody id="insightCategorySaleBody"></tbody></table></div>
+    <h3 class="label" style="margin-top:12px;">品牌贡献</h3>
+    <div class="table-wrap"><table><thead><tr><th>品牌</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">销量</th><th class="num">毛利率%</th><th class="num">贡献%</th></tr></thead><tbody id="insightBrandBody"></tbody></table></div>
+    <h3 class="label" style="margin-top:12px;">价格带分布</h3>
+    <div class="table-wrap"><table><thead><tr><th>价格带</th><th class="num">销售额</th><th class="num">销量</th><th class="num">毛利率%</th><th class="num">销售贡献%</th></tr></thead><tbody id="insightPriceBandBody"></tbody></table></div>
+    <h3 class="label" style="margin-top:12px;">经销方式</h3>
+    <div class="table-wrap"><table><thead><tr><th>经销方式</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">毛利率%</th><th class="num">贡献%</th></tr></thead><tbody id="insightDistBody"></tbody></table></div>
+    <h3 class="label" style="margin-top:12px;">新品表现</h3>
+    <div class="table-wrap"><table><thead><tr><th>指标</th><th class="num">数值</th></tr></thead><tbody id="insightNewProductBody"></tbody></table></div>
+  </div>
+  </div>
+
   <div class="page-panel" id="pageBiz" data-page="biz">
   <div class="section scroll-table">
     <h2>经营分析</h2>
@@ -496,7 +549,7 @@
     </div>
     <div id="bizPriceBand" class="biz-block" style="display:none;">
       <div id="priceBandChart" class="chart" style="height:260px;"></div>
-      <div class="table-wrap"><table><thead><tr><th>价格带</th><th class="num">销售额</th><th class="num">销量</th><th class="num">销售贡献%</th><th class="num">销量贡献%</th></tr></thead><tbody id="priceBandBody"></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>价格带</th><th class="num">销售额</th><th class="num">销量</th><th class="num">消费笔数</th><th class="num">销售贡献%</th><th class="num">销量贡献%</th><th class="num">消费笔数贡献%</th></tr></thead><tbody id="priceBandBody"></tbody></table></div>
     </div>
     <div id="bizTurnover" class="biz-block" style="display:none;">
       <div class="table-wrap"><table><thead><tr><th>商品编码</th><th>品名</th><th>品类</th><th class="num">销量</th><th class="num">销售额</th><th class="num">库存</th><th class="num">周转天数</th></tr></thead><tbody id="skuTurnoverBody"></tbody></table></div>
@@ -523,9 +576,12 @@
       <p id="dataQualitySample" class="section-desc"></p>
     </div>
   </div>
+
   </div>
 
   <script>
+    // KPI 周期：以用户选择为准，不写死。queryParams 仅根据 currentPeriod/currentStartDate/currentEndDate 与输入框/URL 生成请求参数。
+    // 类别筛选：级联折叠，初始仅显示大类；选择大类后出现中类，再选出现小类，再选出现商品。
     // 始终用「当前页面的域名」请求接口，保证本机和外网看到同一套数据（同一台 Flask + MySQL）
     // 仅当页面不是通过 http(s) 打开时（如 file://、Cursor 预览）才回退到本地
     const API = (function(){
@@ -545,13 +601,45 @@
     let currentInvPage = 1;
     const PAGE_SIZE = 50;
 
+    function getCustomRangeFromUrl() {
+      try {
+        var q = new URLSearchParams(window.location.search);
+        var s = (q.get('start_date') || '').replace(/\//g, '-').trim();
+        var e = (q.get('end_date') || '').replace(/\//g, '-').trim();
+        if (s && e && s.length === 10 && e.length === 10) return { start: s, end: e };
+      } catch (_) {}
+      return null;
+    }
     function queryParams(overrides) {
-      const p = new URLSearchParams();
-      if (currentStartDate && currentEndDate) {
-        p.set('start_date', currentStartDate);
-        p.set('end_date', currentEndDate);
+      var startIn = document.getElementById('startDate');
+      var endIn = document.getElementById('endDate');
+      if (startIn && endIn) {
+        var s = (startIn.value || '').replace(/\//g, '-').trim();
+        var e = (endIn.value || '').replace(/\//g, '-').trim();
+        if (s && s.length === 10) currentStartDate = s;
+        if (e && e.length === 10) currentEndDate = e;
+      }
+      var startVal = currentStartDate || '';
+      var endVal = currentEndDate || '';
+      if (!startVal || !endVal) {
+        var fromUrl = getCustomRangeFromUrl();
+        if (fromUrl) {
+          startVal = fromUrl.start;
+          endVal = fromUrl.end;
+          currentStartDate = startVal;
+          currentEndDate = endVal;
+          if (startIn && endIn) { startIn.value = startVal; endIn.value = endVal; }
+        }
+      }
+      var p = new URLSearchParams();
+      if (startVal && endVal && startVal.length === 10 && endVal.length === 10) {
+        if (startVal > endVal) { var t = startVal; startVal = endVal; endVal = t; }
+        p.set('start_date', startVal);
+        p.set('end_date', endVal);
+        p.set('period', 'custom');
+        currentPeriod = 'custom';
       } else {
-        p.set('period', currentPeriod);
+        p.set('period', currentPeriod || 'recent30');
       }
       if (currentCategoryLargeCode) p.set('category_large_code', currentCategoryLargeCode);
       if (currentCategoryMidCode) p.set('category_mid_code', currentCategoryMidCode);
@@ -573,10 +661,14 @@
 
     function fmtNum(v) { return v >= 10000 ? (v/10000).toFixed(1) + '万' : Number(v).toLocaleString(); }
     function fmtMoney(v) { return Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2 }); }
+    function safeNum(v, emptyStr) { if (v == null || v === '' || (typeof v === 'number' && isNaN(v))) return emptyStr != null ? emptyStr : '0'; return v; }
+    function safeFmtNum(v, emptyStr) { if (v == null || v === '' || (typeof v === 'number' && isNaN(v))) return emptyStr != null ? emptyStr : '0'; return fmtNum(Number(v)); }
+    function safeFmtMoney(v, emptyStr) { if (v == null || v === '' || (typeof v === 'number' && isNaN(v))) return emptyStr != null ? emptyStr : '0.00'; return fmtMoney(Number(v)); }
 
     async function loadKpi() {
       try {
-        const r = await fetch(API + '/api/kpi?' + queryParams());
+        var qs = queryParams();
+        const r = await fetch(API + '/api/kpi?' + qs);
         const d = await r.json();
         document.getElementById('kpiSale').textContent = fmtNum(d.total_sale_amount);
         document.getElementById('kpiProfit').textContent = fmtNum(d.total_gross_profit);
@@ -584,6 +676,9 @@
         rateEl.textContent = d.avg_profit_rate_pct + '%';
         rateEl.className = 'value' + (d.avg_profit_rate_pct >= 35 ? '' : d.avg_profit_rate_pct >= 20 ? ' warn' : ' danger');
         document.getElementById('kpiStock').textContent = fmtNum(d.total_stock_amount);
+        if (currentStartDate && currentEndDate && (!d.start_date || !d.end_date)) {
+          console.warn('[看板] 已选自定义 ' + currentStartDate + '~' + currentEndDate + ' 但接口未返回 start_date/end_date，可能请求未带上。请强制刷新(Ctrl+Shift+R)或清除缓存后重试。');
+        }
       } catch (e) { document.getElementById('kpiRow').innerHTML = '<div class="error">KPI 加载失败: ' + e.message + '</div>'; }
     }
 
@@ -933,6 +1028,18 @@
         if (r.ok) {
           const d = await r.json();
           if (d.name) bar.innerHTML = '· 欢迎，' + (d.name || '').replace(/</g, '&lt;') + ' <a href="/api/auth/logout" style="color:#38bdf8;">退出</a>';
+          const perms = d.permissions || {};
+          const canImport = perms.can_import !== false;
+          const canLabor = perms.can_labor !== false;
+          const canProductMaster = perms.can_product_master !== false;
+          const canProfit = perms.can_profit !== false;
+          const linkImport = document.getElementById('linkImport');
+          const linkLabor = document.getElementById('linkLabor');
+          const linkProductMaster = document.getElementById('linkProductMaster');
+          if (linkImport && !canImport) linkImport.style.display = 'none';
+          if (linkLabor && !canLabor) linkLabor.style.display = 'none';
+          if (linkProductMaster && !canProductMaster) linkProductMaster.style.display = 'none';
+          // 预留：后续可根据 canProfit 控制经营分析/AI 报告等入口
         }
       } catch (e) {}
     }
@@ -1022,50 +1129,104 @@
 
     function bindCategoryRankExpand() {
       const table = document.getElementById('categoryRankTable');
-      if (!table) return;
+      const tbody = document.getElementById('categoryRankBody');
+      if (!table || !tbody) return;
       table.onclick = async (e) => {
-        const tr = e.target.closest('.cat-rank-row');
-        if (!tr) return;
         if (e.target.closest('.sortable-th')) return;
         e.preventDefault();
         e.stopPropagation();
-        const expanded = tr.dataset.expanded === '1';
-        const code = (tr.dataset.largeCode || '').trim();
-        const name = (tr.dataset.largeName || '').trim();
-        const wrap = document.getElementById('categoryRankDetailWrap');
-        const titleEl = document.getElementById('categoryRankDetailTitle');
-        const detailBody = document.getElementById('categoryRankDetailBody');
+        const largeRow = e.target.closest('.cat-rank-row');
+        const midRow = e.target.closest('.cat-mid-row');
+        if (midRow) {
+          const expanded = midRow.dataset.expanded === '1';
+          const largeCode = (midRow.dataset.largeCode || '').trim();
+          const largeName = (midRow.dataset.largeName || '').trim();
+          const midCode = (midRow.dataset.midCode || '').trim();
+          const midName = (midRow.dataset.midName || '').trim();
+          const midTbody = midRow.closest('tbody');
+          const nextTr = midRow.nextElementSibling;
+          if (expanded) {
+            midRow.classList.remove('expanded');
+            midRow.dataset.expanded = '0';
+            if (nextTr && nextTr.classList.contains('cat-mid-small-wrap')) nextTr.remove();
+            return;
+          }
+          midTbody.querySelectorAll('.cat-mid-row').forEach(r => { r.classList.remove('expanded'); r.dataset.expanded = '0'; });
+          midTbody.querySelectorAll('.cat-mid-small-wrap').forEach(n => n.remove());
+          midRow.classList.add('expanded');
+          midRow.dataset.expanded = '1';
+          const key = midCode || midName;
+          if (!key) return;
+          const loadRow = document.createElement('tr');
+          loadRow.className = 'cat-mid-small-wrap';
+          loadRow.innerHTML = '<td colspan="6"><div class="category-small-detail"><table><thead><tr><th>排名</th><th>小类/品类</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">毛利率</th></tr></thead><tbody><tr><td colspan="5" class="loading">加载小类...</td></tr></tbody></table></div></td>';
+          midRow.after(loadRow);
+          try {
+            const base = queryParams();
+            const q = (base ? base + '&' : '') + 'category_large_code=' + encodeURIComponent(largeCode || largeName) + '&category_mid_code=' + encodeURIComponent(key);
+            const r = await fetch(API + '/api/category_rank_small?' + q);
+            if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+            const rows = safeArray(await r.json());
+            const smallTbody = loadRow.querySelector('tbody');
+            smallTbody.innerHTML = rows.length === 0
+              ? '<tr><td colspan="5" class="loading">暂无小类明细</td></tr>'
+              : rows.map(row => `<tr><td>${row.rank}</td><td>${(row.category_small || '未分类').replace(/</g,'&lt;')}</td><td class="num">${fmtMoney(row.sale_amount)}</td><td class="num">${fmtMoney(row.profit_amount)}</td><td class="num">${(row.margin_pct != null ? row.margin_pct : 0).toFixed(2)}%</td></tr>`).join('');
+          } catch (err) {
+            loadRow.querySelector('tbody').innerHTML = '<tr><td colspan="5" class="error">加载失败: ' + (err.message || err) + '</td></tr>';
+          }
+          return;
+        }
+        if (!largeRow) return;
+        const expanded = largeRow.dataset.expanded === '1';
+        const code = (largeRow.dataset.largeCode || '').trim();
+        const name = (largeRow.dataset.largeName || '').trim();
         if (expanded) {
-          tr.classList.remove('expanded');
-          tr.dataset.expanded = '0';
-          wrap.style.display = 'none';
+          largeRow.classList.remove('expanded');
+          largeRow.dataset.expanded = '0';
+          let next = largeRow.nextElementSibling;
+          while (next && next.classList.contains('cat-rank-mid-wrap')) {
+            const n = next.nextElementSibling;
+            next.remove();
+            next = n;
+          }
           return;
         }
         document.querySelectorAll('#categoryRankBody .cat-rank-row').forEach(r => { r.classList.remove('expanded'); r.dataset.expanded = '0'; });
-        tr.classList.add('expanded');
-        tr.dataset.expanded = '1';
-        wrap.style.display = 'block';
-        titleEl.textContent = (name || '未分类') + ' — 中类/小类明细';
-        detailBody.innerHTML = '<tr><td colspan="6" class="loading">加载中...</td></tr>';
+        const existingWrap = largeRow.nextElementSibling;
+        if (existingWrap && existingWrap.classList.contains('cat-rank-mid-wrap')) existingWrap.remove();
+        largeRow.classList.add('expanded');
+        largeRow.dataset.expanded = '1';
         const key = code || name;
-        if (!key) { detailBody.innerHTML = '<tr><td colspan="6" class="loading">无法展开</td></tr>'; return; }
+        if (!key) return;
+        const wrapTr = document.createElement('tr');
+        wrapTr.className = 'cat-rank-mid-wrap';
+        wrapTr.innerHTML = '<td colspan="8"><div class="category-mid-detail"><table class="cat-mid-table"><thead><tr><th style="width:28px;"></th><th>排名</th><th>中类</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">毛利率</th></tr></thead><tbody><tr><td colspan="6" class="loading">加载中类...</td></tr></tbody></table></div></td>';
+        largeRow.after(wrapTr);
         try {
           const base = queryParams();
           const q = (base ? base + '&' : '') + 'category_large_code=' + encodeURIComponent(key);
-          const r = await fetch(API + '/api/category_rank_detail?' + q);
+          const r = await fetch(API + '/api/category_rank_mid?' + q);
           if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
           const rows = safeArray(await r.json());
-          detailBody.innerHTML = rows.length === 0
-            ? '<tr><td colspan="6" class="loading">暂无中类/小类明细</td></tr>'
-            : rows.map(row => `<tr>
-              <td>${row.rank}</td>
-              <td>${(row.category_mid || '').replace(/</g,'&lt;')}</td>
-              <td>${(row.category || '未分类').replace(/</g,'&lt;')}</td>
-              <td class="num">${fmtMoney(row.sale_amount)}</td>
-              <td class="num">${fmtMoney(row.profit_amount)}</td>
-              <td class="num">${(row.margin_pct != null ? row.margin_pct : 0).toFixed(2)}%</td>
-            </tr>`).join('');
-        } catch (err) { detailBody.innerHTML = '<tr><td colspan="6" class="error">加载失败: ' + (err.message || err) + '</td></tr>'; }
+          const midTbody = wrapTr.querySelector('table.cat-mid-table tbody');
+          midTbody.innerHTML = rows.length === 0
+            ? '<tr><td colspan="6" class="loading">该大类下暂无中类数据</td></tr>'
+            : rows.map(row => {
+                const midCode = (row.category_mid_code || row.category_mid || '').replace(/"/g, '&quot;');
+                const midName = (row.category_mid || '未分类').replace(/</g, '&lt;');
+                return `<tr class="cat-mid-row" data-expanded="0" data-large-code="${(code||'').replace(/"/g,'&quot;')}" data-large-name="${(name||'').replace(/</g,'&lt;')}" data-mid-code="${midCode}" data-mid-name="${midName}">
+                  <td><span class="expand-icon">▶</span></td>
+                  <td>${row.rank}</td>
+                  <td>${midName}</td>
+                  <td class="num">${fmtMoney(row.sale_amount)}</td>
+                  <td class="num">${fmtMoney(row.profit_amount)}</td>
+                  <td class="num">${(row.margin_pct != null ? row.margin_pct : 0).toFixed(2)}%</td>
+                </tr>`;
+              }).join('');
+          try { wrapTr.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e2) { wrapTr.scrollIntoView(); }
+        } catch (err) {
+          wrapTr.querySelector('table.cat-mid-table tbody').innerHTML = '<tr><td colspan="6" class="error">加载失败: ' + (err.message || err) + '</td></tr>';
+        }
       };
     }
 
@@ -1238,6 +1399,268 @@
       }
     }
 
+    async function loadConsumerInsight() {
+      var o = document.getElementById('insightTotalSale');
+      var o2 = document.getElementById('insightTotalProfit');
+      var o3 = document.getElementById('insightMarginPct');
+      var o4 = document.getElementById('insightSkuSold');
+      var o5 = document.getElementById('insightUnitPrice');
+      var o6 = document.getElementById('insightSellThrough');
+      var dateEl = document.getElementById('insightDateRange');
+      var catBody = document.getElementById('insightCategorySaleBody');
+      var brandBody = document.getElementById('insightBrandBody');
+      var bandBody = document.getElementById('insightPriceBandBody');
+      var distBody = document.getElementById('insightDistBody');
+      var newBody = document.getElementById('insightNewProductBody');
+      if (!catBody) return;
+      if (o) o.textContent = '-'; if (o2) o2.textContent = '-'; if (o3) o3.textContent = '-';
+      if (o4) o4.textContent = '-'; if (o5) o5.textContent = '-'; if (o6) o6.textContent = '-';
+      if (dateEl) dateEl.textContent = '';
+      catBody.innerHTML = '<tr><td colspan="4" class="loading">加载中...</td></tr>';
+      if (brandBody) brandBody.innerHTML = ''; if (bandBody) bandBody.innerHTML = ''; if (distBody) distBody.innerHTML = ''; if (newBody) newBody.innerHTML = '';
+      try {
+        var url = (API || '') + '/api/consumer_insight?' + queryParams();
+        var r = await fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
+        var text = await r.text();
+        var d;
+        try { d = text ? JSON.parse(text) : {}; } catch (_) { throw new Error('返回数据格式异常'); }
+        if (!r.ok) throw new Error(d.message || d.error || ('HTTP ' + r.status));
+        if (d.error) throw new Error(d.error);
+        var ov = d.overview || {};
+        if (o) o.textContent = safeFmtNum(ov.total_sale, '-');
+        if (o2) o2.textContent = safeFmtNum(ov.total_profit, '-');
+        if (o3) o3.textContent = (ov.margin_pct != null && !isNaN(ov.margin_pct) ? ov.margin_pct : 0) + '%';
+        if (o4) o4.textContent = safeNum(ov.sku_sold, '-');
+        if (o5) o5.textContent = (ov.unit_price != null && !isNaN(ov.unit_price)) ? safeFmtNum(ov.unit_price) : '-';
+        if (o6) o6.textContent = (ov.sell_through_pct != null && !isNaN(ov.sell_through_pct)) ? ov.sell_through_pct + '%' : '-';
+        if (dateEl) dateEl.textContent = '周期：' + (d.date_range || '近30天');
+        var list = d.category_top_sale || [];
+        catBody.innerHTML = list.length === 0 ? '<tr><td colspan="4" class="loading">暂无数据</td></tr>' : list.map(function(row) {
+          return '<tr><td>' + (row.category || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + safeFmtMoney(row.profit) + '</td><td class="num">' + (row.margin_pct != null && !isNaN(row.margin_pct) ? row.margin_pct : 0) + '%</td></tr>';
+        }).join('');
+        var blist = d.brand || [];
+        if (brandBody) brandBody.innerHTML = blist.length === 0 ? '<tr><td colspan="6" class="loading">暂无数据</td></tr>' : blist.map(function(row) {
+          return '<tr><td>' + (row.brand || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + safeFmtMoney(row.profit) + '</td><td class="num">' + safeFmtNum(row.qty) + '</td><td class="num">' + (row.margin_pct != null && !isNaN(row.margin_pct) ? row.margin_pct : 0) + '%</td><td class="num">' + (row.contrib_pct != null && !isNaN(row.contrib_pct) ? row.contrib_pct : 0) + '%</td></tr>';
+        }).join('');
+        var plist = d.price_band || [];
+        if (bandBody) bandBody.innerHTML = plist.length === 0 ? '<tr><td colspan="5" class="loading">暂无数据</td></tr>' : plist.map(function(row) {
+          return '<tr><td>' + (row.band || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + safeFmtNum(row.qty) + '</td><td class="num">' + (row.margin_pct != null && !isNaN(row.margin_pct) ? row.margin_pct : 0) + '%</td><td class="num">' + (row.sale_contrib_pct != null && !isNaN(row.sale_contrib_pct) ? row.sale_contrib_pct : 0) + '%</td></tr>';
+        }).join('');
+        var dlist = d.distribution || [];
+        if (distBody) distBody.innerHTML = dlist.length === 0 ? '<tr><td colspan="5" class="loading">暂无数据</td></tr>' : dlist.map(function(row) {
+          return '<tr><td>' + (row.mode || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + safeFmtMoney(row.profit) + '</td><td class="num">' + (row.margin_pct != null && !isNaN(row.margin_pct) ? row.margin_pct : 0) + '%</td><td class="num">' + (row.contrib_pct != null && !isNaN(row.contrib_pct) ? row.contrib_pct : 0) + '%</td></tr>';
+        }).join('');
+        var np = d.new_product || {};
+        if (newBody) {
+          newBody.innerHTML = '<tr><td>新品销售额</td><td class="num">' + safeFmtMoney(np.new_sale) + '</td></tr>' +
+            '<tr><td>新品毛利</td><td class="num">' + safeFmtMoney(np.new_profit) + '</td></tr>' +
+            '<tr><td>新品销售占比</td><td class="num">' + (np.new_sale_contrib_pct != null && !isNaN(np.new_sale_contrib_pct) ? np.new_sale_contrib_pct : 0) + '%</td></tr>' +
+            '<tr><td>新品毛利率</td><td class="num">' + (np.new_margin_pct != null && !isNaN(np.new_margin_pct) ? np.new_margin_pct : 0) + '%</td></tr>' +
+            '<tr><td>新品动销数</td><td class="num">' + safeNum(np.new_sku_sold, '0') + '</td></tr>' +
+            '<tr><td>新品总数</td><td class="num">' + safeNum(np.new_sku_total, '0') + '</td></tr>' +
+            '<tr><td>新品动销率</td><td class="num">' + (np.new_sell_through_pct != null && !isNaN(np.new_sell_through_pct) ? np.new_sell_through_pct + '%' : '-') + '</td></tr>';
+        }
+      } catch (e) {
+        catBody.innerHTML = '<tr><td colspan="4" class="error">加载失败: ' + (e.message || '').replace(/</g,'&lt;') + '</td></tr>';
+        if (dateEl) dateEl.textContent = '';
+      }
+    }
+
+    async function loadLaborCostAnalysis() {
+      const kpiEl = document.getElementById('laborCategoryKpi');
+      if (!kpiEl) return;
+      const noteEl = document.getElementById('laborNote');
+      const leadersBody = document.getElementById('laborLeadersBody');
+      const fulltimeBody = document.getElementById('laborFulltimeBody');
+      const monthInput = document.getElementById('laborMonthInput');
+      const statusEl = document.getElementById('laborDataStatus');
+      const month = (monthInput && monthInput.value) ? String(monthInput.value).trim() : '';
+      kpiEl.innerHTML = '<div class="loading" style="color:#94a3b8;">加载中...</div>';
+      if (noteEl) noteEl.textContent = '';
+      if (statusEl) statusEl.textContent = '数据状态加载中...';
+      if (statusEl) statusEl.style.display = '';
+      if (leadersBody) leadersBody.innerHTML = '<tr><td colspan="7" class="loading" style="color:#94a3b8;">加载中...</td></tr>';
+      if (fulltimeBody) fulltimeBody.innerHTML = '<tr><td colspan="9" class="loading" style="color:#94a3b8;">加载中...</td></tr>';
+      try {
+        // 先请求状态并立即展示，再请求主数据（无需登录也可读）
+        try {
+          const statusRes = await fetch(API + '/api/labor_cost_status', { method: 'GET', headers: { 'Accept': 'application/json' }, credentials: 'include' });
+          if (statusRes.ok) {
+            const statusData = await statusRes.json();
+            if (statusData.success && statusEl) {
+              const raw = statusData.raw_count != null ? statusData.raw_count : 0;
+              var months = statusData.analysis_months || [];
+              if (months.length === 0 && statusData.available_months && statusData.available_months.length)
+                months = statusData.available_months.map(function(m) { return { report_month: typeof m === 'string' ? m : (m && m.report_month) }; });
+              const latestMonth = statusData.latest_report_month || null;
+              let txt = '现有记录：明细表 ' + raw + ' 条';
+              if (latestMonth) txt += '，最近月份 ' + latestMonth;
+              if (months.length) txt += '，汇总表 ' + months.length + ' 个月（' + months.map(m => m.report_month).join('、') + '）';
+              else txt += '，汇总表 ' + (latestMonth ? '已同步' : '0 个月');
+              statusEl.textContent = txt;
+              statusEl.style.color = '#94a3b8';
+              if (monthInput && latestMonth && !monthInput.value.trim()) monthInput.placeholder = latestMonth + '（留空即查该月）';
+              window._laborAnalysisMonths = months.map(function(m) { return m.report_month || ''; }).filter(Boolean);
+              var monthNavEl = document.getElementById('laborMonthNav');
+              if (monthNavEl && window._laborAnalysisMonths.length > 0) {
+                var cur = (month || latestMonth || '').trim();
+                monthNavEl.innerHTML = '<span style="color:#94a3b8;">分月展示：</span> ' + window._laborAnalysisMonths.map(function(ym) {
+                  if (ym === cur) return '<strong style="color:#38bdf8;">' + ym + '</strong>';
+                  return '<a href="#" data-month="' + ym.replace(/"/g, '&quot;') + '" style="color:#38bdf8;">' + ym + '</a>';
+                }).join(' &nbsp;|&nbsp; ') + ' <span style="color:#64748b;font-size:0.9rem;">（点击月份切换）</span>';
+                monthNavEl.querySelectorAll('a[data-month]').forEach(function(a) {
+                  a.addEventListener('click', function(e) { e.preventDefault(); if (monthInput) { monthInput.value = a.getAttribute('data-month'); loadLaborCostAnalysis(a.getAttribute('data-month')); } });
+                });
+              }
+            }
+          } else if (statusEl) statusEl.textContent = '数据状态 ' + statusRes.status;
+        } catch (_) { if (statusEl) statusEl.textContent = '状态请求失败'; }
+        const urlLaborCost = API + '/api/labor_cost' + (month ? '?month=' + encodeURIComponent(month) : '');
+        const urlLegacy = API + '/api/labor_cost_analysis' + (month ? '?month=' + encodeURIComponent(month) : '');
+        const useGet = !month;
+        const opts = {
+          method: useGet ? 'GET' : 'POST',
+          headers: { 'Accept': 'application/json' },
+          credentials: 'include'
+        };
+        if (!useGet) {
+          opts.headers['Content-Type'] = 'application/json';
+          opts.body = JSON.stringify({ month: month });
+        }
+        const ctrl = new AbortController();
+        const timeoutId = setTimeout(function() { ctrl.abort(); }, 15000);
+        let r;
+        try {
+          r = await fetch(urlLaborCost, { ...opts, signal: ctrl.signal });
+        } catch (fetchErr) {
+          clearTimeout(timeoutId);
+          if (fetchErr.name === 'AbortError') {
+            kpiEl.innerHTML = '<div class="error">请求超时，请点「查询」重试。</div>';
+            if (statusEl) statusEl.textContent = (statusEl.textContent || '') + ' · 主数据超时';
+          } else {
+            kpiEl.innerHTML = '<div class="error">网络错误: ' + (fetchErr.message || '').replace(/</g, '&lt;') + '。请点「查询」重试。</div>';
+          }
+          return;
+        }
+        clearTimeout(timeoutId);
+        if (r.status === 405 || r.status === 404) {
+          var legacyOpts = { method: opts.method, headers: opts.headers, credentials: 'include' };
+          if (opts.body) legacyOpts.body = opts.body;
+          r = await fetch(urlLegacy, legacyOpts);
+        }
+        if (!r.ok) {
+          const is401 = r.status === 401;
+          const msg = is401
+            ? '请先登录。请刷新页面重新登录后再打开「人力成本」Tab。'
+            : '请求失败 ' + r.status + (r.status === 405 ? ' (Method Not Allowed)，请检查服务器或反向代理是否放行 /api/labor_cost 或 /api/labor_cost_analysis 的 GET/POST' : ' ' + (r.statusText || ''));
+          kpiEl.innerHTML = '<div class="error">' + msg.replace(/</g, '&lt;') + '</div>';
+          if (statusEl) statusEl.textContent = is401 ? '未登录 (401)' : '接口异常: ' + r.status;
+          if (leadersBody) leadersBody.innerHTML = '<tr><td colspan="7" class="error">' + msg.replace(/</g, '&lt;') + '</td></tr>';
+          if (fulltimeBody) fulltimeBody.innerHTML = '<tr><td colspan="9" class="error">' + msg.replace(/</g, '&lt;') + '</td></tr>';
+          return;
+        }
+        let d;
+        try {
+          d = await r.json();
+        } catch (parseErr) {
+          if (kpiEl) kpiEl.innerHTML = '<div class="error">响应非 JSON（可能被代理拦截），请检查反向代理配置。</div>';
+          if (statusEl) statusEl.textContent = '解析失败';
+          if (leadersBody) leadersBody.innerHTML = '<tr><td colspan="7" class="error">响应解析失败</td></tr>';
+          if (fulltimeBody) fulltimeBody.innerHTML = '<tr><td colspan="9" class="error">响应解析失败</td></tr>';
+          return;
+        }
+        if (!d.success) {
+          if (kpiEl) kpiEl.innerHTML = '<div class="error">' + (d.message || '加载失败').replace(/</g, '&lt;') + '</div>';
+          if (leadersBody) leadersBody.innerHTML = '<tr><td colspan="7" class="error">' + (d.message || '').replace(/</g, '&lt;') + '</td></tr>';
+          if (fulltimeBody) fulltimeBody.innerHTML = '<tr><td colspan="9" class="error">' + (d.message || '').replace(/</g, '&lt;') + '</td></tr>';
+          return;
+        }
+        if (!d.report_month) {
+          var emptyMsg = '当前无人力成本数据。请到「数据导入」上传 Excel 或附图；若已导入，请将报表月份留空后点「查询」查看最近月份，或输入具体月份（如 2026-01）再查询。';
+          kpiEl.innerHTML = '<div class="labor-empty-state" style="padding:16px;background:#1e293b;border-radius:8px;border:1px solid #334155;color:#94a3b8;"><strong style="color:#e2e8f0;">暂无数据</strong><br/><span style="font-size:0.9rem;">' + emptyMsg.replace(/</g, '&lt;') + '</span></div>';
+          if (noteEl) noteEl.textContent = '';
+          var sb = document.getElementById('laborSummaryBox');
+          if (sb) sb.style.display = 'none';
+          if (leadersBody) leadersBody.innerHTML = '<tr><td colspan="7" style="padding:12px;color:#64748b;text-align:center;">无数据时无明细表</td></tr>';
+          if (fulltimeBody) fulltimeBody.innerHTML = '<tr><td colspan="9" style="padding:12px;color:#64748b;text-align:center;">无数据时无明细表</td></tr>';
+          if (statusEl) statusEl.style.color = '#94a3b8';
+          return;
+        }
+        const s = d.summary || {};
+        const byCat = s.by_category || [];
+        if (kpiEl) {
+          kpiEl.innerHTML = byCat.length === 0
+            ? '<div class="loading">暂无类目汇总</div>'
+            : byCat.map((c, i) => {
+                const isTotal = (c.name || '') === '全口径';
+                const cardClass = isTotal ? 'kpi-card labor-total-card' : 'kpi-card';
+                return `<div class="${cardClass}"><div class="label">${(c.name || '').replace(/</g, '&lt;')}</div><div class="value">${fmtMoney(c.total_wage)}</div><div style="font-size:0.75rem;color:#94a3b8;">${(c.position_count != null ? c.position_count : 0)} 岗位</div></div>`;
+              }).join('');
+        }
+        if (noteEl) noteEl.textContent = (s.note || '') + ' 报表月份：' + (d.report_month || '');
+        var monthNavEl = document.getElementById('laborMonthNav');
+        if (monthNavEl && window._laborAnalysisMonths && window._laborAnalysisMonths.length > 0) {
+          var cur = (d.report_month || '').trim();
+          monthNavEl.innerHTML = '<span style="color:#94a3b8;">分月展示：</span> ' + window._laborAnalysisMonths.map(function(ym) {
+            if (ym === cur) return '<strong style="color:#38bdf8;">' + ym + '</strong>';
+            return '<a href="#" data-month="' + ym.replace(/"/g, '&quot;') + '" style="color:#38bdf8;">' + ym + '</a>';
+          }).join(' &nbsp;|&nbsp; ') + ' <span style="color:#64748b;font-size:0.9rem;">（点击月份切换）</span>';
+          monthNavEl.querySelectorAll('a[data-month]').forEach(function(a) {
+            a.addEventListener('click', function(e) { e.preventDefault(); if (monthInput) { monthInput.value = a.getAttribute('data-month'); loadLaborCostAnalysis(a.getAttribute('data-month')); } });
+          });
+        }
+        var summaryBoxEl = document.getElementById('laborSummaryBox');
+        if (summaryBoxEl && byCat.length > 0) {
+          var totalWage = parseFloat(s.total_labor_cost) || 0;
+          var totalPos = (byCat[0].name === '全口径' ? (byCat[0].position_count != null ? byCat[0].position_count : 0) : 0) || 0;
+          var avgCost = totalPos > 0 ? totalWage / totalPos : 0;
+          var target = parseFloat(s.target_labor_cost) || 0;
+          var diff = parseFloat(s.labor_cost_difference) != null ? parseFloat(s.labor_cost_difference) : (target - totalWage);
+          summaryBoxEl.style.display = 'block';
+          summaryBoxEl.innerHTML = '<h4 style="margin:0 0 8px 0;color:#94a3b8;font-size:0.9rem;">人力汇总数据</h4><table style="font-size:0.9rem;"><tr><td class="label" style="padding:4px 12px 4px 0;color:#94a3b8;">全口径合计</td><td>' + fmtMoney(totalWage) + ' 元</td></tr><tr><td class="label" style="padding:4px 12px 4px 0;color:#94a3b8;">总人数</td><td>' + totalPos + ' 人</td></tr><tr><td class="label" style="padding:4px 12px 4px 0;color:#94a3b8;">人均成本</td><td>' + fmtMoney(avgCost) + ' 元/人</td></tr><tr><td class="label" style="padding:4px 12px 4px 0;color:#94a3b8;">实际支付（如开票/总成本）</td><td>' + fmtMoney(target) + ' 元</td></tr><tr><td class="label" style="padding:4px 12px 4px 0;color:#94a3b8;">统计缺口（实际支付 − 本页全口径）</td><td>' + fmtMoney(diff) + ' 元</td></tr></table>';
+        }
+        const leaders = d.leaders || [];
+        const fulltime = d.fulltime || [];
+        if (leadersBody) {
+          leadersBody.innerHTML = leaders.length === 0
+            ? '<tr><td colspan="7" style="padding:12px;color:#64748b;text-align:center;">暂无组长/职能明细（仅汇总表有数据时可无此项，请导入 Excel 填充明细表）</td></tr>'
+            : leaders.map(row => `<tr>
+              <td>${String(row.position_name || '').replace(/</g, '&lt;')}</td>
+              <td class="num">${row.total_salary != null ? fmtMoney(row.total_salary) : '-'}</td>
+              <td class="num">${row.actual_salary != null ? fmtMoney(row.actual_salary) : '-'}</td>
+              <td class="num">${row.luxury_bonus != null ? fmtMoney(row.luxury_bonus) : '-'}</td>
+              <td class="num">${row.actual_income != null ? fmtMoney(row.actual_income) : '-'}</td>
+              <td class="num">${row.company_cost != null ? fmtMoney(row.company_cost) : '-'}</td>
+              <td class="num">${row.total_cost != null ? fmtMoney(row.total_cost) : '-'}</td>
+            </tr>`).join('');
+        }
+        if (fulltimeBody) {
+          fulltimeBody.innerHTML = fulltime.length === 0
+            ? '<tr><td colspan="9" style="padding:12px;color:#64748b;text-align:center;">暂无组员/全职明细（仅汇总表有数据时可无此项，请导入 Excel 填充明细表）</td></tr>'
+            : fulltime.map(row => `<tr>
+              <td>${String(row.position_name || '').replace(/</g, '&lt;')}</td>
+              <td class="num">${row.work_hours != null ? fmtNum(row.work_hours) : '-'}</td>
+              <td class="num">${row.base_salary != null ? fmtMoney(row.base_salary) : '-'}</td>
+              <td class="num">${row.performance != null ? fmtMoney(row.performance) : '-'}</td>
+              <td class="num">${row.position_allowance != null ? fmtMoney(row.position_allowance) : '-'}</td>
+              <td class="num">${row.total_salary != null ? fmtMoney(row.total_salary) : '-'}</td>
+              <td class="num">${row.luxury_amount != null ? fmtMoney(row.luxury_amount) : '-'}</td>
+              <td class="num">${row.actual_income != null ? fmtMoney(row.actual_income) : '-'}</td>
+              <td class="num">${row.company_cost != null ? fmtMoney(row.company_cost) : '-'}</td>
+            </tr>`).join('');
+        }
+        if (monthInput && d.report_month) {
+          if (!month) monthInput.value = d.report_month;
+          monthInput.placeholder = d.report_month + '（留空即最近月份）';
+        }
+      } catch (e) {
+        const msg = '加载失败: ' + (e.message || String(e)).replace(/</g, '&lt;') + '（若为 405 请让运维在反向代理放行 /api/labor_cost 的 GET/POST）';
+        if (kpiEl) kpiEl.innerHTML = '<div class="error">' + msg + '</div>';
+        if (leadersBody) leadersBody.innerHTML = '<tr><td colspan="7" class="error">' + msg + '</td></tr>';
+        if (fulltimeBody) fulltimeBody.innerHTML = '<tr><td colspan="9" class="error">' + msg + '</td></tr>';
+      }
+    }
+
     async function loadBizDataStatus() {
       const bar = document.getElementById('bizDataStatusBar');
       if (!bar) return;
@@ -1319,13 +1742,13 @@
       const chartEl = document.getElementById('priceBandChart');
       const tbody = document.getElementById('priceBandBody');
       if (!tbody) return;
-      tbody.innerHTML = '<tr><td colspan="5" class="loading">加载中...</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="loading">加载中...</td></tr>';
       try {
         const r = await fetch(API + '/api/price_band_summary?' + queryParams());
         const data = await r.json();
         const list = safeArray(data);
-        tbody.innerHTML = list.length === 0 ? '<tr><td colspan="5" class="loading">暂无数据</td></tr>' : list.map(row => `
-          <tr><td>${(row.band || '').replace(/</g,'&lt;')} 元</td><td class="num">${fmtMoney(row.sale_amount)}</td><td class="num">${row.qty}</td><td class="num">${row.sale_contrib_pct}%</td><td class="num">${row.qty_contrib_pct}%</td></tr>
+        tbody.innerHTML = list.length === 0 ? '<tr><td colspan="7" class="loading">暂无数据</td></tr>' : list.map(row => `
+          <tr><td>${(row.band || '').replace(/</g,'&lt;')} 元</td><td class="num">${fmtMoney(row.sale_amount)}</td><td class="num">${fmtNum(row.qty)}</td><td class="num">${fmtNum(row.record_count || 0)}</td><td class="num">${row.sale_contrib_pct}%</td><td class="num">${row.qty_contrib_pct}%</td><td class="num">${row.record_contrib_pct || 0}%</td></tr>
         `).join('');
         if (chartEl && typeof echarts !== 'undefined' && list.length > 0) {
           ensureEcharts(function() {
@@ -1337,7 +1760,7 @@
             });
           });
         }
-      } catch (e) { tbody.innerHTML = '<tr><td colspan="5" class="error">加载失败</td></tr>'; }
+      } catch (e) { tbody.innerHTML = '<tr><td colspan="7" class="error">加载失败</td></tr>'; }
     }
     async function loadSkuTurnover() {
       const tbody = document.getElementById('skuTurnoverBody');
@@ -1543,9 +1966,10 @@
         yoyHtml += `<div class="trend-item"><span>走势</span><span class="${trendCls}">${trendText}</span></div>`;
         if (d.trend_summary) {
           const t = d.trend_summary;
+          const isCustom = (currentStartDate && currentEndDate) || (document.getElementById('startDate') && document.getElementById('endDate') && document.getElementById('startDate').value && document.getElementById('endDate').value);
           yoyHtml += `<div class="trend-item"><span>近${t.recent_days}日汇总</span><span>销售额 ${fmtNum(t.recent_sale)}</span></div>`;
           yoyHtml += `<div class="trend-item"><span>近${t.recent_days}日毛利</span><span>${fmtNum(t.recent_profit)}</span></div>`;
-          yoyHtml += `<div class="trend-item"><span>最近一日 (${t.latest_date})</span><span>销售额 ${fmtNum(t.latest_sale)}</span></div>`;
+          yoyHtml += `<div class="trend-item"><span>${isCustom ? '周期内' : ''}最近一日 (${t.latest_date})</span><span>销售额 ${fmtNum(t.latest_sale)}</span></div>`;
           yoyHtml += `<div class="trend-item"><span>共 ${d.data_points || 0} 天数据</span><span></span></div>`;
         } else if ((d.data_points != null && d.data_points > 0) || d.trend) {
           yoyHtml += `<div class="trend-item"><span>共 ${d.data_points || 0} 天数据</span><span>按自然日走势</span></div>`;
@@ -1865,22 +2289,53 @@
       } catch (e) { console.warn('小类加载失败', e); }
     }
 
+    var dateRangeData = { data_min_date: null, data_max_date: null };
     async function loadDateRange() {
+      var startIn = document.getElementById('startDate');
+      var endIn = document.getElementById('endDate');
+      if (!startIn || !endIn) return;
+      var pickerMin = '2010-01-01';
+      var pickerMax = '2030-12-31';
       try {
-        const r = await fetch(API + '/api/date_range');
-        const d = await r.json();
-        const startIn = document.getElementById('startDate');
-        const endIn = document.getElementById('endDate');
-        if (startIn && d.min_date) startIn.min = d.min_date;
-        if (endIn && d.max_date) { endIn.max = d.max_date; endIn.min = d.min_date; if (startIn) startIn.max = d.max_date; }
-      } catch (e) { console.warn('日期范围加载失败', e); }
+        var r = await fetch(API + '/api/date_range');
+        if (r.ok) {
+          var d = await r.json();
+          if (d.data_min_date) { dateRangeData.data_min_date = d.data_min_date; pickerMin = d.data_min_date; }
+          if (d.data_max_date) { dateRangeData.data_max_date = d.data_max_date; pickerMax = d.data_max_date; }
+        }
+      } catch (e) {}
+      startIn.min = pickerMin;
+      startIn.max = pickerMax;
+      endIn.min = pickerMin;
+      endIn.max = pickerMax;
+      startIn.removeAttribute('readonly');
+      startIn.removeAttribute('disabled');
+      endIn.removeAttribute('readonly');
+      endIn.removeAttribute('disabled');
     }
 
     function applyFilter() {
       const startIn = document.getElementById('startDate');
       const endIn = document.getElementById('endDate');
-      currentStartDate = startIn.value || '';
-      currentEndDate = endIn.value || '';
+      if ((currentPeriod === 'custom' || (currentStartDate && currentEndDate)) && startIn && endIn) {
+        var fromUrl = getCustomRangeFromUrl();
+        if (!(startIn.value || '').trim() && (currentStartDate || (fromUrl && fromUrl.start))) startIn.value = currentStartDate || (fromUrl ? fromUrl.start : '');
+        if (!(endIn.value || '').trim() && (currentEndDate || (fromUrl && fromUrl.end))) endIn.value = currentEndDate || (fromUrl ? fromUrl.end : '');
+      }
+      let s = (startIn && startIn.value) ? (startIn.value || '').replace(/\//g, '-').trim() : '';
+      let e = (endIn && endIn.value) ? (endIn.value || '').replace(/\//g, '-').trim() : '';
+      if (!s && currentStartDate) s = currentStartDate;
+      if (!e && currentEndDate) e = currentEndDate;
+      if (s && e && s > e) {
+        if (startIn) startIn.value = e;
+        if (endIn) endIn.value = s;
+        currentStartDate = e;
+        currentEndDate = s;
+      } else {
+        currentStartDate = s;
+        currentEndDate = e;
+      }
+      if (currentStartDate && currentEndDate) currentPeriod = 'custom';
       currentCategoryLargeCode = document.getElementById('categoryLargeSelect').value || '';
       currentCategoryMidCode = document.getElementById('categoryMidSelect').value || '';
       currentCategorySmallCode = document.getElementById('categorySmallSelect').value || '';
@@ -1914,23 +2369,102 @@
         const el = document.getElementById('filterPeriodSummary');
         if (!el) return;
         const labels = { day: '今日', week: '本周', month: '本月', recent30: '近30天', custom: '自定义' };
-        if (currentStartDate && currentEndDate) el.textContent = 'KPI 周期：' + currentStartDate + ' ~ ' + currentEndDate;
-        else el.textContent = 'KPI 周期：' + (labels[currentPeriod] || currentPeriod);
+        const isCustom = (currentStartDate && currentEndDate) || currentPeriod === 'custom';
+        if (isCustom && currentStartDate && currentEndDate) {
+          el.textContent = 'KPI 周期：' + currentStartDate + ' ~ ' + currentEndDate;
+        } else {
+          var txt = 'KPI 周期：' + (labels[currentPeriod] || currentPeriod);
+          var toggleRow = document.querySelector('.filter-bar-toggle-row');
+          var filterContent = document.getElementById('filterBarContent');
+          var collapseMode = toggleRow && (toggleRow.offsetWidth > 0 && toggleRow.offsetHeight > 0) && filterContent && !filterContent.classList.contains('is-open');
+          if (collapseMode) txt += ' · 点「筛选」可选自定义';
+          el.textContent = txt;
+        }
       }
 
     (async function() {
+      var urlRange = getCustomRangeFromUrl();
+      if (urlRange) {
+        currentStartDate = urlRange.start;
+        currentEndDate = urlRange.end;
+        currentPeriod = 'custom';
+      }
       await loadCategoryLarge();
-      await loadCategoryMid();
-      await loadCategorySmall();
-      await loadProducts();
       await loadDateRange();
+      if (urlRange) {
+        var startIn = document.getElementById('startDate');
+        var endIn = document.getElementById('endDate');
+        if (startIn) startIn.value = urlRange.start;
+        if (endIn) endIn.value = urlRange.end;
+        var dateEl = document.getElementById('dateRangeInline');
+        if (dateEl) dateEl.style.display = 'flex';
+        document.getElementById('filterBarContent')?.classList.add('is-open');
+        var btnFilter = document.getElementById('btnFilterToggle');
+        if (btnFilter) btnFilter.textContent = '筛选 ▲';
+      }
       loadDataStatus();
       loadAuthUser();
       updatePeriodTabActive();
       updateExportLinks();
       await Promise.all([loadKpi(), loadPie(), loadBar(), loadCategoryRank(), loadProfitDetail(), loadProductDetail(1), loadInvAlert(), loadTrendAnalysis(), loadDowChart()]);
 
-      document.getElementById('btnQuery').addEventListener('click', () => { applyFilter(); updatePeriodTabActive(); });
+      document.getElementById('btnQuery').addEventListener('click', function() {
+        // 仅 KPI 周期相关查询（人力成本已剥离至「数据导入 · 人力成本」独立页 /labor，不参与此处）
+        var isCustomTab = document.querySelector('.period-tabs .tab-btn[data-period="custom"]')?.classList.contains('active');
+        if (isCustomTab) {
+          var filterBar = document.getElementById('filterBarContent');
+          if (filterBar && !filterBar.classList.contains('is-open')) {
+            filterBar.classList.add('is-open');
+            var btnFilter = document.getElementById('btnFilterToggle');
+            if (btnFilter) btnFilter.textContent = '筛选 ▲';
+          }
+        }
+        const startIn = document.getElementById('startDate');
+        const endIn = document.getElementById('endDate');
+        if (startIn && endIn) {
+          var s = (startIn.value || '').replace(/\//g, '-').trim();
+          var e = (endIn.value || '').replace(/\//g, '-').trim();
+          if (s && e) {
+            if (s > e) { var t = s; s = e; e = t; startIn.value = s; endIn.value = e; }
+            currentStartDate = s;
+            currentEndDate = e;
+            currentPeriod = 'custom';
+            try {
+              var u = new URL(window.location.href);
+              u.searchParams.set('start_date', s);
+              u.searchParams.set('end_date', e);
+              window.history.replaceState({}, '', u.pathname + '?' + u.searchParams.toString());
+            } catch (_) {}
+          }
+        }
+        applyFilter();
+        updatePeriodTabActive();
+      });
+      function syncCustomDateFromInputs() {
+        var startIn = document.getElementById('startDate');
+        var endIn = document.getElementById('endDate');
+        if (!startIn || !endIn) return;
+        var s = (startIn.value || '').trim();
+        var e = (endIn.value || '').trim();
+        if (s && e) {
+          if (s > e) {
+            startIn.value = e;
+            endIn.value = s;
+            currentStartDate = e;
+            currentEndDate = s;
+          } else {
+            currentStartDate = s;
+            currentEndDate = e;
+          }
+          currentPeriod = 'custom';
+          updatePeriodTabActive();
+          updateExportLinks();
+        }
+      }
+      document.getElementById('startDate')?.addEventListener('change', syncCustomDateFromInputs);
+      document.getElementById('startDate')?.addEventListener('input', syncCustomDateFromInputs);
+      document.getElementById('endDate')?.addEventListener('change', syncCustomDateFromInputs);
+      document.getElementById('endDate')?.addEventListener('input', syncCustomDateFromInputs);
       const filterContent = document.getElementById('filterBarContent');
       const btnFilterToggle = document.getElementById('btnFilterToggle');
       if (filterContent && btnFilterToggle) {
@@ -1950,28 +2484,41 @@
         aiChatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendAiChat(aiChatInput.value); });
       }
 
+      function switchToPage(page) {
+        document.querySelectorAll('.page-nav .nav-tab').forEach(b => b.classList.remove('active'));
+        const tabBtn = document.querySelector('.page-nav .nav-tab[data-page="' + page + '"]');
+        if (tabBtn) tabBtn.classList.add('active');
+        document.querySelectorAll('.page-panel').forEach(p => p.classList.remove('active'));
+        const panel = document.querySelector('.page-panel[data-page="' + page + '"]');
+        if (panel) panel.classList.add('active');
+        if (page === 'tax') loadTaxBurdenSummary();
+        if (page === 'biz') { loadBizDataStatus(); showBizBlock('return_gift'); loadReturnGiftSummary(); }
+        if (page === 'insight') loadConsumerInsight();
+        if (page === 'overview' && typeof echarts !== 'undefined') {
+          ['pieChart', 'barChart', 'dowChart'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+              const inst = echarts.getInstanceByDom(el);
+              if (inst) setTimeout(() => inst.resize(), 50);
+            }
+          });
+        }
+      }
       document.querySelectorAll('.page-nav .nav-tab').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const page = btn.dataset.page;
-          document.querySelectorAll('.page-nav .nav-tab').forEach(b => b.classList.remove('active'));
-          btn.classList.add('active');
-          document.querySelectorAll('.page-panel').forEach(p => p.classList.remove('active'));
-          const panel = document.querySelector('.page-panel[data-page="' + page + '"]');
-          if (panel) panel.classList.add('active');
-          if (page === 'tax') loadTaxBurdenSummary();
-          if (page === 'biz') { loadBizDataStatus(); showBizBlock('return_gift'); loadReturnGiftSummary(); }
-          if (page === 'overview' && typeof echarts !== 'undefined') {
-            ['pieChart', 'barChart', 'dowChart'].forEach(id => {
-              const el = document.getElementById(id);
-              if (el) {
-                const inst = echarts.getInstanceByDom(el);
-                if (inst) setTimeout(() => inst.resize(), 50);
-              }
-            });
-          }
-        });
+        btn.addEventListener('click', () => { switchToPage(btn.dataset.page); });
       });
-
+      var initialPage = (function() {
+        try {
+          var p = new URLSearchParams(window.location.search).get('page');
+          if (p) return p;
+          var h = (window.location.hash || '').replace(/^#/, '');
+          if (h) return h;
+        } catch (e) {}
+        return null;
+      })();
+      if (initialPage === 'labor') {
+        window.location.href = '/labor';
+      }
       document.querySelectorAll('.biz-sub').forEach(btn => {
         btn.addEventListener('click', () => {
           const sub = btn.dataset.biz;
@@ -1989,36 +2536,60 @@
         });
       });
 
+      function updateCategoryCascadeVisibility() {
+        var large = document.getElementById('categoryRowMid');
+        var small = document.getElementById('categoryRowSmall');
+        var product = document.getElementById('categoryRowProduct');
+        if (large) large.style.display = currentCategoryLargeCode ? '' : 'none';
+        if (small) small.style.display = currentCategoryMidCode ? '' : 'none';
+        if (product) product.style.display = currentCategorySmallCode ? '' : 'none';
+      }
       function onCategoryLargeChange() {
         currentCategoryLargeCode = document.getElementById('categoryLargeSelect').value || '';
         currentCategoryMidCode = '';
         currentCategorySmallCode = '';
+        currentSkuCode = '';
         document.getElementById('categoryMidSelect').value = '';
         document.getElementById('categorySmallSelect').value = '';
-        loadCategoryMid();
-        loadCategorySmall();
-        loadProducts();
-        currentSkuCode = '';
         document.getElementById('productSelect').value = '';
+        if (currentCategoryLargeCode) {
+          loadCategoryMid();
+          loadCategorySmall();
+          loadProducts();
+        } else {
+          document.getElementById('categoryMidSelect').innerHTML = '<option value="">全部中类</option>';
+          document.getElementById('categorySmallSelect').innerHTML = '<option value="">全部小类</option>';
+          document.getElementById('productSelect').innerHTML = '<option value="">全部商品</option>';
+        }
+        updateCategoryCascadeVisibility();
       }
       function onCategoryMidChange() {
         currentCategoryMidCode = document.getElementById('categoryMidSelect').value || '';
         currentCategorySmallCode = '';
-        document.getElementById('categorySmallSelect').value = '';
-        loadCategorySmall();
-        loadProducts();
         currentSkuCode = '';
+        document.getElementById('categorySmallSelect').value = '';
         document.getElementById('productSelect').value = '';
+        if (currentCategoryMidCode) {
+          loadCategorySmall();
+          loadProducts();
+        } else {
+          document.getElementById('categorySmallSelect').innerHTML = '<option value="">全部小类</option>';
+          document.getElementById('productSelect').innerHTML = '<option value="">全部商品</option>';
+        }
+        updateCategoryCascadeVisibility();
       }
       function onCategorySmallChange() {
         currentCategorySmallCode = document.getElementById('categorySmallSelect').value || '';
-        loadProducts();
         currentSkuCode = '';
         document.getElementById('productSelect').value = '';
+        if (currentCategorySmallCode) loadProducts();
+        else document.getElementById('productSelect').innerHTML = '<option value="">全部商品</option>';
+        updateCategoryCascadeVisibility();
       }
       document.getElementById('categoryLargeSelect').addEventListener('change', onCategoryLargeChange);
       document.getElementById('categoryMidSelect').addEventListener('change', onCategoryMidChange);
       document.getElementById('categorySmallSelect').addEventListener('change', onCategorySmallChange);
+      updateCategoryCascadeVisibility();
 
       document.querySelectorAll('.detail-tabs .tab-btn').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -2037,22 +2608,47 @@
       document.querySelectorAll('.period-tabs .tab-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
           if (btn.dataset.period === 'custom') {
-            const r = await fetch(API + '/api/date_range');
-            const d = await r.json();
+            await loadDateRange();
+            const startIn = document.getElementById('startDate');
+            const endIn = document.getElementById('endDate');
             const today = new Date().toISOString().slice(0, 10);
-            if (d.min_date && d.max_date) {
-              document.getElementById('startDate').value = d.min_date;
-              document.getElementById('endDate').value = today > d.max_date ? d.max_date : today;
-              currentStartDate = d.min_date;
-              currentEndDate = today > d.max_date ? d.max_date : today;
-              currentPeriod = 'custom';
+            const minDate = startIn?.min || '2010-01-01';
+            const maxDate = endIn?.max || '2030-12-31';
+            const defaultStart = dateRangeData.data_min_date || new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+            const defaultEnd = dateRangeData.data_max_date || today;
+            const clamp = (v, lo, hi) => (!v || v < lo ? lo : v > hi ? hi : v);
+            if (startIn) {
+              startIn.value = clamp(startIn.value || defaultStart, minDate, maxDate);
+              startIn.removeAttribute('readonly');
+              startIn.removeAttribute('disabled');
             }
+            if (endIn) {
+              endIn.value = clamp(endIn.value || defaultEnd, minDate, maxDate);
+              endIn.removeAttribute('readonly');
+              endIn.removeAttribute('disabled');
+            }
+            currentStartDate = startIn?.value || defaultStart;
+            currentEndDate = endIn?.value || defaultEnd;
+            currentPeriod = 'custom';
+            document.getElementById('dateRangeInline').style.display = 'flex';
+            document.getElementById('filterBarContent')?.classList.add('is-open');
+            if (document.getElementById('btnFilterToggle')) document.getElementById('btnFilterToggle').textContent = '筛选 ▲';
+            var dateRangeEl = document.getElementById('dateRangeInline');
+            if (dateRangeEl) dateRangeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            setTimeout(function() { startIn?.focus(); }, 120);
           } else {
             document.getElementById('startDate').value = '';
             document.getElementById('endDate').value = '';
             currentStartDate = '';
             currentEndDate = '';
             currentPeriod = btn.dataset.period;
+            try {
+              var u = new URL(window.location.href);
+              u.searchParams.delete('start_date');
+              u.searchParams.delete('end_date');
+              var newSearch = u.searchParams.toString();
+              window.history.replaceState({}, '', u.pathname + (newSearch ? '?' + newSearch : ''));
+            } catch (_) {}
           }
           updatePeriodTabActive();
           updateExportLinks();
