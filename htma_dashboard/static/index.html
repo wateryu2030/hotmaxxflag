@@ -35,6 +35,11 @@
     tr:hover { background: #334155; }
     .num { text-align: right; font-variant-numeric: tabular-nums; }
     table tr.tax-cat-detail { background: rgba(15,23,42,0.5); }
+    .insight-no { width: 2.2em; text-align: center; color: #94a3b8; }
+    th.sortable { cursor: pointer; user-select: none; }
+    th.sortable:hover { background: #334155; color: #e2e8f0; }
+    th.sortable.sort-asc::after { content: ' ↑'; font-size: 0.75em; color: #38bdf8; }
+    th.sortable.sort-desc::after { content: ' ↓'; font-size: 0.75em; color: #38bdf8; }
     table tr.tax-cat-detail td { font-size: 0.85em; }
     .loading { text-align: center; padding: 40px; color: #64748b; }
     .error { color: #f87171; padding: 12px; }
@@ -497,7 +502,7 @@
   <div class="page-panel" id="pageInsight" data-page="insight">
   <div class="section scroll-table">
     <h2>消费洞察</h2>
-    <p class="section-desc">商品贡献、价格策略、品牌效能、经销模式、新品表现。数据周期与上方 KPI 周期一致。</p>
+    <p class="section-desc">商品贡献、价格策略、品牌效能、供应链/经销模式、新品表现、退货与环比。数据周期与上方 KPI 周期一致。</p>
     <div class="kpi-row" style="margin-bottom:12px;" id="insightKpiRow">
       <div class="kpi-card"><div class="label">总销售额</div><div class="value" id="insightTotalSale">-</div></div>
       <div class="kpi-card"><div class="label">总毛利</div><div class="value" id="insightTotalProfit">-</div></div>
@@ -505,18 +510,49 @@
       <div class="kpi-card"><div class="label">动销商品数</div><div class="value" id="insightSkuSold">-</div></div>
       <div class="kpi-card"><div class="label">件单价</div><div class="value" id="insightUnitPrice">-</div></div>
       <div class="kpi-card"><div class="label">动销率</div><div class="value" id="insightSellThrough">-</div></div>
+      <div class="kpi-card"><div class="label">平均折扣率</div><div class="value" id="insightAvgDiscount">-</div></div>
+      <div class="kpi-card"><div class="label">平均零售价</div><div class="value" id="insightAvgRetail">-</div></div>
+      <div class="kpi-card"><div class="label">库存周转天数</div><div class="value" id="insightTurnoverDays">-</div></div>
+      <div class="kpi-card"><div class="label">环比</div><div class="value" id="insightPeriodChange">-</div></div>
+      <div class="kpi-card"><div class="label">退货率</div><div class="value" id="insightReturnRate">-</div></div>
     </div>
     <p id="insightDateRange" style="font-size:0.85rem;color:#94a3b8;margin-bottom:12px;"></p>
-    <h3 class="label" style="margin-top:12px;">品类贡献（销售额 Top10）</h3>
-    <div class="table-wrap"><table><thead><tr><th>品类</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">毛利率%</th></tr></thead><tbody id="insightCategorySaleBody"></tbody></table></div>
+    <div class="chart-row" style="margin-bottom:8px;">
+      <div class="chart-box"><h3>品类销售额 Top10</h3><div id="insightCategoryBarChart" class="chart"></div></div>
+      <div class="chart-box"><h3>品牌效能（SKU数 vs 销售额，气泡=毛利）</h3><div id="insightBrandBubbleChart" class="chart"></div></div>
+    </div>
+    <h3 class="label" style="margin-top:12px;">品类贡献矩阵</h3>
+    <div class="table-wrap"><table data-insight-table="categoryMatrix"><thead><tr><th class="insight-no">序号</th><th class="sortable" data-sort-key="category">品类</th><th class="num sortable" data-sort-key="sku_sold">动销SKU</th><th class="num sortable" data-sort-key="sale_amount">销售额</th><th class="num sortable" data-sort-key="sale_contrib_pct">销售占比%</th><th class="num sortable" data-sort-key="profit">毛利</th><th class="num sortable" data-sort-key="margin_pct">毛利率%</th><th class="num sortable" data-sort-key="avg_sale_price">平均售价</th><th class="num sortable" data-sort-key="avg_discount_pct">平均折扣%</th></tr></thead><tbody id="insightCategoryMatrixBody"></tbody></table></div>
+    <div class="chart-row" style="margin-bottom:8px;">
+      <div class="chart-box"><h3>价格带（柱=销售额，线=毛利率）</h3><div id="insightPriceBandChart" class="chart"></div></div>
+      <div class="chart-box"><h3>经销方式占比</h3><div id="insightDistPieChart" class="chart"></div></div>
+    </div>
+    <h3 class="label" style="margin-top:12px;">折扣区间</h3>
+    <div class="table-wrap" style="max-height:120px;"><table data-insight-table="discountBand"><thead><tr><th class="insight-no">序号</th><th class="sortable" data-sort-key="band">区间</th><th class="num sortable" data-sort-key="sku_cnt">SKU数</th><th class="num sortable" data-sort-key="sale_amount">销售额</th><th class="num sortable" data-sort-key="profit">毛利</th><th class="num sortable" data-sort-key="qty">销量</th><th class="num sortable" data-sort-key="margin_pct">毛利率%</th></tr></thead><tbody id="insightDiscountBandBody"></tbody></table></div>
+    <div class="chart-box" style="height:220px;margin-bottom:8px;"><h3>折扣区间销售额堆积</h3><div id="insightDiscountBarChart" class="chart"></div></div>
     <h3 class="label" style="margin-top:12px;">品牌贡献</h3>
-    <div class="table-wrap"><table><thead><tr><th>品牌</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">销量</th><th class="num">毛利率%</th><th class="num">贡献%</th></tr></thead><tbody id="insightBrandBody"></tbody></table></div>
-    <h3 class="label" style="margin-top:12px;">价格带分布</h3>
-    <div class="table-wrap"><table><thead><tr><th>价格带</th><th class="num">销售额</th><th class="num">销量</th><th class="num">毛利率%</th><th class="num">销售贡献%</th></tr></thead><tbody id="insightPriceBandBody"></tbody></table></div>
+    <div class="table-wrap"><table data-insight-table="brand"><thead><tr><th class="insight-no">序号</th><th class="sortable" data-sort-key="brand">品牌</th><th class="num sortable" data-sort-key="sale_amount">销售额</th><th class="num sortable" data-sort-key="profit">毛利</th><th class="num sortable" data-sort-key="qty">销量</th><th class="num sortable" data-sort-key="margin_pct">毛利率%</th><th class="num sortable" data-sort-key="contrib_pct">贡献%</th></tr></thead><tbody id="insightBrandBody"></tbody></table></div>
+    <h3 class="label" style="margin-top:12px;">单品销售 Top20</h3>
+    <div class="table-wrap"><table data-insight-table="topSku"><thead><tr><th class="insight-no">序号</th><th class="sortable" data-sort-key="sku_code">货号</th><th class="sortable" data-sort-key="product_name">品名</th><th class="num sortable" data-sort-key="sale_amount">销售额</th><th class="num sortable" data-sort-key="profit">毛利</th><th class="num sortable" data-sort-key="qty">销量</th><th class="num sortable" data-sort-key="margin_pct">毛利率%</th></tr></thead><tbody id="insightTopSkuBody"></tbody></table></div>
+    <h3 class="label" style="margin-top:12px;">价格带分布（销售额占比 + 销量渗透率）</h3>
+    <div class="table-wrap"><table data-insight-table="priceBand"><thead><tr><th class="insight-no">序号</th><th class="sortable" data-sort-key="band">价格带</th><th class="num sortable" data-sort-key="sale_amount">销售额</th><th class="num sortable" data-sort-key="qty">销量</th><th class="num sortable" data-sort-key="qty_contrib_pct">销量占比%</th><th class="num sortable" data-sort-key="margin_pct">毛利率%</th><th class="num sortable" data-sort-key="sale_contrib_pct">销售贡献%</th></tr></thead><tbody id="insightPriceBandBody"></tbody></table></div>
+    <h3 class="label" style="margin-top:12px;">供应商贡献</h3>
+    <div class="table-wrap"><table data-insight-table="supplier"><thead><tr><th class="insight-no">序号</th><th class="sortable" data-sort-key="supplier">供应商</th><th class="num sortable" data-sort-key="sale_amount">销售额</th><th class="num sortable" data-sort-key="profit">毛利</th><th class="num sortable" data-sort-key="qty">销量</th><th class="num sortable" data-sort-key="margin_pct">毛利率%</th><th class="num sortable" data-sort-key="contrib_pct">贡献%</th></tr></thead><tbody id="insightSupplierBody"></tbody></table></div>
     <h3 class="label" style="margin-top:12px;">经销方式</h3>
-    <div class="table-wrap"><table><thead><tr><th>经销方式</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">毛利率%</th><th class="num">贡献%</th></tr></thead><tbody id="insightDistBody"></tbody></table></div>
+    <div class="table-wrap"><table data-insight-table="distribution"><thead><tr><th class="insight-no">序号</th><th class="sortable" data-sort-key="mode">经销方式</th><th class="num sortable" data-sort-key="sale_amount">销售额</th><th class="num sortable" data-sort-key="profit">毛利</th><th class="num sortable" data-sort-key="margin_pct">毛利率%</th><th class="num sortable" data-sort-key="contrib_pct">贡献%</th></tr></thead><tbody id="insightDistBody"></tbody></table></div>
+    <h3 class="label" style="margin-top:12px;">色系 / 风格</h3>
+    <div class="table-wrap" style="display:inline-block;margin-right:16px;"><table data-insight-table="color"><thead><tr><th class="insight-no">序号</th><th class="sortable" data-sort-key="name">色系</th><th class="num sortable" data-sort-key="sale_amount">销售额</th><th class="num sortable" data-sort-key="margin_pct">毛利率%</th></tr></thead><tbody id="insightColorBody"></tbody></table></div>
+    <div class="table-wrap" style="display:inline-block;"><table data-insight-table="style"><thead><tr><th class="insight-no">序号</th><th class="sortable" data-sort-key="name">风格</th><th class="num sortable" data-sort-key="sale_amount">销售额</th><th class="num sortable" data-sort-key="margin_pct">毛利率%</th></tr></thead><tbody id="insightStyleBody"></tbody></table></div>
     <h3 class="label" style="margin-top:12px;">新品表现</h3>
     <div class="table-wrap"><table><thead><tr><th>指标</th><th class="num">数值</th></tr></thead><tbody id="insightNewProductBody"></tbody></table></div>
+    <h3 class="label" style="margin-top:12px;">异常预警</h3>
+    <p class="section-desc">零销售：本周期主数据中有但无销售记录的 SKU；高折扣低毛利：平均折扣&gt;30% 且毛利率&lt;10%。</p>
+    <div class="dashboard-grid" style="margin-bottom:8px;">
+      <div class="section scroll-table"><h4 class="label">零销售商品（最多100条）</h4><div class="table-wrap" style="max-height:160px;"><table data-insight-table="zeroSaleSkus"><thead><tr><th class="insight-no">序号</th><th class="sortable" data-sort-key="sku_code">货号</th><th class="sortable" data-sort-key="product_name">品名</th><th class="sortable" data-sort-key="category_name">品类</th><th class="sortable" data-sort-key="brand_name">品牌</th><th class="num sortable" data-sort-key="retail_price">零售价</th></tr></thead><tbody id="insightZeroSaleBody"></tbody></table></div></div>
+      <div class="section scroll-table"><h4 class="label">高折扣低毛利（Top50）</h4><div class="table-wrap" style="max-height:160px;"><table data-insight-table="highDiscountLowMargin"><thead><tr><th class="insight-no">序号</th><th class="sortable" data-sort-key="sku_code">货号</th><th class="sortable" data-sort-key="product_name">品名</th><th class="num sortable" data-sort-key="sale_amount">销售额</th><th class="num sortable" data-sort-key="profit">毛利</th><th class="num sortable" data-sort-key="margin_pct">毛利率%</th></tr></thead><tbody id="insightHighDiscountBody"></tbody></table></div></div>
+    </div>
+    <h3 class="label" style="margin-top:12px;">退货率（按品类，有退货的品类）</h3>
+    <div class="table-wrap"><table data-insight-table="returnByCat"><thead><tr><th class="insight-no">序号</th><th class="sortable" data-sort-key="category">品类</th><th class="num sortable" data-sort-key="sale_amount">销售额</th><th class="num sortable" data-sort-key="return_amount">退货额</th><th class="num sortable" data-sort-key="return_rate_pct">退货率%</th></tr></thead><tbody id="insightReturnByCatBody"></tbody></table></div>
   </div>
   </div>
 
@@ -1399,6 +1435,13 @@
       }
     }
 
+    var insightChartInstances = {};
+    function resizeInsightCharts() {
+      ['insightCategoryBarChart','insightBrandBubbleChart','insightPriceBandChart','insightDistPieChart','insightDiscountBarChart'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el && insightChartInstances[id]) try { insightChartInstances[id].resize(); } catch(_) {}
+      });
+    }
     async function loadConsumerInsight() {
       var o = document.getElementById('insightTotalSale');
       var o2 = document.getElementById('insightTotalProfit');
@@ -1406,18 +1449,32 @@
       var o4 = document.getElementById('insightSkuSold');
       var o5 = document.getElementById('insightUnitPrice');
       var o6 = document.getElementById('insightSellThrough');
+      var o7 = document.getElementById('insightAvgDiscount');
+      var o8 = document.getElementById('insightPeriodChange');
+      var o9 = document.getElementById('insightReturnRate');
+      var oRetail = document.getElementById('insightAvgRetail');
+      var oTurnover = document.getElementById('insightTurnoverDays');
       var dateEl = document.getElementById('insightDateRange');
-      var catBody = document.getElementById('insightCategorySaleBody');
+      var catMatrixBody = document.getElementById('insightCategoryMatrixBody');
       var brandBody = document.getElementById('insightBrandBody');
+      var topSkuBody = document.getElementById('insightTopSkuBody');
       var bandBody = document.getElementById('insightPriceBandBody');
+      var supplierBody = document.getElementById('insightSupplierBody');
       var distBody = document.getElementById('insightDistBody');
+      var colorBody = document.getElementById('insightColorBody');
+      var styleBody = document.getElementById('insightStyleBody');
       var newBody = document.getElementById('insightNewProductBody');
-      if (!catBody) return;
-      if (o) o.textContent = '-'; if (o2) o2.textContent = '-'; if (o3) o3.textContent = '-';
-      if (o4) o4.textContent = '-'; if (o5) o5.textContent = '-'; if (o6) o6.textContent = '-';
+      var returnByCatBody = document.getElementById('insightReturnByCatBody');
+      var discountBandBody = document.getElementById('insightDiscountBandBody');
+      var zeroSaleBody = document.getElementById('insightZeroSaleBody');
+      var highDiscountBody = document.getElementById('insightHighDiscountBody');
+      if (!catMatrixBody) return;
+      [o,o2,o3,o4,o5,o6,o7,o8,o9,oRetail,oTurnover].forEach(function(el){ if(el) el.textContent = '-'; });
       if (dateEl) dateEl.textContent = '';
-      catBody.innerHTML = '<tr><td colspan="4" class="loading">加载中...</td></tr>';
-      if (brandBody) brandBody.innerHTML = ''; if (bandBody) bandBody.innerHTML = ''; if (distBody) distBody.innerHTML = ''; if (newBody) newBody.innerHTML = '';
+      catMatrixBody.innerHTML = '<tr><td colspan="9" class="loading">加载中...</td></tr>';
+      [brandBody,topSkuBody,bandBody,supplierBody,distBody,colorBody,styleBody,newBody,returnByCatBody,discountBandBody,zeroSaleBody,highDiscountBody].forEach(function(el){ if(el) el.innerHTML = ''; });
+      window._insightData = window._insightData || {};
+      window._insightSortState = window._insightSortState || {};
       try {
         var url = (API || '') + '/api/consumer_insight?' + queryParams();
         var r = await fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
@@ -1433,22 +1490,109 @@
         if (o4) o4.textContent = safeNum(ov.sku_sold, '-');
         if (o5) o5.textContent = (ov.unit_price != null && !isNaN(ov.unit_price)) ? safeFmtNum(ov.unit_price) : '-';
         if (o6) o6.textContent = (ov.sell_through_pct != null && !isNaN(ov.sell_through_pct)) ? ov.sell_through_pct + '%' : '-';
+        if (o7) o7.textContent = (ov.avg_discount_pct != null && !isNaN(ov.avg_discount_pct)) ? ov.avg_discount_pct + '%' : '-';
+        if (oRetail) oRetail.textContent = (ov.avg_retail_price != null && !isNaN(ov.avg_retail_price)) ? safeFmtNum(ov.avg_retail_price) : '-';
+        if (oTurnover) oTurnover.textContent = (ov.inventory_turnover_days != null && !isNaN(ov.inventory_turnover_days)) ? safeNum(ov.inventory_turnover_days) : '-';
+        var pop = d.period_over_period || {};
+        if (o8) o8.textContent = (pop.pct_change != null && !isNaN(pop.pct_change)) ? (pop.pct_change >= 0 ? '+' : '') + pop.pct_change + '%' : '-';
+        if (o9) o9.textContent = (d.return_rate_pct != null && !isNaN(d.return_rate_pct)) ? d.return_rate_pct + '%' : '-';
         if (dateEl) dateEl.textContent = '周期：' + (d.date_range || '近30天');
-        var list = d.category_top_sale || [];
-        catBody.innerHTML = list.length === 0 ? '<tr><td colspan="4" class="loading">暂无数据</td></tr>' : list.map(function(row) {
-          return '<tr><td>' + (row.category || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + safeFmtMoney(row.profit) + '</td><td class="num">' + (row.margin_pct != null && !isNaN(row.margin_pct) ? row.margin_pct : 0) + '%</td></tr>';
+        var catMatrix = d.category_matrix || [];
+        _insightData.categoryMatrix = catMatrix;
+        if (catMatrixBody) catMatrixBody.innerHTML = catMatrix.length === 0 ? '<tr><td colspan="9" class="loading">暂无数据</td></tr>' : catMatrix.map(function(row, i) {
+          return '<tr><td class="insight-no">' + (i + 1) + '</td><td>' + (row.category || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeNum(row.sku_sold) + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + (row.sale_contrib_pct != null && !isNaN(row.sale_contrib_pct) ? row.sale_contrib_pct : 0) + '%</td><td class="num">' + safeFmtMoney(row.profit) + '</td><td class="num">' + (row.margin_pct != null ? row.margin_pct : 0) + '%</td><td class="num">' + safeFmtNum(row.avg_sale_price) + '</td><td class="num">' + (row.avg_discount_pct != null ? row.avg_discount_pct : '-') + (row.avg_discount_pct != null ? '%' : '') + '</td></tr>';
         }).join('');
+        ensureEcharts(function() {
+          var topCat = (d.category_top_sale || catMatrix).slice(0, 10);
+          var barEl = document.getElementById('insightCategoryBarChart');
+          if (barEl && barEl.offsetParent) {
+            var barChart = echarts.init(barEl);
+            insightChartInstances.insightCategoryBarChart = barChart;
+            barChart.setOption({ grid: { left: 60, right: 20, top: 10, bottom: 30 }, xAxis: { type: 'value' }, yAxis: { type: 'category', data: topCat.map(function(r) { return (r.category || '').slice(0, 12); }).reverse() }, series: [{ type: 'bar', data: topCat.map(function(r) { return r.sale_amount || 0; }).reverse(), itemStyle: { color: '#38bdf8' } }] });
+          }
+          var blist = d.brand || [];
+          var bubbleEl = document.getElementById('insightBrandBubbleChart');
+          if (bubbleEl && bubbleEl.offsetParent && blist.length) {
+            var bubbleChart = echarts.init(bubbleEl);
+            insightChartInstances.insightBrandBubbleChart = bubbleChart;
+            var bubbleData = blist.slice(0, 20).map(function(r) { return [r.sku_sold != null ? r.sku_sold : 0, r.sale_amount || 0, r.profit || 0, r.margin_pct != null ? r.margin_pct : 0, r.brand || '']; });
+            var maxProfit = Math.max.apply(null, bubbleData.map(function(x) { return x[2]; })) || 1;
+            bubbleChart.setOption({ grid: { left: 50, right: 80, top: 20, bottom: 30 }, xAxis: { type: 'value', name: '动销SKU数' }, yAxis: { type: 'value', name: '销售额' }, series: [{ type: 'scatter', symbolSize: function(v) { return 8 + Math.sqrt(v[2] / maxProfit) * 30; }, data: bubbleData.map(function(d) { return { value: [d[0], d[1], d[2]], itemStyle: { color: d[3] >= 30 ? '#34d399' : d[3] >= 15 ? '#38bdf8' : '#f87171' } }; }), label: { show: true, formatter: function(p) { return bubbleData[p.dataIndex] ? bubbleData[p.dataIndex][4].slice(0, 6) : ''; } } }] });
+          }
+          var plist = d.price_band || [];
+          var bandChartEl = document.getElementById('insightPriceBandChart');
+          if (bandChartEl && bandChartEl.offsetParent && plist.length) {
+            var bandChart = echarts.init(bandChartEl);
+            insightChartInstances.insightPriceBandChart = bandChart;
+            var bands = plist.map(function(r) { return (r.band || '').slice(0, 10); });
+            bandChart.setOption({ grid: { left: 50, right: 50, top: 20, bottom: 30 }, xAxis: { type: 'category', data: bands }, yAxis: [{ type: 'value', name: '销售额' }, { type: 'value', name: '毛利率%' }], series: [{ type: 'bar', data: plist.map(function(r) { return r.sale_amount || 0; }), itemStyle: { color: '#38bdf8' } }, { type: 'line', yAxisIndex: 1, data: plist.map(function(r) { return r.margin_pct != null ? r.margin_pct : 0; }), itemStyle: { color: '#fbbf24' }, lineStyle: { color: '#fbbf24' } }] });
+          }
+          var dlist = d.distribution || [];
+          var pieEl = document.getElementById('insightDistPieChart');
+          if (pieEl && pieEl.offsetParent && dlist.length) {
+            var pieChart = echarts.init(pieEl);
+            insightChartInstances.insightDistPieChart = pieChart;
+            pieChart.setOption({ tooltip: { trigger: 'item' }, series: [{ type: 'pie', radius: ['40%', '70%'], data: dlist.map(function(r) { return { value: r.sale_amount || 0, name: (r.mode || '未填').slice(0, 8) }; }) }] });
+          }
+          var dband = d.discount_band || [];
+          var discBarEl = document.getElementById('insightDiscountBarChart');
+          if (discBarEl && discBarEl.offsetParent && dband.length) {
+            var discBar = echarts.init(discBarEl);
+            insightChartInstances.insightDiscountBarChart = discBar;
+            discBar.setOption({ grid: { left: 50, right: 20, top: 10, bottom: 30 }, xAxis: { type: 'category', data: dband.map(function(r) { return r.band || ''; }) }, yAxis: { type: 'value' }, series: [{ type: 'bar', stack: 'disc', data: dband.map(function(r) { return r.sale_amount || 0; }), itemStyle: { color: '#38bdf8' } }] });
+          }
+          setTimeout(resizeInsightCharts, 80);
+        });
         var blist = d.brand || [];
-        if (brandBody) brandBody.innerHTML = blist.length === 0 ? '<tr><td colspan="6" class="loading">暂无数据</td></tr>' : blist.map(function(row) {
-          return '<tr><td>' + (row.brand || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + safeFmtMoney(row.profit) + '</td><td class="num">' + safeFmtNum(row.qty) + '</td><td class="num">' + (row.margin_pct != null && !isNaN(row.margin_pct) ? row.margin_pct : 0) + '%</td><td class="num">' + (row.contrib_pct != null && !isNaN(row.contrib_pct) ? row.contrib_pct : 0) + '%</td></tr>';
+        _insightData.brand = blist;
+        if (brandBody) brandBody.innerHTML = blist.length === 0 ? '<tr><td colspan="7" class="loading">暂无数据</td></tr>' : blist.map(function(row, i) {
+          return '<tr><td class="insight-no">' + (i + 1) + '</td><td>' + (row.brand || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + safeFmtMoney(row.profit) + '</td><td class="num">' + safeFmtNum(row.qty) + '</td><td class="num">' + (row.margin_pct != null && !isNaN(row.margin_pct) ? row.margin_pct : 0) + '%</td><td class="num">' + (row.contrib_pct != null && !isNaN(row.contrib_pct) ? row.contrib_pct : 0) + '%</td></tr>';
+        }).join('');
+        var skulist = d.top_sku || [];
+        _insightData.topSku = skulist;
+        if (topSkuBody) topSkuBody.innerHTML = skulist.length === 0 ? '<tr><td colspan="7" class="loading">暂无数据</td></tr>' : skulist.map(function(row, i) {
+          return '<tr><td class="insight-no">' + (i + 1) + '</td><td>' + (row.sku_code || '').replace(/</g,'&lt;') + '</td><td>' + (row.product_name || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + safeFmtMoney(row.profit) + '</td><td class="num">' + safeFmtNum(row.qty) + '</td><td class="num">' + (row.margin_pct != null ? row.margin_pct : 0) + '%</td></tr>';
         }).join('');
         var plist = d.price_band || [];
-        if (bandBody) bandBody.innerHTML = plist.length === 0 ? '<tr><td colspan="5" class="loading">暂无数据</td></tr>' : plist.map(function(row) {
-          return '<tr><td>' + (row.band || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + safeFmtNum(row.qty) + '</td><td class="num">' + (row.margin_pct != null && !isNaN(row.margin_pct) ? row.margin_pct : 0) + '%</td><td class="num">' + (row.sale_contrib_pct != null && !isNaN(row.sale_contrib_pct) ? row.sale_contrib_pct : 0) + '%</td></tr>';
+        _insightData.priceBand = plist;
+        if (bandBody) bandBody.innerHTML = plist.length === 0 ? '<tr><td colspan="7" class="loading">暂无数据</td></tr>' : plist.map(function(row, i) {
+          return '<tr><td class="insight-no">' + (i + 1) + '</td><td>' + (row.band || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + safeFmtNum(row.qty) + '</td><td class="num">' + (row.qty_contrib_pct != null && !isNaN(row.qty_contrib_pct) ? row.qty_contrib_pct : 0) + '%</td><td class="num">' + (row.margin_pct != null ? row.margin_pct : 0) + '%</td><td class="num">' + (row.sale_contrib_pct != null ? row.sale_contrib_pct : 0) + '%</td></tr>';
+        }).join('');
+        var sulist = d.supplier || [];
+        _insightData.supplier = sulist;
+        if (supplierBody) supplierBody.innerHTML = sulist.length === 0 ? '<tr><td colspan="7" class="loading">暂无数据</td></tr>' : sulist.map(function(row, i) {
+          return '<tr><td class="insight-no">' + (i + 1) + '</td><td>' + (row.supplier || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + safeFmtMoney(row.profit) + '</td><td class="num">' + safeFmtNum(row.qty) + '</td><td class="num">' + (row.margin_pct != null ? row.margin_pct : 0) + '%</td><td class="num">' + (row.contrib_pct != null ? row.contrib_pct : 0) + '%</td></tr>';
         }).join('');
         var dlist = d.distribution || [];
-        if (distBody) distBody.innerHTML = dlist.length === 0 ? '<tr><td colspan="5" class="loading">暂无数据</td></tr>' : dlist.map(function(row) {
-          return '<tr><td>' + (row.mode || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + safeFmtMoney(row.profit) + '</td><td class="num">' + (row.margin_pct != null && !isNaN(row.margin_pct) ? row.margin_pct : 0) + '%</td><td class="num">' + (row.contrib_pct != null && !isNaN(row.contrib_pct) ? row.contrib_pct : 0) + '%</td></tr>';
+        _insightData.distribution = dlist;
+        if (distBody) distBody.innerHTML = dlist.length === 0 ? '<tr><td colspan="6" class="loading">暂无数据</td></tr>' : dlist.map(function(row, i) {
+          return '<tr><td class="insight-no">' + (i + 1) + '</td><td>' + (row.mode || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + safeFmtMoney(row.profit) + '</td><td class="num">' + (row.margin_pct != null && !isNaN(row.margin_pct) ? row.margin_pct : 0) + '%</td><td class="num">' + (row.contrib_pct != null && !isNaN(row.contrib_pct) ? row.contrib_pct : 0) + '%</td></tr>';
+        }).join('');
+        var dbandList = d.discount_band || [];
+        _insightData.discountBand = dbandList;
+        if (discountBandBody) discountBandBody.innerHTML = dbandList.length === 0 ? '<tr><td colspan="7" class="loading">暂无数据</td></tr>' : dbandList.map(function(row, i) {
+          return '<tr><td class="insight-no">' + (i + 1) + '</td><td>' + (row.band || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeNum(row.sku_cnt) + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + safeFmtMoney(row.profit) + '</td><td class="num">' + safeFmtNum(row.qty) + '</td><td class="num">' + (row.margin_pct != null ? row.margin_pct : 0) + '%</td></tr>';
+        }).join('');
+        var zeroList = d.zero_sale_skus || [];
+        _insightData.zeroSaleSkus = zeroList;
+        if (zeroSaleBody) zeroSaleBody.innerHTML = zeroList.length === 0 ? '<tr><td colspan="6" class="loading">暂无零销售商品</td></tr>' : zeroList.map(function(row, i) {
+          return '<tr><td class="insight-no">' + (i + 1) + '</td><td>' + (row.sku_code || '').replace(/</g,'&lt;') + '</td><td>' + (row.product_name || '').replace(/</g,'&lt;') + '</td><td>' + (row.category_name || '').replace(/</g,'&lt;') + '</td><td>' + (row.brand_name || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeFmtNum(row.retail_price) + '</td></tr>';
+        }).join('');
+        var highList = d.high_discount_low_margin || [];
+        _insightData.highDiscountLowMargin = highList;
+        if (highDiscountBody) highDiscountBody.innerHTML = highList.length === 0 ? '<tr><td colspan="6" class="loading">暂无</td></tr>' : highList.map(function(row, i) {
+          return '<tr><td class="insight-no">' + (i + 1) + '</td><td>' + (row.sku_code || '').replace(/</g,'&lt;') + '</td><td>' + (row.product_name || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + safeFmtMoney(row.profit) + '</td><td class="num">' + (row.margin_pct != null ? row.margin_pct : 0) + '%</td></tr>';
+        }).join('');
+        var cs = d.color_style || {};
+        var colorList = cs.color_system || [];
+        _insightData.color = colorList;
+        if (colorBody) colorBody.innerHTML = colorList.length === 0 ? '<tr><td colspan="4" class="loading">暂无数据</td></tr>' : colorList.map(function(row, i) {
+          return '<tr><td class="insight-no">' + (i + 1) + '</td><td>' + (row.name || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + (row.margin_pct != null ? row.margin_pct : 0) + '%</td></tr>';
+        }).join('');
+        var styleList = cs.style || [];
+        _insightData.style = styleList;
+        if (styleBody) styleBody.innerHTML = styleList.length === 0 ? '<tr><td colspan="4" class="loading">暂无数据</td></tr>' : styleList.map(function(row, i) {
+          return '<tr><td class="insight-no">' + (i + 1) + '</td><td>' + (row.name || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + (row.margin_pct != null ? row.margin_pct : 0) + '%</td></tr>';
         }).join('');
         var np = d.new_product || {};
         if (newBody) {
@@ -1458,13 +1602,75 @@
             '<tr><td>新品毛利率</td><td class="num">' + (np.new_margin_pct != null && !isNaN(np.new_margin_pct) ? np.new_margin_pct : 0) + '%</td></tr>' +
             '<tr><td>新品动销数</td><td class="num">' + safeNum(np.new_sku_sold, '0') + '</td></tr>' +
             '<tr><td>新品总数</td><td class="num">' + safeNum(np.new_sku_total, '0') + '</td></tr>' +
-            '<tr><td>新品动销率</td><td class="num">' + (np.new_sell_through_pct != null && !isNaN(np.new_sell_through_pct) ? np.new_sell_through_pct + '%' : '-') + '</td></tr>';
+            '<tr><td>新品动销率</td><td class="num">' + (np.new_sell_through_pct != null && !isNaN(np.new_sell_through_pct) ? np.new_sell_through_pct + '%' : '-') + '</td></tr>' +
+            '<tr><td>老品销售占比</td><td class="num">' + (np.old_sale_contrib_pct != null && !isNaN(np.old_sale_contrib_pct) ? np.old_sale_contrib_pct : 0) + '%</td></tr>';
         }
+        var rlist = d.return_by_cat || [];
+        _insightData.returnByCat = rlist;
+        if (returnByCatBody) returnByCatBody.innerHTML = rlist.length === 0 ? '<tr><td colspan="5" class="loading">暂无有退货的品类</td></tr>' : rlist.map(function(row, i) {
+          return '<tr><td class="insight-no">' + (i + 1) + '</td><td>' + (row.category || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + safeFmtMoney(row.return_amount) + '</td><td class="num">' + (row.return_rate_pct != null ? row.return_rate_pct : 0) + '%</td></tr>';
+        }).join('');
       } catch (e) {
-        catBody.innerHTML = '<tr><td colspan="4" class="error">加载失败: ' + (e.message || '').replace(/</g,'&lt;') + '</td></tr>';
+        if (catMatrixBody) catMatrixBody.innerHTML = '<tr><td colspan="9" class="error">加载失败: ' + (e.message || '').replace(/</g,'&lt;') + '</td></tr>';
         if (dateEl) dateEl.textContent = '';
       }
+      var panel = document.getElementById('pageInsight');
+      if (panel && panel.classList && panel.classList.contains('active')) setTimeout(resizeInsightCharts, 150);
     }
+
+    function _insightSortAndRender(tableKey, sortKey, tbody) {
+      var data = window._insightData && window._insightData[tableKey];
+      if (!data || !data.length || !tbody) return;
+      var state = window._insightSortState[tableKey] || {};
+      if (state.key === sortKey) state.asc = !state.asc; else { state.key = sortKey; state.asc = true; }
+      window._insightSortState[tableKey] = state;
+      var sorted = data.slice().sort(function(a, b) {
+        var va = a[sortKey], vb = b[sortKey];
+        var na = typeof va === 'number' && !isNaN(va), nb = typeof vb === 'number' && !isNaN(vb);
+        if (na && nb) return state.asc ? va - vb : vb - va;
+        va = String(va != null ? va : ''); vb = String(vb != null ? vb : '');
+        return state.asc ? va.localeCompare(vb) : vb.localeCompare(va);
+      });
+      var thead = tbody.previousElementSibling;
+      if (thead) {
+        thead.querySelectorAll('th.sortable').forEach(function(th) {
+          th.classList.remove('sort-asc', 'sort-desc');
+          if (th.getAttribute('data-sort-key') === sortKey) th.classList.add(state.asc ? 'sort-asc' : 'sort-desc');
+        });
+      }
+      var rowHtml = {
+        categoryMatrix: function(rows) { return rows.map(function(row, i) { return '<tr><td class="insight-no">' + (i + 1) + '</td><td>' + (row.category || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeNum(row.sku_sold) + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + (row.sale_contrib_pct != null && !isNaN(row.sale_contrib_pct) ? row.sale_contrib_pct : 0) + '%</td><td class="num">' + safeFmtMoney(row.profit) + '</td><td class="num">' + (row.margin_pct != null ? row.margin_pct : 0) + '%</td><td class="num">' + safeFmtNum(row.avg_sale_price) + '</td><td class="num">' + (row.avg_discount_pct != null ? row.avg_discount_pct : '-') + (row.avg_discount_pct != null ? '%' : '') + '</td></tr>'; }).join(''); },
+        discountBand: function(rows) { return rows.map(function(row, i) { return '<tr><td class="insight-no">' + (i + 1) + '</td><td>' + (row.band || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeNum(row.sku_cnt) + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + safeFmtMoney(row.profit) + '</td><td class="num">' + safeFmtNum(row.qty) + '</td><td class="num">' + (row.margin_pct != null ? row.margin_pct : 0) + '%</td></tr>'; }).join(''); },
+        zeroSaleSkus: function(rows) { return rows.map(function(row, i) { return '<tr><td class="insight-no">' + (i + 1) + '</td><td>' + (row.sku_code || '').replace(/</g,'&lt;') + '</td><td>' + (row.product_name || '').replace(/</g,'&lt;') + '</td><td>' + (row.category_name || '').replace(/</g,'&lt;') + '</td><td>' + (row.brand_name || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeFmtNum(row.retail_price) + '</td></tr>'; }).join(''); },
+        highDiscountLowMargin: function(rows) { return rows.map(function(row, i) { return '<tr><td class="insight-no">' + (i + 1) + '</td><td>' + (row.sku_code || '').replace(/</g,'&lt;') + '</td><td>' + (row.product_name || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + safeFmtMoney(row.profit) + '</td><td class="num">' + (row.margin_pct != null ? row.margin_pct : 0) + '%</td></tr>'; }).join(''); },
+        brand: function(rows) { return rows.map(function(row, i) { return '<tr><td class="insight-no">' + (i + 1) + '</td><td>' + (row.brand || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + safeFmtMoney(row.profit) + '</td><td class="num">' + safeFmtNum(row.qty) + '</td><td class="num">' + (row.margin_pct != null && !isNaN(row.margin_pct) ? row.margin_pct : 0) + '%</td><td class="num">' + (row.contrib_pct != null && !isNaN(row.contrib_pct) ? row.contrib_pct : 0) + '%</td></tr>'; }).join(''); },
+        topSku: function(rows) { return rows.map(function(row, i) { return '<tr><td class="insight-no">' + (i + 1) + '</td><td>' + (row.sku_code || '').replace(/</g,'&lt;') + '</td><td>' + (row.product_name || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + safeFmtMoney(row.profit) + '</td><td class="num">' + safeFmtNum(row.qty) + '</td><td class="num">' + (row.margin_pct != null ? row.margin_pct : 0) + '%</td></tr>'; }).join(''); },
+        priceBand: function(rows) { return rows.map(function(row, i) { return '<tr><td class="insight-no">' + (i + 1) + '</td><td>' + (row.band || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + safeFmtNum(row.qty) + '</td><td class="num">' + (row.qty_contrib_pct != null && !isNaN(row.qty_contrib_pct) ? row.qty_contrib_pct : 0) + '%</td><td class="num">' + (row.margin_pct != null ? row.margin_pct : 0) + '%</td><td class="num">' + (row.sale_contrib_pct != null ? row.sale_contrib_pct : 0) + '%</td></tr>'; }).join(''); },
+        supplier: function(rows) { return rows.map(function(row, i) { return '<tr><td class="insight-no">' + (i + 1) + '</td><td>' + (row.supplier || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + safeFmtMoney(row.profit) + '</td><td class="num">' + safeFmtNum(row.qty) + '</td><td class="num">' + (row.margin_pct != null ? row.margin_pct : 0) + '%</td><td class="num">' + (row.contrib_pct != null ? row.contrib_pct : 0) + '%</td></tr>'; }).join(''); },
+        distribution: function(rows) { return rows.map(function(row, i) { return '<tr><td class="insight-no">' + (i + 1) + '</td><td>' + (row.mode || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + safeFmtMoney(row.profit) + '</td><td class="num">' + (row.margin_pct != null && !isNaN(row.margin_pct) ? row.margin_pct : 0) + '%</td><td class="num">' + (row.contrib_pct != null && !isNaN(row.contrib_pct) ? row.contrib_pct : 0) + '%</td></tr>'; }).join(''); },
+        color: function(rows) { return rows.map(function(row, i) { return '<tr><td class="insight-no">' + (i + 1) + '</td><td>' + (row.name || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + (row.margin_pct != null ? row.margin_pct : 0) + '%</td></tr>'; }).join(''); },
+        style: function(rows) { return rows.map(function(row, i) { return '<tr><td class="insight-no">' + (i + 1) + '</td><td>' + (row.name || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + (row.margin_pct != null ? row.margin_pct : 0) + '%</td></tr>'; }).join(''); },
+        returnByCat: function(rows) { return rows.map(function(row, i) { return '<tr><td class="insight-no">' + (i + 1) + '</td><td>' + (row.category || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + safeFmtMoney(row.return_amount) + '</td><td class="num">' + (row.return_rate_pct != null ? row.return_rate_pct : 0) + '%</td></tr>'; }).join(''); }
+      };
+      var fn = rowHtml[tableKey];
+      if (fn) tbody.innerHTML = fn(sorted);
+    }
+
+    (function setupInsightTableSort() {
+      var panel = document.getElementById('pageInsight');
+      if (!panel) return;
+      panel.addEventListener('click', function(e) {
+        var th = e.target && e.target.tagName === 'TH' && e.target.classList && e.target.classList.contains('sortable') ? e.target : null;
+        if (!th) return;
+        var table = th.closest('table[data-insight-table]');
+        if (!table) return;
+        var tableKey = table.getAttribute('data-insight-table');
+        var sortKey = th.getAttribute('data-sort-key');
+        if (!tableKey || !sortKey) return;
+        var tbody = table.querySelector('tbody');
+        _insightSortAndRender(tableKey, sortKey, tbody);
+      });
+    })();
 
     async function loadLaborCostAnalysis() {
       const kpiEl = document.getElementById('laborCategoryKpi');
@@ -2493,7 +2699,7 @@
         if (panel) panel.classList.add('active');
         if (page === 'tax') loadTaxBurdenSummary();
         if (page === 'biz') { loadBizDataStatus(); showBizBlock('return_gift'); loadReturnGiftSummary(); }
-        if (page === 'insight') loadConsumerInsight();
+        if (page === 'insight') { loadConsumerInsight(); setTimeout(resizeInsightCharts, 200); }
         if (page === 'overview' && typeof echarts !== 'undefined') {
           ['pieChart', 'barChart', 'dowChart'].forEach(id => {
             const el = document.getElementById(id);
