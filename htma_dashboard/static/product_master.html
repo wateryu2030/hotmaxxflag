@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>分店商品档案 · 数据分析</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; padding: 12px 16px; font-size: 0.85rem; }
+    h1 { font-size: 1.1rem; margin-bottom: 8px; color: #f8fafc; }
+    .sub { color: #64748b; font-size: 0.8rem; margin-bottom: 12px; }
+    a { color: #38bdf8; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .kpi-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; margin-bottom: 16px; }
+    .kpi-card { background: linear-gradient(135deg, #1e293b 0%, #334155 100%); border-radius: 8px; padding: 10px 12px; border: 1px solid #334155; }
+    .kpi-card .label { font-size: 0.72rem; color: #94a3b8; margin-bottom: 4px; }
+    .kpi-card .value { font-size: 1.15rem; font-weight: 700; color: #38bdf8; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+    .box { background: #1e293b; border-radius: 8px; padding: 12px; margin-bottom: 12px; border: 1px solid #334155; }
+    .box h3 { font-size: 0.9rem; color: #94a3b8; margin-bottom: 8px; }
+    .chart { width: 100%; height: 260px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid #334155; }
+    th { color: #94a3b8; font-weight: 600; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .loading { text-align: center; padding: 24px; color: #64748b; }
+    .error { color: #f87171; padding: 12px; }
+    .warn { color: #fbbf24; }
+    .dq-table td:nth-child(2), .dq-table td:nth-child(3) { text-align: right; }
+  </style>
+</head>
+<body>
+  <h1>📦 分店商品档案 · 数据分析</h1>
+  <p class="sub">基于商品档案全量字段：结构、定价、供应商、属性画像、数据质量。<a href="/import">数据导入</a> | <a href="/">返回看板</a></p>
+  <div id="root">
+    <div class="loading">加载中...</div>
+  </div>
+  <script>
+(function() {
+  const API = window.location.origin;
+  function fmtNum(v) { return v == null || v === '' ? '-' : (Number(v) >= 10000 ? (Number(v)/10000).toFixed(1) + '万' : Number(v).toLocaleString()); }
+  function fmtMoney(v) { return v == null || v === '' ? '-' : Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+  function renderKpi(ov) {
+    if (!ov) return '';
+    return '<div class="kpi-row">' + [
+      ['总SKU数', ov.total_sku],
+      ['正常', ov.normal_count],
+      ['新品', ov.new_count],
+      ['停售', ov.stop_count],
+      ['平均零售价', ov.avg_retail != null ? fmtMoney(ov.avg_retail) : '-'],
+      ['最高零售价', ov.max_retail != null ? fmtMoney(ov.max_retail) : '-'],
+      ['最低零售价', ov.min_retail != null ? fmtMoney(ov.min_retail) : '-'],
+      ['品牌数', ov.brand_count],
+      ['供应商数', ov.supplier_count]
+    ].map(function(x) { return '<div class="kpi-card"><div class="label">' + x[0] + '</div><div class="value">' + fmtNum(x[1]) + '</div></div>'; }).join('') + '</div>';
+  }
+
+  function tableStatus(rows) {
+    if (!rows || !rows.length) return '<p class="sub">无数据</p>';
+    return '<table><thead><tr><th>状态</th><th class="num">SKU数</th><th class="num">占比%</th><th class="num">平均零售价</th><th class="num">品牌数</th></tr></thead><tbody>' +
+      rows.map(function(r) { return '<tr><td>' + (r.name || '').replace(/</g,'&lt;') + '</td><td class="num">' + fmtNum(r.count) + '</td><td class="num">' + (r.pct != null ? r.pct : '') + '</td><td class="num">' + (r.avg_retail != null ? fmtMoney(r.avg_retail) : '-') + '</td><td class="num">' + fmtNum(r.brand_count) + '</td></tr>'; }).join('') + '</tbody></table>';
+  }
+  function tableCategory(rows) {
+    if (!rows || !rows.length) return '<p class="sub">无数据</p>';
+    return '<table><thead><tr><th>品类</th><th class="num">SKU数</th><th class="num">占比%</th><th class="num">平均零售价</th><th class="num">最高</th><th class="num">最低</th><th class="num">品牌数</th><th class="num">供应商数</th></tr></thead><tbody>' +
+      rows.map(function(r) { return '<tr><td>' + (r.name || '').replace(/</g,'&lt;') + '</td><td class="num">' + fmtNum(r.count) + '</td><td class="num">' + (r.pct != null ? r.pct : '') + '</td><td class="num">' + (r.avg_retail != null ? fmtMoney(r.avg_retail) : '-') + '</td><td class="num">' + (r.max_retail != null ? fmtMoney(r.max_retail) : '-') + '</td><td class="num">' + (r.min_retail != null ? fmtMoney(r.min_retail) : '-') + '</td><td class="num">' + fmtNum(r.brand_count) + '</td><td class="num">' + fmtNum(r.supplier_count) + '</td></tr>'; }).join('') + '</tbody></table>';
+  }
+  function tableBrand(rows) {
+    if (!rows || !rows.length) return '<p class="sub">无数据</p>';
+    return '<table><thead><tr><th>品牌</th><th class="num">SKU数</th><th class="num">占比%</th><th class="num">平均零售价</th><th class="num">最高</th><th class="num">最低</th><th class="num">覆盖品类数</th><th>主要品类</th></tr></thead><tbody>' +
+      rows.map(function(r) { return '<tr><td>' + (r.name || '').replace(/</g,'&lt;') + '</td><td class="num">' + fmtNum(r.count) + '</td><td class="num">' + (r.pct != null ? r.pct : '') + '</td><td class="num">' + (r.avg_retail != null ? fmtMoney(r.avg_retail) : '-') + '</td><td class="num">' + (r.max_retail != null ? fmtMoney(r.max_retail) : '-') + '</td><td class="num">' + (r.min_retail != null ? fmtMoney(r.min_retail) : '-') + '</td><td class="num">' + fmtNum(r.category_count) + '</td><td>' + (r.top_categories || '-').replace(/</g,'&lt;') + '</td></tr>'; }).join('') + '</tbody></table>';
+  }
+  function tablePriceBand(rows) {
+    if (!rows || !rows.length) return '<p class="sub">无数据</p>';
+    return '<table><thead><tr><th>价格带</th><th class="num">SKU数</th><th class="num">占比%</th><th class="num">品类数</th><th class="num">品牌数</th><th>主要品类</th></tr></thead><tbody>' +
+      rows.map(function(r) { return '<tr><td>' + (r.band || '').replace(/</g,'&lt;') + '</td><td class="num">' + fmtNum(r.count) + '</td><td class="num">' + (r.pct != null ? r.pct : '') + '</td><td class="num">' + fmtNum(r.category_count) + '</td><td class="num">' + fmtNum(r.brand_count) + '</td><td>' + (r.top_categories || '-').replace(/</g,'&lt;') + '</td></tr>'; }).join('') + '</tbody></table>';
+  }
+  function tableDist(rows) {
+    if (!rows || !rows.length) return '<p class="sub">无数据</p>';
+    return '<table><thead><tr><th>经销方式</th><th class="num">SKU数</th><th class="num">占比%</th><th class="num">平均零售价</th><th class="num">联营扣率均值</th></tr></thead><tbody>' +
+      rows.map(function(r) { return '<tr><td>' + (r.name || '').replace(/</g,'&lt;') + '</td><td class="num">' + fmtNum(r.count) + '</td><td class="num">' + (r.pct != null ? r.pct : '') + '</td><td class="num">' + (r.avg_retail != null ? fmtMoney(r.avg_retail) : '-') + '</td><td class="num">' + (r.joint_rate_avg != null ? r.joint_rate_avg : '-') + '</td></tr>'; }).join('') + '</tbody></table>';
+  }
+  function tableSupplier(rows) {
+    if (!rows || !rows.length) return '<p class="sub">无数据</p>';
+    return '<table><thead><tr><th>供应商</th><th class="num">SKU数</th><th class="num">占比%</th><th class="num">品类数</th><th>主要经销方式</th><th class="num">平均零售价</th><th class="num">联营扣率</th></tr></thead><tbody>' +
+      rows.map(function(r) { return '<tr><td>' + (r.name || '').replace(/</g,'&lt;') + '</td><td class="num">' + fmtNum(r.count) + '</td><td class="num">' + (r.pct != null ? r.pct : '') + '</td><td class="num">' + fmtNum(r.category_count) + '</td><td>' + (r.main_distribution || '-').replace(/</g,'&lt;') + '</td><td class="num">' + (r.avg_retail != null ? fmtMoney(r.avg_retail) : '-') + '</td><td class="num">' + (r.joint_rate_avg != null ? r.joint_rate_avg : '-') + '</td></tr>'; }).join('') + '</tbody></table>';
+  }
+  function tableGeneric(rows, cols) {
+    if (!rows || !rows.length) return '<p class="sub">无数据</p>';
+    var headers = cols.map(function(c) { return c.num ? '<th class="num">' + c.label + '</th>' : '<th>' + c.label + '</th>'; }).join('');
+    return '<table><thead><tr>' + headers + '</tr></thead><tbody>' +
+      rows.map(function(r) { return '<tr>' + cols.map(function(c) { var v = r[c.key]; var s = (v != null && v !== '') ? String(v).replace(/</g,'&lt;') : '-'; if (c.num && typeof v === 'number') s = c.money ? fmtMoney(v) : fmtNum(v); return c.num ? '<td class="num">' + s + '</td>' : '<td>' + s + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table>';
+  }
+
+  function drawCharts(data) {
+    if (typeof echarts === 'undefined') return;
+    var status = data.by_status || [];
+    if (status.length && document.getElementById('chartStatus')) {
+      var ch = echarts.init(document.getElementById('chartStatus'));
+      ch.setOption({ tooltip: { trigger: 'item' }, series: [{ type: 'pie', radius: ['40%','70%'], data: status.map(function(r) { return { value: r.count, name: (r.name || '').slice(0, 8) }; }) }] });
+    }
+    var cat = (data.by_category || []).slice(0, 10);
+    if (cat.length && document.getElementById('chartCategory')) {
+      var ch2 = echarts.init(document.getElementById('chartCategory'));
+      ch2.setOption({ grid: { left: 80, right: 20, top: 10, bottom: 30 }, xAxis: { type: 'value' }, yAxis: { type: 'category', data: cat.map(function(r) { return (r.name || '').slice(0, 12); }).reverse() }, series: [{ type: 'bar', data: cat.map(function(r) { return r.count; }).reverse(), itemStyle: { color: '#38bdf8' } }] });
+    }
+    var brand = (data.by_brand || []).slice(0, 20);
+    if (brand.length && document.getElementById('chartBrand')) {
+      var ch3 = echarts.init(document.getElementById('chartBrand'));
+      ch3.setOption({ grid: { left: 80, right: 20, top: 10, bottom: 30 }, xAxis: { type: 'value' }, yAxis: { type: 'category', data: brand.map(function(r) { return (r.name || '').slice(0, 10); }).reverse() }, series: [{ type: 'bar', data: brand.map(function(r) { return r.count; }).reverse(), itemStyle: { color: '#34d399' } }] });
+    }
+    var band = data.by_price_band || [];
+    if (band.length && document.getElementById('chartPriceBand')) {
+      var ch4 = echarts.init(document.getElementById('chartPriceBand'));
+      ch4.setOption({ grid: { left: 50, right: 20, top: 10, bottom: 30 }, xAxis: { type: 'category', data: band.map(function(r) { return r.band || ''; }) }, yAxis: { type: 'value' }, series: [{ type: 'bar', data: band.map(function(r) { return r.count; }), itemStyle: { color: '#38bdf8' } }] });
+    }
+    var dist = data.by_distribution || [];
+    if (dist.length && document.getElementById('chartDist')) {
+      var ch5 = echarts.init(document.getElementById('chartDist'));
+      ch5.setOption({ tooltip: { trigger: 'item' }, series: [{ type: 'pie', radius: ['40%','70%'], data: dist.map(function(r) { return { value: r.count, name: (r.name || '').slice(0, 6) }; }) }] });
+    }
+    var gender = data.by_gender || [];
+    if (gender.length && document.getElementById('chartGender')) {
+      var ch6 = echarts.init(document.getElementById('chartGender'));
+      ch6.setOption({ tooltip: { trigger: 'item' }, series: [{ type: 'pie', radius: ['40%','70%'], data: gender.map(function(r) { return { value: r.count, name: (r.name || '').slice(0, 6) }; }) }] });
+    }
+  }
+
+  function render(d) {
+    if (!d || !d.success) {
+      document.getElementById('root').innerHTML = '<div class="error">' + (d && d.message ? d.message.replace(/</g,'&lt;') : '加载失败') + '</div>';
+      return;
+    }
+    var ov = d.overview || {};
+    var html = renderKpi(ov);
+    html += '<div class="grid2"><div class="box"><h3>按商品状态</h3><div id="chartStatus" class="chart"></div>' + tableStatus(d.by_status) + '</div>';
+    html += '<div class="box"><h3>按经销方式</h3><div id="chartDist" class="chart"></div>' + tableDist(d.by_distribution) + '</div></div>';
+    html += '<div class="box"><h3>品类 Top10 SKU数</h3><div id="chartCategory" class="chart"></div></div>';
+    html += '<div class="box"><h3>按品类（类别）</h3>' + tableCategory(d.by_category) + '</div>';
+    html += '<div class="box"><h3>品牌 Top20 SKU数</h3><div id="chartBrand" class="chart"></div></div>';
+    html += '<div class="box"><h3>按品牌</h3>' + tableBrand(d.by_brand) + '</div>';
+    html += '<div class="box"><h3>价格带分布</h3><div id="chartPriceBand" class="chart"></div>' + tablePriceBand(d.by_price_band) + '</div>';
+    html += '<div class="box"><h3>按供应商</h3>' + tableSupplier(d.by_supplier) + '</div>';
+    html += '<div class="grid2"><div class="box"><h3>性别分布</h3><div id="chartGender" class="chart"></div>' + tableGeneric(d.by_gender, [{key:'name',label:'性别'},{key:'count',label:'SKU数',num:true},{key:'pct',label:'占比%',num:true},{key:'avg_retail',label:'平均零售价',num:true,money:true},{key:'top_categories',label:'主要品类'}]) + '</div>';
+    html += '<div class="box"><h3>上下装/配件</h3>' + tableGeneric(d.by_clothing_type, [{key:'name',label:'类型'},{key:'count',label:'SKU数',num:true},{key:'pct',label:'占比%',num:true},{key:'avg_retail',label:'平均零售价',num:true,money:true}]) + '</div></div>';
+    html += '<div class="box"><h3>风格</h3>' + tableGeneric(d.by_style, [{key:'name',label:'风格'},{key:'count',label:'SKU数',num:true},{key:'pct',label:'占比%',num:true},{key:'avg_retail',label:'平均零售价',num:true,money:true}]) + '</div>';
+    html += '<div class="box"><h3>色系</h3>' + tableGeneric(d.by_color, [{key:'name',label:'色系'},{key:'count',label:'SKU数',num:true},{key:'pct',label:'占比%',num:true},{key:'avg_retail',label:'平均零售价',num:true,money:true}]) + '</div>';
+    html += '<div class="box"><h3>产地</h3>' + tableGeneric(d.by_origin, [{key:'name',label:'产地'},{key:'count',label:'SKU数',num:true},{key:'pct',label:'占比%',num:true},{key:'avg_retail',label:'平均零售价',num:true,money:true}]) + '</div>';
+    var dq = d.data_quality || {};
+    html += '<div class="box"><h3>数据质量 · 关键字段缺失</h3><table class="dq-table"><thead><tr><th>字段</th><th class="num">缺失数量</th><th class="num">缺失率%</th></tr></thead><tbody>' +
+      [['国际条码','missing_barcode'],['零售价','missing_retail_price'],['品牌','missing_brand'],['类别','missing_category'],['供应商','missing_supplier'],['性别','missing_gender']].map(function(x) {
+        var n = dq[x[1]] || 0, p = dq[x[1]+'_pct'] != null ? dq[x[1]+'_pct'] : 0;
+        return '<tr><td>' + x[0] + '</td><td class="num">' + n + '</td><td class="num ' + (p > 10 ? 'warn' : '') + '">' + p + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+    var pa = d.price_anomaly || {};
+    html += '<div class="box"><h3>价格异常</h3><table class="dq-table"><tbody><tr><td>零售价≤0</td><td class="num">' + (pa.retail_le_zero || 0) + '</td></tr><tr><td>零售价&lt;批发价</td><td class="num">' + (pa.retail_lt_wholesale || 0) + '</td></tr><tr><td>划线价&lt;零售价</td><td class="num">' + (pa.list_lt_retail || 0) + '</td></tr></tbody></table></div>';
+    var sp = d.special || {};
+    html += '<div class="box"><h3>特殊商品</h3><table class="dq-table"><tbody>' +
+      '<tr><td>生鲜SKU数</td><td class="num">' + (sp.fresh_count || 0) + '</td></tr>' +
+      '<tr><td>生鲜平均损耗率</td><td class="num">' + (sp.fresh_avg_loss_rate != null ? sp.fresh_avg_loss_rate : '-') + '</td></tr>' +
+      '<tr><td>捆绑商品数</td><td class="num">' + (sp.bundle_count || 0) + ' (' + (sp.bundle_pct != null ? sp.bundle_pct : 0) + '%)</td></tr>' +
+      '<tr><td>有保质期商品数</td><td class="num">' + (sp.has_shelf_life_count || 0) + '</td></tr>' +
+      '<tr><td>积分商品数</td><td class="num">' + (sp.points_count || 0) + ' (' + (sp.points_pct != null ? sp.points_pct : 0) + '%)</td></tr>' +
+      '<tr><td>允许折扣</td><td class="num">' + (sp.allow_discount_count || 0) + '</td></tr>' +
+      '<tr><td>前台议价</td><td class="num">' + (sp.counter_bargain_count || 0) + '</td></tr>' +
+      '<tr><td>会员折扣</td><td class="num">' + (sp.member_discount_count || 0) + '</td></tr></tbody></table></div>';
+    document.getElementById('root').innerHTML = html;
+    setTimeout(function() { drawCharts(d); }, 50);
+  }
+
+  fetch(API + '/api/product_master_analysis', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+    .then(function(r) { return r.json(); })
+    .then(render)
+    .catch(function(e) { document.getElementById('root').innerHTML = '<div class="error">请求失败: ' + (e.message || '').replace(/</g,'&lt;') + '</div>'; });
+})();
+  </script>
+</body>
+</html>

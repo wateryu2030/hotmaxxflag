@@ -1751,38 +1751,138 @@ def api_product_master_status():
         return jsonify({"success": False, "message": str(e)}), 500
 
 
-def _product_master_analysis(conn):
-    """从 t_htma_product_master 聚合：按状态、品类、品牌、经销方式、价格带。返回 dict。"""
-    cur = conn.cursor()
-    def _row_name(r):
-        return (r.get("k") or r.get("name") or "").strip() if isinstance(r, dict) else (r[0] or "").strip()
-    def _row_count(r):
-        return r.get("cnt") or r.get("count") or 0 if isinstance(r, dict) else (r[1] if len(r) > 1 else 0)
-    # 按商品状态
+def _product_master_analysis(conn, store_id=None):
+    """从 t_htma_product_master 聚合：概览KPI、按状态/品类/品牌/经销方式/价格带/供应商/性别/上下装/风格/色系/产地、数据质量与价格异常。store_id 为空则全部门店。"""
+    store_id = (store_id or STORE_ID or "默认").strip()[:32]
+    cur = conn.cursor(pymysql.cursors.DictCursor)
+    cond = " WHERE store_id = %s "
+    params = [store_id]
+
+    def _f(r, key, default=0):
+        if r is None:
+            return default
+        v = r.get(key) if isinstance(r, dict) else (r[0] if key == 0 else default)
+        if v is None:
+            return default
+        try:
+            return float(v) if isinstance(v, (int, float)) else default
+        except (TypeError, ValueError):
+            return default
+
+    def _i(r, key, default=0):
+        v = _f(r, key, default)
+        return int(round(v))
+
+    # ---------- 1. 整体概览 KPI ----------
     cur.execute("""
-        SELECT product_status AS k, COUNT(*) AS cnt FROM t_htma_product_master
-        WHERE COALESCE(TRIM(product_status), '') != '' GROUP BY product_status ORDER BY cnt DESC LIMIT 20
-    """)
-    by_status = [{"name": _row_name(r) or "（空）", "count": _row_count(r)} for r in cur.fetchall()]
-    # 按类别（品类）
+        SELECT
+            COUNT(*) AS total_sku,
+            SUM(CASE WHEN TRIM(COALESCE(product_status,'')) = '正常' THEN 1 ELSE 0 END) AS normal_count,
+            SUM(CASE WHEN TRIM(COALESCE(product_status,'')) = '新品' THEN 1 ELSE 0 END) AS new_count,
+            SUM(CASE WHEN TRIM(COALESCE(product_status,'')) = '停售' THEN 1 ELSE 0 END) AS stop_count,
+            AVG(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS avg_retail,
+            MAX(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS max_retail,
+            MIN(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS min_retail,
+            COUNT(DISTINCT NULLIF(TRIM(COALESCE(brand_name,'')), '')) AS brand_count,
+            COUNT(DISTINCT NULLIF(TRIM(COALESCE(supplier_code,'')), '')) AS supplier_count
+        FROM t_htma_product_master
+        """ + cond, params)
+    row = cur.fetchone()
+    total_sku = _i(row, "total_sku")
+    overview = {
+        "total_sku": total_sku,
+        "normal_count": _i(row, "normal_count"),
+        "new_count": _i(row, "new_count"),
+        "stop_count": _i(row, "stop_count"),
+        "avg_retail": round(_f(row, "avg_retail"), 2) if _f(row, "avg_retail") else None,
+        "max_retail": round(_f(row, "max_retail"), 2) if _f(row, "max_retail") else None,
+        "min_retail": round(_f(row, "min_retail"), 2) if _f(row, "min_retail") else None,
+        "brand_count": _i(row, "brand_count"),
+        "supplier_count": _i(row, "supplier_count"),
+    }
+
+    # ---------- 2. 按商品状态（含占比、平均零售价、品牌数）----------
     cur.execute("""
-        SELECT category_name AS k, COUNT(*) AS cnt FROM t_htma_product_master
-        WHERE COALESCE(TRIM(category_name), '') != '' GROUP BY category_name ORDER BY cnt DESC LIMIT 25
-    """)
-    by_category = [{"name": _row_name(r), "count": _row_count(r)} for r in cur.fetchall()]
-    # 按品牌
+        SELECT
+            COALESCE(NULLIF(TRIM(product_status), ''), '未填') AS k,
+            COUNT(*) AS sku_count,
+            AVG(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS avg_retail,
+            COUNT(DISTINCT NULLIF(TRIM(COALESCE(brand_name,'')), '')) AS brand_count
+        FROM t_htma_product_master
+        """ + cond + """ GROUP BY k ORDER BY sku_count DESC LIMIT 20""", params)
+    by_status = []
+    for r in cur.fetchall():
+        k = (r.get("k") or "未填").strip()
+        cnt = _i(r, "sku_count")
+        by_status.append({
+            "name": k,
+            "count": cnt,
+            "pct": round(cnt / total_sku * 100, 2) if total_sku else 0,
+            "avg_retail": round(_f(r, "avg_retail"), 2) if _f(r, "avg_retail") else None,
+            "brand_count": _i(r, "brand_count"),
+        })
+
+    # ---------- 3. 按品类（类别）：SKU数、占比、均价、最高/最低价、品牌数、供应商数 ----------
     cur.execute("""
-        SELECT brand_name AS k, COUNT(*) AS cnt FROM t_htma_product_master
-        WHERE COALESCE(TRIM(brand_name), '') != '' GROUP BY brand_name ORDER BY cnt DESC LIMIT 25
-    """)
-    by_brand = [{"name": _row_name(r), "count": _row_count(r)} for r in cur.fetchall()]
-    # 按经销方式
+        SELECT
+            COALESCE(NULLIF(TRIM(category_name), ''), '未分类') AS cat,
+            COUNT(*) AS sku_count,
+            AVG(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS avg_retail,
+            MAX(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS max_retail,
+            MIN(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS min_retail,
+            COUNT(DISTINCT NULLIF(TRIM(COALESCE(brand_name,'')), '')) AS brand_count,
+            COUNT(DISTINCT NULLIF(TRIM(COALESCE(supplier_code,'')), '')) AS supplier_count
+        FROM t_htma_product_master
+        """ + cond + """ GROUP BY cat ORDER BY sku_count DESC LIMIT 30""", params)
+    by_category = []
+    for r in cur.fetchall():
+        cat = (r.get("cat") or "未分类").strip()
+        cnt = _i(r, "sku_count")
+        by_category.append({
+            "name": cat,
+            "count": cnt,
+            "pct": round(cnt / total_sku * 100, 2) if total_sku else 0,
+            "avg_retail": round(_f(r, "avg_retail"), 2) if _f(r, "avg_retail") else None,
+            "max_retail": round(_f(r, "max_retail"), 2) if _f(r, "max_retail") else None,
+            "min_retail": round(_f(r, "min_retail"), 2) if _f(r, "min_retail") else None,
+            "brand_count": _i(r, "brand_count"),
+            "supplier_count": _i(r, "supplier_count"),
+        })
+
+    # ---------- 4. 按品牌：SKU数、占比、均价、最高/最低、覆盖品类数、主要品类 Top3 ----------
     cur.execute("""
-        SELECT distribution_mode AS k, COUNT(*) AS cnt FROM t_htma_product_master
-        WHERE COALESCE(TRIM(distribution_mode), '') != '' GROUP BY distribution_mode ORDER BY cnt DESC LIMIT 10
-    """)
-    by_distribution = [{"name": _row_name(r), "count": _row_count(r)} for r in cur.fetchall()]
-    # 零售价分布（区间）
+        SELECT
+            COALESCE(NULLIF(TRIM(brand_name), ''), '未填') AS brand,
+            COUNT(*) AS sku_count,
+            AVG(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS avg_retail,
+            MAX(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS max_retail,
+            MIN(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS min_retail,
+            COUNT(DISTINCT NULLIF(TRIM(COALESCE(category_name,'')), '')) AS category_count
+        FROM t_htma_product_master
+        """ + cond + """ GROUP BY brand ORDER BY sku_count DESC LIMIT 30""", params)
+    by_brand = []
+    for r in cur.fetchall():
+        brand = (r.get("brand") or "未填").strip()
+        cnt = _i(r, "sku_count")
+        by_brand.append({
+            "name": brand,
+            "count": cnt,
+            "pct": round(cnt / total_sku * 100, 2) if total_sku else 0,
+            "avg_retail": round(_f(r, "avg_retail"), 2) if _f(r, "avg_retail") else None,
+            "max_retail": round(_f(r, "max_retail"), 2) if _f(r, "max_retail") else None,
+            "min_retail": round(_f(r, "min_retail"), 2) if _f(r, "min_retail") else None,
+            "category_count": _i(r, "category_count"),
+            "top_categories": None,
+        })
+    # 为每个品牌取主要品类 Top3（子查询或后续补）
+    for b in by_brand[:15]:
+        cur.execute("""
+            SELECT category_name AS cat FROM t_htma_product_master
+            """ + cond + """ AND TRIM(COALESCE(brand_name,'')) = %s AND TRIM(COALESCE(category_name,'')) != ''
+            GROUP BY category_name ORDER BY COUNT(*) DESC LIMIT 3""", params + [b["name"]])
+        b["top_categories"] = ", ".join([(x.get("cat") or "").strip() for x in cur.fetchall() if x.get("cat")]) or "-"
+
+    # ---------- 5. 价格带：SKU数、占比、覆盖品类数、品牌数、主要品类 ----------
     cur.execute("""
         SELECT
             CASE
@@ -1794,18 +1894,254 @@ def _product_master_analysis(conn):
                 WHEN retail_price < 1000 THEN '500-999'
                 ELSE '1000+'
             END AS band,
-            COUNT(*) AS cnt
+            COUNT(*) AS sku_count,
+            COUNT(DISTINCT NULLIF(TRIM(COALESCE(category_name,'')), '')) AS category_count,
+            COUNT(DISTINCT NULLIF(TRIM(COALESCE(brand_name,'')), '')) AS brand_count
         FROM t_htma_product_master
-        GROUP BY band ORDER BY FIELD(band,'0','1-49','50-99','100-199','200-499','500-999','1000+')
-    """)
-    by_price = [{"band": (r.get("band") or r.get("k") or "0") if isinstance(r, dict) else (r[0] or "0"), "count": _row_count(r)} for r in cur.fetchall()]
+        """ + cond + """
+        GROUP BY band ORDER BY FIELD(band,'0','1-49','50-99','100-199','200-499','500-999','1000+')""", params)
+    by_price_band = []
+    for r in cur.fetchall():
+        band = (r.get("band") or "0").strip()
+        cnt = _i(r, "sku_count")
+        by_price_band.append({
+            "band": band,
+            "count": cnt,
+            "pct": round(cnt / total_sku * 100, 2) if total_sku else 0,
+            "category_count": _i(r, "category_count"),
+            "brand_count": _i(r, "brand_count"),
+            "top_categories": None,
+        })
+    for pb in by_price_band:
+        if pb["band"] == "0":
+            band_cond = " AND COALESCE(retail_price, 0) = 0"
+        elif pb["band"] == "1-49":
+            band_cond = " AND retail_price >= 1 AND retail_price < 50"
+        elif pb["band"] == "50-99":
+            band_cond = " AND retail_price >= 50 AND retail_price < 100"
+        elif pb["band"] == "100-199":
+            band_cond = " AND retail_price >= 100 AND retail_price < 200"
+        elif pb["band"] == "200-499":
+            band_cond = " AND retail_price >= 200 AND retail_price < 500"
+        elif pb["band"] == "500-999":
+            band_cond = " AND retail_price >= 500 AND retail_price < 1000"
+        elif pb["band"] == "1000+":
+            band_cond = " AND retail_price >= 1000"
+        else:
+            band_cond = " AND 1=0"
+        cur.execute("""
+            SELECT category_name AS cat FROM t_htma_product_master
+            """ + cond + band_cond + """ AND TRIM(COALESCE(category_name,'')) != ''
+            GROUP BY category_name ORDER BY COUNT(*) DESC LIMIT 3""", params)
+        pb["top_categories"] = ", ".join([(x.get("cat") or "").strip() for x in cur.fetchall() if x.get("cat")]) or "-"
+
+    # ---------- 6. 按经销方式：SKU数、占比、平均零售价、联营扣率均值 ----------
+    cur.execute("""
+        SELECT
+            COALESCE(NULLIF(TRIM(distribution_mode), ''), '未填') AS mode,
+            COUNT(*) AS sku_count,
+            AVG(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS avg_retail,
+            AVG(CASE WHEN COALESCE(joint_rate, 0) > 0 THEN joint_rate END) AS joint_rate_avg
+        FROM t_htma_product_master
+        """ + cond + """ GROUP BY mode ORDER BY sku_count DESC LIMIT 10""", params)
+    by_distribution = []
+    for r in cur.fetchall():
+        mode = (r.get("mode") or "未填").strip()
+        cnt = _i(r, "sku_count")
+        by_distribution.append({
+            "name": mode,
+            "count": cnt,
+            "pct": round(cnt / total_sku * 100, 2) if total_sku else 0,
+            "avg_retail": round(_f(r, "avg_retail"), 2) if _f(r, "avg_retail") else None,
+            "joint_rate_avg": round(_f(r, "joint_rate_avg"), 4) if _f(r, "joint_rate_avg") else None,
+        })
+
+    # ---------- 7. 按供应商：SKU数、占比、覆盖品类数、主要经销方式、平均零售价、联营扣率均值 ----------
+    cur.execute("""
+        SELECT
+            COALESCE(NULLIF(TRIM(supplier_name), ''), NULLIF(TRIM(supplier_code), ''), '未填') AS supplier,
+            COUNT(*) AS sku_count,
+            COUNT(DISTINCT NULLIF(TRIM(COALESCE(category_name,'')), '')) AS category_count,
+            AVG(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS avg_retail,
+            AVG(CASE WHEN COALESCE(joint_rate, 0) > 0 THEN joint_rate END) AS joint_rate_avg
+        FROM t_htma_product_master
+        """ + cond + """ GROUP BY supplier ORDER BY sku_count DESC LIMIT 25""", params)
+    by_supplier = []
+    for r in cur.fetchall():
+        sup = (r.get("supplier") or "未填").strip()
+        cnt = _i(r, "sku_count")
+        by_supplier.append({
+            "name": sup,
+            "count": cnt,
+            "pct": round(cnt / total_sku * 100, 2) if total_sku else 0,
+            "category_count": _i(r, "category_count"),
+            "main_distribution": None,
+            "avg_retail": round(_f(r, "avg_retail"), 2) if _f(r, "avg_retail") else None,
+            "joint_rate_avg": round(_f(r, "joint_rate_avg"), 4) if _f(r, "joint_rate_avg") else None,
+        })
+    for s in by_supplier[:15]:
+        cur.execute("""
+            SELECT distribution_mode AS d FROM t_htma_product_master
+            """ + cond + """ AND (TRIM(COALESCE(supplier_name,'')) = %s OR TRIM(COALESCE(supplier_code,'')) = %s)
+            AND TRIM(COALESCE(distribution_mode,'')) != ''
+            GROUP BY distribution_mode ORDER BY COUNT(*) DESC LIMIT 1""", params + [s["name"], s["name"]])
+        row_d = cur.fetchone()
+        s["main_distribution"] = (row_d.get("d") or "").strip() if row_d else "-"
+
+    # ---------- 8. 性别分布 ----------
+    cur.execute("""
+        SELECT
+            COALESCE(NULLIF(TRIM(gender), ''), '未指定') AS k,
+            COUNT(*) AS sku_count,
+            AVG(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS avg_retail
+        FROM t_htma_product_master
+        """ + cond + """ GROUP BY k ORDER BY sku_count DESC LIMIT 10""", params)
+    by_gender = []
+    for r in cur.fetchall():
+        k = (r.get("k") or "未指定").strip()
+        cnt = _i(r, "sku_count")
+        by_gender.append({
+            "name": k,
+            "count": cnt,
+            "pct": round(cnt / total_sku * 100, 2) if total_sku else 0,
+            "avg_retail": round(_f(r, "avg_retail"), 2) if _f(r, "avg_retail") else None,
+            "top_categories": None,
+        })
+    for g in by_gender[:8]:
+        cur.execute("""
+            SELECT category_name AS cat FROM t_htma_product_master
+            """ + cond + """ AND TRIM(COALESCE(gender,'')) = %s AND TRIM(COALESCE(category_name,'')) != ''
+            GROUP BY category_name ORDER BY COUNT(*) DESC LIMIT 3""", params + [g["name"] if g["name"] != "未指定" else ""])
+        g["top_categories"] = ", ".join([(x.get("cat") or "").strip() for x in cur.fetchall() if x.get("cat")]) or "-"
+
+    # ---------- 9. 上下装/配件 ----------
+    cur.execute("""
+        SELECT
+            COALESCE(NULLIF(TRIM(clothing_type), ''), '其他') AS k,
+            COUNT(*) AS sku_count,
+            AVG(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS avg_retail
+        FROM t_htma_product_master
+        """ + cond + """ GROUP BY k ORDER BY sku_count DESC LIMIT 15""", params)
+    by_clothing_type = [{"name": (r.get("k") or "其他").strip(), "count": _i(r, "sku_count"), "pct": round(_i(r, "sku_count") / total_sku * 100, 2) if total_sku else 0, "avg_retail": round(_f(r, "avg_retail"), 2) if _f(r, "avg_retail") else None} for r in cur.fetchall()]
+
+    # ---------- 10. 风格 ----------
+    cur.execute("""
+        SELECT
+            COALESCE(NULLIF(TRIM(style), ''), '未填') AS k,
+            COUNT(*) AS sku_count,
+            AVG(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS avg_retail
+        FROM t_htma_product_master
+        """ + cond + """ GROUP BY k ORDER BY sku_count DESC LIMIT 15""", params)
+    by_style = [{"name": (r.get("k") or "未填").strip(), "count": _i(r, "sku_count"), "pct": round(_i(r, "sku_count") / total_sku * 100, 2) if total_sku else 0, "avg_retail": round(_f(r, "avg_retail"), 2) if _f(r, "avg_retail") else None} for r in cur.fetchall()]
+
+    # ---------- 11. 色系 ----------
+    cur.execute("""
+        SELECT
+            COALESCE(NULLIF(TRIM(color_family), ''), '未填') AS k,
+            COUNT(*) AS sku_count,
+            AVG(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS avg_retail
+        FROM t_htma_product_master
+        """ + cond + """ GROUP BY k ORDER BY sku_count DESC LIMIT 15""", params)
+    by_color = [{"name": (r.get("k") or "未填").strip(), "count": _i(r, "sku_count"), "pct": round(_i(r, "sku_count") / total_sku * 100, 2) if total_sku else 0, "avg_retail": round(_f(r, "avg_retail"), 2) if _f(r, "avg_retail") else None} for r in cur.fetchall()]
+
+    # ---------- 12. 产地 ----------
+    cur.execute("""
+        SELECT
+            COALESCE(NULLIF(TRIM(origin), ''), '未填') AS k,
+            COUNT(*) AS sku_count,
+            AVG(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS avg_retail
+        FROM t_htma_product_master
+        """ + cond + """ GROUP BY k ORDER BY sku_count DESC LIMIT 15""", params)
+    by_origin = [{"name": (r.get("k") or "未填").strip(), "count": _i(r, "sku_count"), "pct": round(_i(r, "sku_count") / total_sku * 100, 2) if total_sku else 0, "avg_retail": round(_f(r, "avg_retail"), 2) if _f(r, "avg_retail") else None} for r in cur.fetchall()]
+
+    # ---------- 13. 数据质量：关键字段缺失 ----------
+    cur.execute("""
+        SELECT
+            SUM(CASE WHEN COALESCE(TRIM(barcode), '') = '' THEN 1 ELSE 0 END) AS miss_barcode,
+            SUM(CASE WHEN COALESCE(retail_price, 0) <= 0 THEN 1 ELSE 0 END) AS miss_retail,
+            SUM(CASE WHEN COALESCE(TRIM(brand_name), '') = '' THEN 1 ELSE 0 END) AS miss_brand,
+            SUM(CASE WHEN COALESCE(TRIM(category_name), '') = '' THEN 1 ELSE 0 END) AS miss_category,
+            SUM(CASE WHEN COALESCE(TRIM(supplier_code), '') = '' AND COALESCE(TRIM(supplier_name), '') = '' THEN 1 ELSE 0 END) AS miss_supplier,
+            SUM(CASE WHEN COALESCE(TRIM(gender), '') = '' THEN 1 ELSE 0 END) AS miss_gender
+        FROM t_htma_product_master
+        """ + cond, params)
+    q = cur.fetchone()
+    data_quality = {
+        "missing_barcode": _i(q, "miss_barcode"),
+        "missing_retail_price": _i(q, "miss_retail"),
+        "missing_brand": _i(q, "miss_brand"),
+        "missing_category": _i(q, "miss_category"),
+        "missing_supplier": _i(q, "miss_supplier"),
+        "missing_gender": _i(q, "miss_gender"),
+    }
+    for k in data_quality:
+        data_quality[k + "_pct"] = round(data_quality[k] / total_sku * 100, 2) if total_sku else 0
+
+    # ---------- 14. 价格异常 ----------
+    cur.execute("""
+        SELECT
+            SUM(CASE WHEN COALESCE(retail_price, 0) <= 0 THEN 1 ELSE 0 END) AS retail_le_zero,
+            SUM(CASE WHEN COALESCE(wholesale_price, 0) > 0 AND COALESCE(retail_price, 0) > 0 AND retail_price < wholesale_price THEN 1 ELSE 0 END) AS retail_lt_wholesale,
+            SUM(CASE WHEN COALESCE(list_price, 0) > 0 AND COALESCE(retail_price, 0) > 0 AND list_price < retail_price THEN 1 ELSE 0 END) AS list_lt_retail
+        FROM t_htma_product_master
+        """ + cond, params)
+    pa = cur.fetchone()
+    price_anomaly = {
+        "retail_le_zero": _i(pa, "retail_le_zero"),
+        "retail_lt_wholesale": _i(pa, "retail_lt_wholesale"),
+        "list_lt_retail": _i(pa, "list_lt_retail"),
+    }
+
+    # ---------- 15. 特殊商品：生鲜、捆绑、有保质期、积分、允许折扣等 ----------
+    cur.execute("""
+        SELECT
+            SUM(CASE WHEN TRIM(COALESCE(is_fresh,'')) = '是' THEN 1 ELSE 0 END) AS fresh_count,
+            AVG(CASE WHEN TRIM(COALESCE(is_fresh,'')) = '是' AND COALESCE(loss_rate, 0) > 0 THEN loss_rate END) AS fresh_avg_loss_rate,
+            SUM(CASE WHEN TRIM(COALESCE(product_type,'')) LIKE '%%捆绑%%' THEN 1 ELSE 0 END) AS bundle_count,
+            SUM(CASE WHEN COALESCE(shelf_life, 0) > 0 THEN 1 ELSE 0 END) AS has_shelf_life_count,
+            SUM(CASE WHEN TRIM(COALESCE(is_points,'')) = '是' THEN 1 ELSE 0 END) AS points_count,
+            SUM(CASE WHEN TRIM(COALESCE(allow_discount,'')) = '是' THEN 1 ELSE 0 END) AS allow_discount_count,
+            SUM(CASE WHEN TRIM(COALESCE(counter_bargain,'')) = '是' THEN 1 ELSE 0 END) AS counter_bargain_count,
+            SUM(CASE WHEN TRIM(COALESCE(member_discount,'')) = '是' THEN 1 ELSE 0 END) AS member_discount_count
+        FROM t_htma_product_master
+        """ + cond, params)
+    sp = cur.fetchone()
+    special = {
+        "fresh_count": _i(sp, "fresh_count"),
+        "fresh_avg_loss_rate": round(_f(sp, "fresh_avg_loss_rate"), 4) if _f(sp, "fresh_avg_loss_rate") else None,
+        "bundle_count": _i(sp, "bundle_count"),
+        "has_shelf_life_count": _i(sp, "has_shelf_life_count"),
+        "points_count": _i(sp, "points_count"),
+        "allow_discount_count": _i(sp, "allow_discount_count"),
+        "counter_bargain_count": _i(sp, "counter_bargain_count"),
+        "member_discount_count": _i(sp, "member_discount_count"),
+    }
+    special["bundle_pct"] = round(special["bundle_count"] / total_sku * 100, 2) if total_sku else 0
+    special["points_pct"] = round(special["points_count"] / total_sku * 100, 2) if total_sku else 0
+
     cur.close()
     return {
+        "overview": overview,
         "by_status": by_status,
         "by_category": by_category,
         "by_brand": by_brand,
         "by_distribution": by_distribution,
-        "by_price_band": by_price,
+        "by_price_band": by_price_band,
+        "by_supplier": by_supplier,
+        "by_gender": by_gender,
+        "by_clothing_type": by_clothing_type,
+        "by_style": by_style,
+        "by_color": by_color,
+        "by_origin": by_origin,
+        "data_quality": data_quality,
+        "price_anomaly": price_anomaly,
+        "special": special,
+        # 兼容旧版简单结构（仅 name/count 或 band/count）
+        "by_status_legacy": [{"name": x["name"], "count": x["count"]} for x in by_status],
+        "by_category_legacy": [{"name": x["name"], "count": x["count"]} for x in by_category],
+        "by_brand_legacy": [{"name": x["name"], "count": x["count"]} for x in by_brand],
+        "by_distribution_legacy": [{"name": x["name"], "count": x["count"]} for x in by_distribution],
+        "by_price_band_legacy": [{"band": x["band"], "count": x["count"]} for x in by_price_band],
     }
 
 
@@ -1825,58 +2161,10 @@ def api_product_master_analysis():
 
 @app.route("/product_master")
 def page_product_master():
-    """分店商品档案页：总览 + 按状态/品类/品牌/经销方式/价格带分析。与数据导入、人力成本同级权限。"""
+    """分店商品档案页：深度分析看板（KPI、状态/品类/品牌/价格带/经销/供应商/属性/数据质量），数据由 /api/product_master_analysis 提供。"""
     if _auth_enabled() and (not _is_logged_in() or not _has_module_access("product_master")):
         return Response("您无权访问分店商品档案模块，请联系管理员。", status=403)
-    try:
-        conn = get_conn()
-        cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) AS c FROM t_htma_product_master")
-        row = cur.fetchone()
-        total = row[0] if row and isinstance(row, (list, tuple)) else (row.get("c", 0) if isinstance(row, dict) else 0)
-        cur.execute("SELECT MAX(archive_date) AS d FROM t_htma_product_master")
-        r2 = cur.fetchone()
-        latest = r2[0] if r2 and isinstance(r2, (list, tuple)) else (r2.get("d") if isinstance(r2, dict) else None)
-        analysis = _product_master_analysis(conn)
-        cur.close()
-        conn.close()
-    except Exception as e:
-        total = 0
-        latest = None
-        analysis = {"by_status": [], "by_category": [], "by_brand": [], "by_distribution": [], "by_price_band": []}
-    base_css = (
-        "body{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;margin:20px;}"
-        ".box{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:16px;margin-bottom:12px;}"
-        ".label{color:#94a3b8;font-size:0.9rem;} .value{font-size:1.2rem;font-weight:700;color:#38bdf8;}"
-        "table{border-collapse:collapse;width:100%;margin-top:8px;} th,td{padding:8px 12px;text-align:left;border-bottom:1px solid #334155;} th{color:#94a3b8;} .num{text-align:right;} a{color:#38bdf8;}"
-    )
-    def _tbl(rows, col_name="name", col_count="count"):
-        if not rows:
-            return "<p class='label'>无数据</p>"
-        return (
-            "<table><thead><tr><th>%s</th><th class='num'>数量</th></tr></thead><tbody>"
-            % (col_name if col_name == "name" else "区间")
-            + "".join("<tr><td>%s</td><td class='num'>%s</td></tr>" % (str(r.get(col_name, r.get("band", ""))).replace("<", "&lt;"), r.get(col_count, 0)) for r in rows)
-            + "</tbody></table>"
-        )
-    status_tbl = _tbl(analysis.get("by_status", []))
-    category_tbl = _tbl(analysis.get("by_category", []), "name", "count")
-    brand_tbl = _tbl(analysis.get("by_brand", []), "name", "count")
-    dist_tbl = _tbl(analysis.get("by_distribution", []), "name", "count")
-    price_tbl = _tbl([{"name": r.get("band", ""), "count": r.get("count", 0)} for r in analysis.get("by_price_band", [])], "name", "count")
-    html = (
-        "<!DOCTYPE html><html><head><meta charset='utf-8'/><title>分店商品档案</title><style>%s</style></head><body>"
-        "<div class='box'><h2>📦 分店商品档案 · 数据分析</h2>"
-        "<p class='label'>总条数：<span class='value'>%s</span> &nbsp; 最新档案日期：<span class='value'>%s</span></p>"
-        "<p><a href='/import'>数据导入</a> | <a href='/'>返回看板</a></p></div>"
-        "<div class='box'><h3 class='label'>按商品状态</h3>%s</div>"
-        "<div class='box'><h3 class='label'>按品类（类别）</h3>%s</div>"
-        "<div class='box'><h3 class='label'>按品牌</h3>%s</div>"
-        "<div class='box'><h3 class='label'>按经销方式</h3>%s</div>"
-        "<div class='box'><h3 class='label'>零售价分布</h3>%s</div>"
-        "</body></html>"
-    ) % (base_css, total, (latest.isoformat() if hasattr(latest, "isoformat") else str(latest)) if latest else "-", status_tbl, category_tbl, brand_tbl, dist_tbl, price_tbl)
-    return Response(html, mimetype="text/html; charset=utf-8")
+    return send_from_directory("static", "product_master.html", mimetype="text/html; charset=utf-8")
 
 
 # 人力成本 position_type -> 前端展示类目名（与 12月薪资表 各 sheet 对应）
