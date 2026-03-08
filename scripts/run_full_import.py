@@ -37,9 +37,15 @@ def find_excel_files():
 
 def main():
     print("=== 好特卖完整导入（下载目录）===", flush=True)
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "htma_dashboard"))
-    import pymysql
-    from import_logic import (
+    _root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(os.path.join(_root, ".env"))
+    except ImportError:
+        pass
+    sys.path.insert(0, _root)
+    from htma_dashboard.db_config import get_conn
+    from htma_dashboard.import_logic import (
         import_sale_daily,
         import_sale_summary,
         import_stock,
@@ -49,15 +55,7 @@ def main():
         sync_category_table,
     )
 
-    conn = pymysql.connect(
-        host=os.environ.get("MYSQL_HOST", "127.0.0.1"),
-        port=int(os.environ.get("MYSQL_PORT", "3306")),
-        user=os.environ.get("MYSQL_USER", "root"),
-        password=os.environ.get("MYSQL_PASSWORD", "62102218"),
-        database="htma_dashboard",
-        charset="utf8mb4",
-        cursorclass=pymysql.cursors.DictCursor,
-    )
+    conn = get_conn()
 
     files = find_excel_files()
     if not files:

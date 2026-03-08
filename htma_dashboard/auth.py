@@ -17,7 +17,38 @@ def _feishu_app_secret():
 
 
 def _allowed_open_ids():
-    return [x.strip() for x in (os.environ.get("HTMA_ALLOWED_FEISHU_OPEN_IDS") or "").split(",") if x.strip()]
+    """允许登录的飞书 open_id 列表。不配置或留空则允许本企业内所有飞书用户登录（如振鸿科技全员）；配置后仅允许列表中的用户。"""
+    raw = (os.environ.get("HTMA_ALLOWED_FEISHU_OPEN_IDS") or "").strip()
+    if not raw:
+        return []
+    return [x.strip() for x in raw.split(",") if x.strip()]
+
+
+def _super_admin_open_id():
+    """超级管理员 open_id（余为军），用于审批企业外用户。支持 8db735f2 或 ou_8db735f2。"""
+    raw = (os.environ.get("HTMA_SUPER_ADMIN_OPEN_ID") or "8db735f2").strip()
+    if raw and not raw.startswith("ou_"):
+        return "ou_" + raw
+    return raw or "ou_8db735f2"
+
+
+def _is_internal_feishu_user(open_id, tenant_access_token):
+    """用本企业 tenant_access_token 调通讯录 API：能查到则为企业内部用户，否则为企业外。"""
+    if not open_id or not tenant_access_token:
+        return True
+    try:
+        r = requests.get(
+            f"{CONTACT_USER_URL}/{open_id}",
+            params={"user_id_type": "open_id"},
+            headers={"Authorization": f"Bearer {tenant_access_token}"},
+            timeout=5,
+        )
+        data = r.json() if r.status_code == 200 else {}
+        if data.get("code") == 0:
+            return True
+        return False
+    except Exception:
+        return True
 
 # 飞书 OAuth 文档: https://open.feishu.cn/document/common-capabilities/sso/web-application/scan-code-login
 FEISHU_AUTH_BASE = "https://open.feishu.cn/open-apis"
@@ -29,6 +60,8 @@ AUTHORIZE_URL = f"{FEISHU_AUTH_BASE}/authen/v1/authorize"
 ACCESS_TOKEN_URL = f"{FEISHU_AUTH_BASE}/authen/v1/access_token"
 # 获取当前授权用户信息
 USER_INFO_URL = f"{FEISHU_AUTH_BASE}/authen/v1/user_info"
+# 通讯录：用本企业 tenant_token 查用户，仅本企业用户能查到，用于区分企业内/外
+CONTACT_USER_URL = f"{FEISHU_AUTH_BASE}/contact/v3/users"
 
 
 def _tenant_access_token(app_id=None, app_secret=None):
@@ -115,15 +148,24 @@ def feishu_exchange_code_and_user(code, redirect_uri, app_id=None, app_secret=No
     if not open_id:
         return None, "用户信息中无 open_id"
 
-    allowed = _allowed_open_ids()
-    if allowed and open_id not in allowed:
-        return None, "您不在允许登录的名单中，请联系管理员"
+    # 区分企业内/外：用本企业 tenant_token 查通讯录，能查到则为内部
+    is_internal = _is_internal_feishu_user(open_id, tenant_token)
+
+    # 企业内用户：可选白名单限制（超级管理员始终允许登录，便于调试）
+    if is_internal:
+        allowed = _allowed_open_ids()
+        if allowed and open_id not in allowed:
+            admin_oid = _super_admin_open_id()
+            norm = lambda o: (o or "").strip().replace("ou_", "").lower()
+            if not admin_oid or norm(open_id) != norm(admin_oid):
+                return None, "您不在允许登录的名单中，请联系管理员"
 
     return {
         "open_id": open_id,
         "name": name,
         "union_id": ud.get("union_id"),
         "avatar_url": ud.get("avatar_url"),
+        "is_external": not is_internal,
     }, None
 
 

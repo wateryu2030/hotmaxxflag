@@ -28,6 +28,12 @@
     .error { color: #f87171; padding: 12px; }
     .warn { color: #fbbf24; }
     .dq-table td:nth-child(2), .dq-table td:nth-child(3) { text-align: right; }
+    .pm-drill-row { cursor: pointer; }
+    .pm-drill-row:hover { background: #334155; }
+    .pm-drill-panel { margin-bottom: 12px; padding: 10px; background: #1e293b; border-radius: 8px; border: 1px solid #334155; }
+    .pm-breadcrumb { margin-bottom: 8px; font-size: 0.85rem; color: #94a3b8; }
+    .pm-breadcrumb a { color: #38bdf8; }
+    .pm-breadcrumb a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -35,6 +41,10 @@
   <p class="sub">基于商品档案全量字段：结构、定价、供应商、属性画像、数据质量。<a href="/import">数据导入</a> | <a href="/">返回看板</a></p>
   <div id="root">
     <div class="loading">加载中...</div>
+  </div>
+  <div id="pmDrillPanel" class="pm-drill-panel" style="display:none;">
+    <div id="pmBreadcrumb" class="pm-breadcrumb"></div>
+    <div id="pmDrillContent"></div>
   </div>
   <script>
 (function() {
@@ -44,7 +54,7 @@
 
   function renderKpi(ov) {
     if (!ov) return '';
-    return '<div class="kpi-row">' + [
+    var items = [
       ['总SKU数', ov.total_sku],
       ['正常', ov.normal_count],
       ['新品', ov.new_count],
@@ -54,7 +64,10 @@
       ['最低零售价', ov.min_retail != null ? fmtMoney(ov.min_retail) : '-'],
       ['品牌数', ov.brand_count],
       ['供应商数', ov.supplier_count]
-    ].map(function(x) { return '<div class="kpi-card"><div class="label">' + x[0] + '</div><div class="value">' + fmtNum(x[1]) + '</div></div>'; }).join('') + '</div>';
+    ];
+    if (ov.member_price_count != null && ov.member_price_count > 0) items.push(['有会员价', ov.member_price_count]);
+    if (ov.member_discount_count != null && ov.member_discount_count > 0) items.push(['会员折扣', ov.member_discount_count]);
+    return '<div class="kpi-row">' + items.map(function(x) { return '<div class="kpi-card"><div class="label">' + x[0] + '</div><div class="value">' + fmtNum(x[1]) + '</div></div>'; }).join('') + '</div>';
   }
 
   function tableStatus(rows) {
@@ -64,13 +77,13 @@
   }
   function tableCategory(rows) {
     if (!rows || !rows.length) return '<p class="sub">无数据</p>';
-    return '<table><thead><tr><th>品类</th><th class="num">SKU数</th><th class="num">占比%</th><th class="num">平均零售价</th><th class="num">最高</th><th class="num">最低</th><th class="num">品牌数</th><th class="num">供应商数</th></tr></thead><tbody>' +
-      rows.map(function(r) { return '<tr><td>' + (r.name || '').replace(/</g,'&lt;') + '</td><td class="num">' + fmtNum(r.count) + '</td><td class="num">' + (r.pct != null ? r.pct : '') + '</td><td class="num">' + (r.avg_retail != null ? fmtMoney(r.avg_retail) : '-') + '</td><td class="num">' + (r.max_retail != null ? fmtMoney(r.max_retail) : '-') + '</td><td class="num">' + (r.min_retail != null ? fmtMoney(r.min_retail) : '-') + '</td><td class="num">' + fmtNum(r.brand_count) + '</td><td class="num">' + fmtNum(r.supplier_count) + '</td></tr>'; }).join('') + '</tbody></table>';
+    return '<table><thead><tr><th>品类</th><th class="num">SKU数</th><th class="num">占比%</th><th class="num">平均零售价</th><th class="num">销量</th><th class="num">销售额</th><th class="num">品牌数</th><th class="num">供应商数</th></tr></thead><tbody>' +
+      rows.map(function(r) { return '<tr class="pm-drill-row" data-type="category" data-name="' + (r.name || '').replace(/"/g,'&quot;').replace(/</g,'&lt;') + '" title="点击下钻查看该品类下的品牌"><td>' + (r.name || '').replace(/</g,'&lt;') + '</td><td class="num">' + fmtNum(r.count) + '</td><td class="num">' + (r.pct != null ? r.pct : '') + '</td><td class="num">' + (r.avg_retail != null ? fmtMoney(r.avg_retail) : '-') + '</td><td class="num">' + (r.sale_qty != null ? fmtNum(r.sale_qty) : '-') + '</td><td class="num">' + (r.sale_amount != null ? fmtMoney(r.sale_amount) : '-') + '</td><td class="num">' + fmtNum(r.brand_count) + '</td><td class="num">' + fmtNum(r.supplier_count) + '</td></tr>'; }).join('') + '</tbody></table>';
   }
   function tableBrand(rows) {
     if (!rows || !rows.length) return '<p class="sub">无数据</p>';
-    return '<table><thead><tr><th>品牌</th><th class="num">SKU数</th><th class="num">占比%</th><th class="num">平均零售价</th><th class="num">最高</th><th class="num">最低</th><th class="num">覆盖品类数</th><th>主要品类</th></tr></thead><tbody>' +
-      rows.map(function(r) { return '<tr><td>' + (r.name || '').replace(/</g,'&lt;') + '</td><td class="num">' + fmtNum(r.count) + '</td><td class="num">' + (r.pct != null ? r.pct : '') + '</td><td class="num">' + (r.avg_retail != null ? fmtMoney(r.avg_retail) : '-') + '</td><td class="num">' + (r.max_retail != null ? fmtMoney(r.max_retail) : '-') + '</td><td class="num">' + (r.min_retail != null ? fmtMoney(r.min_retail) : '-') + '</td><td class="num">' + fmtNum(r.category_count) + '</td><td>' + (r.top_categories || '-').replace(/</g,'&lt;') + '</td></tr>'; }).join('') + '</tbody></table>';
+    return '<table><thead><tr><th>品牌</th><th class="num">SKU数</th><th class="num">占比%</th><th class="num">平均零售价</th><th class="num">销量</th><th class="num">销售额</th><th class="num">覆盖品类数</th><th>主要品类</th></tr></thead><tbody>' +
+      rows.map(function(r) { return '<tr class="pm-drill-row" data-type="brand" data-name="' + (r.name || '').replace(/"/g,'&quot;').replace(/</g,'&lt;') + '" title="点击下钻查看该品牌 SKU 销售明细"><td>' + (r.name || '').replace(/</g,'&lt;') + '</td><td class="num">' + fmtNum(r.count) + '</td><td class="num">' + (r.pct != null ? r.pct : '') + '</td><td class="num">' + (r.avg_retail != null ? fmtMoney(r.avg_retail) : '-') + '</td><td class="num">' + (r.sale_qty != null ? fmtNum(r.sale_qty) : '-') + '</td><td class="num">' + (r.sale_amount != null ? fmtMoney(r.sale_amount) : '-') + '</td><td class="num">' + fmtNum(r.category_count) + '</td><td>' + (r.top_categories || '-').replace(/</g,'&lt;') + '</td></tr>'; }).join('') + '</tbody></table>';
   }
   function tablePriceBand(rows) {
     if (!rows || !rows.length) return '<p class="sub">无数据</p>';
@@ -169,6 +182,60 @@
     document.getElementById('root').innerHTML = html;
     setTimeout(function() { drawCharts(d); }, 50);
   }
+
+  var drillCategory = '';
+  var drillBrand = '';
+
+  function showDrillPanel(show) {
+    var el = document.getElementById('pmDrillPanel');
+    if (el) el.style.display = show ? 'block' : 'none';
+  }
+  function loadDrill() {
+    var bc = document.getElementById('pmBreadcrumb');
+    var content = document.getElementById('pmDrillContent');
+    if (!bc || !content) return;
+    if (!drillCategory && !drillBrand) {
+      showDrillPanel(false);
+      return;
+    }
+    var segs = ['<a href="javascript:void(0)" id="pmClearDrill">商品档案</a>'];
+    if (drillCategory) segs.push('<span>' + drillCategory.replace(/</g,'&lt;') + '</span>');
+    if (drillBrand) segs.push('<span>' + drillBrand.replace(/</g,'&lt;') + '</span>');
+    bc.innerHTML = segs.join(' &gt; ') + ' <a href="javascript:void(0)" id="pmClearDrill2" style="margin-left:8px;">清除下钻</a>';
+    content.innerHTML = '<div class="loading">加载中...</div>';
+    showDrillPanel(true);
+    var url = API + '/api/product_master_drill?';
+    if (drillCategory) url += 'category=' + encodeURIComponent(drillCategory) + '&';
+    if (drillBrand) url += 'brand=' + encodeURIComponent(drillBrand) + '&';
+    fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (!d.success) { content.innerHTML = '<div class="error">' + (d.message || '加载失败').replace(/</g,'&lt;') + '</div>'; return; }
+        if (d.drill_type === 'brands') {
+          var rows = (d.brands || []).map(function(r) {
+            return '<tr class="pm-drill-row" data-type="brand" data-name="' + (r.name||'').replace(/"/g,'&quot;').replace(/</g,'&lt;') + '" title="点击查看 SKU 销售明细"><td>' + (r.name||'').replace(/</g,'&lt;') + '</td><td class="num">' + fmtNum(r.sku_count) + '</td><td class="num">' + (r.avg_retail != null ? fmtMoney(r.avg_retail) : '-') + '</td><td class="num">' + fmtNum(r.sale_qty) + '</td><td class="num">' + fmtMoney(r.sale_amount) + '</td></tr>';
+          }).join('');
+          content.innerHTML = '<p class="sub">品类「' + (drillCategory||'').replace(/</g,'&lt;') + '」下的品牌（近30天销售）</p><table><thead><tr><th>品牌</th><th class="num">SKU数</th><th class="num">平均零售价</th><th class="num">销量</th><th class="num">销售额</th></tr></thead><tbody>' + rows + '</tbody></table>';
+        } else {
+          var skuRows = (d.skus || []).map(function(r) {
+            return '<tr><td>' + (r.sku_code||'-').replace(/</g,'&lt;') + '</td><td>' + (r.product_name||'-').replace(/</g,'&lt;') + '</td><td class="num">' + (r.retail_price != null ? fmtMoney(r.retail_price) : '-') + '</td><td class="num">' + (r.member_price != null ? fmtMoney(r.member_price) : '-') + '</td><td>' + (r.member_discount||'-') + '</td><td class="num">' + fmtNum(r.sale_qty) + '</td><td class="num">' + fmtMoney(r.sale_amount) + '</td><td class="num">' + fmtMoney(r.gross_profit) + '</td></tr>';
+          }).join('');
+          content.innerHTML = '<p class="sub">品牌「' + (drillBrand||'').replace(/</g,'&lt;') + '」SKU 销售明细（近30天）</p><table><thead><tr><th>货号</th><th>品名</th><th class="num">零售价</th><th class="num">会员价</th><th>会员折扣</th><th class="num">销量</th><th class="num">销售额</th><th class="num">毛利</th></tr></thead><tbody>' + skuRows + '</tbody></table>';
+        }
+      })
+      .catch(function(e) { content.innerHTML = '<div class="error">请求失败: ' + (e.message||'').replace(/</g,'&lt;') + '</div>'; });
+  }
+  document.addEventListener('click', function(e) {
+    var clearBtn = e.target.id === 'pmClearDrill' || e.target.id === 'pmClearDrill2' || e.target.closest('#pmClearDrill') || e.target.closest('#pmClearDrill2');
+    if (clearBtn) { drillCategory = ''; drillBrand = ''; showDrillPanel(false); return; }
+    var row = e.target.closest('.pm-drill-row');
+    if (!row) return;
+    var type = row.getAttribute('data-type');
+    var name = (row.getAttribute('data-name') || '').replace(/&quot;/g,'"').replace(/&lt;/g,'<');
+    if (type === 'category') { drillCategory = name; drillBrand = ''; }
+    else if (type === 'brand') { drillBrand = name; }
+    loadDrill();
+  });
 
   fetch(API + '/api/product_master_analysis', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
     .then(function(r) { return r.json(); })

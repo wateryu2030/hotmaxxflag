@@ -128,15 +128,19 @@ def main():
             print("请先安装: pip install playwright && playwright install chromium")
             sys.exit(1)
 
-    # 连接 DB 获取商品
+    # 连接 DB 获取商品（配置从项目根 .env 的 MYSQL_* 读取）
     conn = None
     try:
-        import pymysql
-        conn = pymysql.connect(
-            host="127.0.0.1", port=3306, user="root", password="62102218",
-            database="htma_dashboard", charset="utf8mb4",
-            cursorclass=pymysql.cursors.DictCursor,
-        )
+        import os
+        _root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        try:
+            from dotenv import load_dotenv
+            load_dotenv(os.path.join(_root, ".env"))
+        except ImportError:
+            pass
+        sys.path.insert(0, _root)
+        from htma_dashboard.db_config import get_conn
+        conn = get_conn()
     except Exception as e:
         print(f"数据库连接失败: {e}")
         sys.exit(1)

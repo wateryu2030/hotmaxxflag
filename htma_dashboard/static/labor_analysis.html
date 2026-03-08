@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>人力分析 - 好特卖运营看板</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; padding: 24px; }
+    .nav { margin-bottom: 20px; }
+    .nav a { color: #38bdf8; text-decoration: none; margin-right: 16px; }
+    .nav a:hover { text-decoration: underline; }
+    .box { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    .box h2 { font-size: 1.1rem; color: #e2e8f0; margin-bottom: 12px; }
+    .label { color: #94a3b8; font-size: 0.9rem; }
+    .value { font-size: 1.2rem; font-weight: 700; color: #38bdf8; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+    th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #334155; }
+    th { color: #94a3b8; }
+    .num { text-align: right; }
+    .period-row { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+    .period-row input[type="date"] { padding: 8px 12px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; }
+    .btn { background: #38bdf8; color: #0f172a; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+    .btn:hover { background: #0ea5e9; }
+    .btn-secondary { background: #64748b; }
+    .btn-secondary:hover { background: #475569; }
+    .kpi-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .kpi-card { background: #0f172a; border-radius: 8px; padding: 12px; border: 1px solid #334155; }
+    .kpi-card .label { font-size: 0.8rem; }
+    .kpi-card .value { font-size: 1rem; }
+    details { margin: 8px 0; border: 1px solid #334155; border-radius: 6px; }
+    details summary { padding: 10px 12px; cursor: pointer; color: #38bdf8; }
+    details table { margin: 8px 12px 12px; }
+    .empty { color: #64748b; padding: 12px; }
+    #configPanel { display: none; }
+    #configPanel.show { display: block; }
+    .mapping-table { font-size: 0.85rem; }
+    .mapping-table th, .mapping-table td { padding: 6px 8px; }
+    .metric-badge { display: inline-block; min-width: 3em; padding: 2px 6px; border-radius: 9999px; font-size: 0.75rem; text-align: right; }
+    .metric-badge.good { background: #022c22; color: #34d399; }
+    .metric-badge.warn { background: #451a03; color: #fdba74; }
+    .metric-badge.bad { background: #450a0a; color: #fecaca; }
+    .metric-badge.neutral { background: #0f172a; color: #e2e8f0; border: 1px solid #334155; }
+  </style>
+</head>
+<body>
+  <div class="nav">
+    <a href="/">← 返回看板</a>
+    <a href="/labor">人力成本</a>
+    <a href="#" id="linkConfig">类目–人力映射配置</a>
+  </div>
+
+  <div class="box">
+    <h2>📅 时间段</h2>
+    <div class="period-row">
+      <label class="label">开始日期</label>
+      <input type="date" id="startDate" />
+      <label class="label">结束日期</label>
+      <input type="date" id="endDate" />
+      <button type="button" class="btn" id="btnQuery">查询</button>
+    </div>
+    <p class="label" style="margin-top:8px;">选择日期区间后，系统将按月人力数据按天数比例分摊到该区间，并与该区间销售数据匹配计算人效。人数为全量（不去重）。</p>
+  </div>
+
+  <div class="box" id="overviewBox">
+    <h2>📊 经营 vs 管理 总览</h2>
+    <div class="kpi-cards" id="overviewCards"></div>
+  </div>
+
+  <div class="box" id="byCategoryBox">
+    <h2>📈 经营类目明细</h2>
+    <p class="label" style="margin-bottom:8px;">按销售大类匹配的人力成本、人数、销售额、毛利及人效；可展开查看组长/全职/兼职分项。</p>
+    <div id="byCategoryTable"></div>
+  </div>
+
+  <div class="box" id="managementBox">
+    <h2>👥 管理人力（按岗位，可下沉到人名）</h2>
+    <div id="managementContent"></div>
+  </div>
+
+  <div class="box" id="configPanel">
+    <h2>类目–人力映射配置</h2>
+    <p class="label" style="margin-bottom:12px;">先拉取「人力成本汇总」与「销售大类+中类」；可<strong>批量映射</strong>（下表逐行选择类型/大类/中类后批量保存）或单条新增。经营时选销售大类与中类建立对应关系。</p>
+    <div class="period-row">
+      <button type="button" class="btn" id="btnLoadCategories">拉取销售大类+中类</button>
+      <button type="button" class="btn" id="btnLoadLaborPositions">拉取人力成本汇总（以组长表为准）</button>
+      <button type="button" class="btn btn-secondary" id="btnLoadMapping">刷新映射列表</button>
+    </div>
+    <div id="categoriesList" class="label" style="margin-bottom:8px;">点击「拉取销售大类+中类」加载；若显示（无）请先导入销售日报数据。</div>
+    <div id="laborPositionsList" class="label" style="margin-bottom:8px;"></div>
+    <div id="batchMappingSection" style="margin-bottom:16px;">
+      <h3 class="label" style="margin-bottom:8px;">批量映射（填表后一次保存，提高效率）</h3>
+      <div style="overflow-x:auto;">
+        <table class="mapping-table" id="batchMappingTable">
+          <thead><tr><th>人力岗位名</th><th>类型</th><th>销售大类</th><th>销售中类</th><th>匹配</th><th>生效起</th><th>生效止</th></tr></thead>
+          <tbody id="batchMappingBody"></tbody>
+        </table>
+      </div>
+      <button type="button" class="btn" id="btnBatchSave" style="margin-top:8px;">批量保存</button>
+    </div>
+    <table class="mapping-table">
+      <thead><tr><th>销售大类/岗位</th><th>销售中类</th><th>类型</th><th>人力岗位名</th><th>匹配</th><th>生效起</th><th>生效止</th><th>操作</th></tr></thead>
+      <tbody id="mappingBody"></tbody>
+    </table>
+    <div style="margin-top:12px;">
+      <button type="button" class="btn btn-secondary" id="btnAddMapping">+ 单条新增</button>
+    </div>
+    <div id="addMappingForm" style="display:none; margin-top:16px; padding:16px; background:#0f172a; border-radius:8px; border:1px solid #334155;">
+      <p class="label" style="margin-bottom:8px;">单条新增：先选人力岗位名，再选类型（经营/管理），经营时选销售大类与销售中类建立对应关系。</p>
+      <div style="display:grid; grid-template-columns: auto 1fr; gap:8px 16px; align-items:center; max-width:520px;">
+        <label class="label">人力岗位名</label>
+        <select id="newMappingPosition" style="padding:8px; background:#1e293b; color:#e2e8f0; border:1px solid #334155; border-radius:6px;">
+          <option value="">-- 请先拉取人力成本汇总（以组长表为准）--</option>
+        </select>
+        <label class="label">类型</label>
+        <select id="newMappingCostType" style="padding:8px; background:#1e293b; color:#e2e8f0; border:1px solid #334155; border-radius:6px;">
+          <option value="operational">经营</option>
+          <option value="management">管理</option>
+        </select>
+        <label class="label" id="labelNewMappingCategory">销售大类</label>
+        <select id="newMappingCategory" style="padding:8px; background:#1e293b; color:#e2e8f0; border:1px solid #334155; border-radius:6px;">
+          <option value="">-- 管理类不选大类 --</option>
+        </select>
+        <label class="label" id="labelNewMappingCategoryMid">销售中类</label>
+        <select id="newMappingCategoryMid" style="padding:8px; background:#1e293b; color:#e2e8f0; border:1px solid #334155; border-radius:6px;">
+          <option value="">-- 先选大类或留空 --</option>
+        </select>
+        <label class="label">匹配方式</label>
+        <select id="newMappingMatchType" style="padding:8px; background:#1e293b; color:#e2e8f0; border:1px solid #334155; border-radius:6px;">
+          <option value="prefix">prefix</option>
+          <option value="exact">exact</option>
+        </select>
+        <label class="label">生效起</label>
+        <input type="date" id="newMappingFrom" style="padding:8px; background:#1e293b; color:#e2e8f0; border:1px solid #334155; border-radius:6px;" />
+        <label class="label">生效止</label>
+        <input type="date" id="newMappingTo" style="padding:8px; background:#1e293b; color:#e2e8f0; border:1px solid #334155; border-radius:6px;" />
+      </div>
+      <div style="margin-top:12px;">
+        <button type="button" class="btn" id="btnSaveNewMapping">保存</button>
+        <button type="button" class="btn btn-secondary" id="btnCancelNewMapping" style="margin-left:8px;">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+(function () {
+  var base = window.location.origin;
+  function get(start, end) {
+    var s = start || document.getElementById('startDate').value;
+    var e = end || document.getElementById('endDate').value;
+    if (!s || !e) return null;
+    return '?start_date=' + encodeURIComponent(s) + '&end_date=' + encodeURIComponent(e);
+  }
+  function qs(el) { return document.getElementById(el); }
+
+  // 默认最近30天
+  var today = new Date();
+  var end = new Date(today);
+  var start = new Date(today);
+  start.setDate(start.getDate() - 30);
+  qs('endDate').value = end.toISOString().slice(0, 10);
+  qs('startDate').value = start.toISOString().slice(0, 10);
+
+  function fetchJson(url) {
+    return fetch(url, { credentials: 'include' }).then(function (r) {
+      if (!r.ok) throw new Error(r.statusText);
+      return r.json();
+    });
+  }
+
+  function renderOverview(data) {
+    var d = data.data || {};
+    var html = '';
+    var items = [
+      { label: '经营人力成本(元)', value: (d.operational_cost != null ? d.operational_cost.toLocaleString('zh-CN', { minimumFractionDigits: 2 }) : '-') },
+      { label: '管理人力成本(元)', value: (d.management_cost != null ? d.management_cost.toLocaleString('zh-CN', { minimumFractionDigits: 2 }) : '-') },
+      { label: '总人力成本(元)', value: (d.total_cost != null ? d.total_cost.toLocaleString('zh-CN', { minimumFractionDigits: 2 }) : '-') },
+      { label: '总人次数', value: (d.total_headcount != null ? d.total_headcount.toLocaleString('zh-CN', { minimumFractionDigits: 2 }) : '-') },
+      { label: '总销售额(元)', value: (d.total_sale != null ? d.total_sale.toLocaleString('zh-CN', { minimumFractionDigits: 2 }) : '-') },
+      { label: '总毛利(元)', value: (d.total_profit != null ? d.total_profit.toLocaleString('zh-CN', { minimumFractionDigits: 2 }) : '-') },
+      { label: '销售额/成本', value: (d.sales_per_cost != null ? d.sales_per_cost.toFixed(4) : '-') },
+      { label: '毛利/成本', value: (d.profit_per_cost != null ? d.profit_per_cost.toFixed(4) : '-') },
+      { label: '人均销售额', value: (d.sales_per_capita != null ? d.sales_per_capita.toLocaleString('zh-CN', { minimumFractionDigits: 2 }) : '-') },
+      { label: '投入产出比(毛利/成本)', value: (d.profit_cost_ratio != null ? d.profit_cost_ratio.toFixed(4) : '-') }
+    ];
+    items.forEach(function (it) {
+      html += '<div class="kpi-card"><div class="label">' + it.label + '</div><div class="value">' + it.value + '</div></div>';
+    });
+    qs('overviewCards').innerHTML = html || '<div class="empty">请选择时间段并点击查询</div>';
+  }
+
+  function renderByCategory(data) {
+    var list = data.data || [];
+    if (list.length === 0) {
+      qs('byCategoryTable').innerHTML = '<p class="empty">该时间段暂无销售大类数据，请选择日期并查询；有销售后此处按销售日报大类展示，未配置映射的类目人力成本为 0。</p>';
+      return;
+    }
+    // 先计算全局人均毛利平均值，便于做相对高亮
+    var sumPerCapProfit = 0;
+    var cntPerCapProfit = 0;
+    list.forEach(function (row) {
+      var head = Number(row.headcount || 0);
+      var profit = Number(row.profit || 0);
+      if (head > 0 && profit > 0) {
+        sumPerCapProfit += profit / head;
+        cntPerCapProfit += 1;
+      }
+    });
+    var avgPerCapProfit = cntPerCapProfit ? (sumPerCapProfit / cntPerCapProfit) : 0;
+
+    var html = '<table><thead><tr>'
+      + '<th>大类代码</th>'
+      + '<th>大类名称</th>'
+      + '<th class="num">人力成本</th>'
+      + '<th class="num">人次数</th>'
+      + '<th class="num">销售额</th>'
+      + '<th class="num">毛利</th>'
+      + '<th class="num">人均毛利</th>'
+      + '<th class="num">人力/销售%</th>'
+      + '<th class="num">人力/毛利%</th>'
+      + '<th class="num">毛利率%</th>'
+      + '<th class="num">销售/人力</th>'
+      + '<th class="num">毛利/人力</th>'
+      + '<th></th>'
+      + '</tr></thead><tbody>';
+    list.forEach(function (row) {
+      var byType = row.by_position_type || {};
+      var detail = '<details><summary>组长/全职/兼职分项</summary><table><tr><th>岗位类型</th><th class="num">成本</th><th class="num">人次数</th></tr>';
+      ['leader', 'fulltime', 'parttime', 'other'].forEach(function (t) {
+        var v = byType[t];
+        if (v && (v.cost > 0 || v.count > 0)) {
+          var name = { leader: '组长', fulltime: '全职', parttime: '兼职', other: '其他' }[t] || t;
+          detail += '<tr><td>' + name + '</td><td class="num">' + (v.cost != null ? v.cost.toLocaleString('zh-CN', { minimumFractionDigits: 2 }) : '-') + '</td><td class="num">' + (v.count != null ? v.count.toFixed(2) : '-') + '</td></tr>';
+        }
+      });
+      detail += '</table></details>';
+      var code = (row.category_large_code != null && row.category_large_code !== '') ? row.category_large_code : '-';
+      var labor = Number(row.labor_cost || 0);
+      var head = Number(row.headcount || 0);
+      var sale = Number(row.sale || 0);
+      var profit = Number(row.profit || 0);
+      var perCapProfit = (head > 0 && profit !== 0) ? (profit / head) : 0;
+      var laborSaleRatio = (sale > 0 && labor >= 0) ? (labor / sale * 100) : null;
+      var laborProfitRatio = (profit > 0 && labor >= 0) ? (labor / profit * 100) : null;
+      var grossMargin = (sale > 0 && profit !== 0) ? (profit / sale * 100) : null;
+      var salesPerCost = (row.sales_per_cost != null) ? row.sales_per_cost : (labor > 0 ? (sale / labor) : null);
+      var profitPerCost = (row.profit_cost_ratio != null) ? row.profit_cost_ratio : (labor > 0 ? (profit / labor) : null);
+
+      function fmtMoney(v) {
+        return (v != null && !isNaN(v)) ? v.toLocaleString('zh-CN', { minimumFractionDigits: 2 }) : '-';
+      }
+      function fmtRatio(v) {
+        return (v != null && !isNaN(v)) ? v.toFixed(1) + '%' : '-';
+      }
+      function fmtFloat(v) {
+        return (v != null && !isNaN(v)) ? v.toFixed(4) : '-';
+      }
+      function badge(value, text, level) {
+        if (value == null || isNaN(value)) return '-';
+        var cls = 'metric-badge ' + (level || 'neutral');
+        return '<span class="' + cls + '">' + text + '</span>';
+      }
+
+      // 人均毛利：相对全局平均做高亮
+      var perCapProfitLevel = 'neutral';
+      if (perCapProfit > 0 && avgPerCapProfit > 0) {
+        var ratioToAvg = perCapProfit / avgPerCapProfit;
+        if (ratioToAvg < 0.5) perCapProfitLevel = 'bad';
+        else if (ratioToAvg < 0.8) perCapProfitLevel = 'warn';
+        else if (ratioToAvg >= 1.2) perCapProfitLevel = 'good';
+      }
+      var perCapProfitCell = perCapProfit > 0
+        ? badge(perCapProfit, perCapProfit.toLocaleString('zh-CN', { minimumFractionDigits: 2 }), perCapProfitLevel)
+        : '-';
+
+      // 人力/毛利比重：>100% 亏本，>80% 预警
+      var laborProfitLevel = 'neutral';
+      if (laborProfitRatio != null) {
+        if (laborProfitRatio > 100) laborProfitLevel = 'bad';
+        else if (laborProfitRatio > 80) laborProfitLevel = 'warn';
+        else laborProfitLevel = 'good';
+      }
+      var laborProfitCell = (laborProfitRatio != null)
+        ? badge(laborProfitRatio, laborProfitRatio.toFixed(1) + '%', laborProfitLevel)
+        : '-';
+
+      // 投入产出比（毛利/人力）：<1 亏本，<2 预警，>=3 表现优秀
+      var profitPerCostLevel = 'neutral';
+      if (profitPerCost != null) {
+        if (profitPerCost < 1) profitPerCostLevel = 'bad';
+        else if (profitPerCost < 2) profitPerCostLevel = 'warn';
+        else if (profitPerCost >= 3) profitPerCostLevel = 'good';
+      }
+      var profitPerCostCell = (profitPerCost != null)
+        ? badge(profitPerCost, profitPerCost.toFixed(2), profitPerCostLevel)
+        : '-';
+
+      html += '<tr>'
+        + '<td>' + code + '</td>'
+        + '<td>' + (row.category || '-') + '</td>'
+        + '<td class="num">' + fmtMoney(labor) + '</td>'
+        + '<td class="num">' + (head ? head.toFixed(2) : '-') + '</td>'
+        + '<td class="num">' + fmtMoney(sale) + '</td>'
+        + '<td class="num">' + fmtMoney(profit) + '</td>'
+        + '<td class="num">' + perCapProfitCell + '</td>'
+        + '<td class="num">' + (laborSaleRatio != null ? fmtRatio(laborSaleRatio) : '-') + '</td>'
+        + '<td class="num">' + laborProfitCell + '</td>'
+        + '<td class="num">' + (grossMargin != null ? fmtRatio(grossMargin) : '-') + '</td>'
+        + '<td class="num">' + (salesPerCost != null ? fmtFloat(salesPerCost) : '-') + '</td>'
+        + '<td class="num">' + profitPerCostCell + '</td>'
+        + '<td>' + detail + '</td>'
+        + '</tr>';
+    });
+    html += '</tbody></table>';
+    qs('byCategoryTable').innerHTML = html;
+  }
+
+  function renderManagement(data) {
+    var d = data.data || {};
+    var byPos = d.by_position || [];
+    if (byPos.length === 0) {
+      qs('managementContent').innerHTML = '<p class="empty">暂无管理人力数据，请先在配置中维护「管理」类岗位（如物流、流量、客服、收银）</p>';
+      return;
+    }
+    var html = '<p class="label" style="margin-bottom:8px;">总成本: ' + (d.total_cost != null ? d.total_cost.toLocaleString('zh-CN', { minimumFractionDigits: 2 }) : '0') + ' 元，总人次数: ' + (d.total_headcount != null ? d.total_headcount.toFixed(2) : '0') + '</p>';
+    html += '<table><thead><tr><th>岗位</th><th class="num">成本</th><th class="num">人次数</th><th>明细（下沉到人名）</th></tr></thead><tbody>';
+    byPos.forEach(function (p) {
+      var persons = (p.persons || []).map(function (x) { return (x.person_name || '-') + ' ' + (x.prorated_cost != null ? x.prorated_cost.toFixed(2) : '0') + ' 元'; }).join('； ');
+      var detail = '<details><summary>按人</summary><div style="padding:8px;font-size:0.9rem;">' + (persons || '-') + '</div></details>';
+      html += '<tr><td>' + (p.position_name || '-') + '</td><td class="num">' + (p.cost != null ? p.cost.toLocaleString('zh-CN', { minimumFractionDigits: 2 }) : '-') + '</td><td class="num">' + (p.headcount != null ? p.headcount.toFixed(2) : '-') + '</td><td>' + detail + '</td></tr>';
+    });
+    html += '</tbody></table>';
+    qs('managementContent').innerHTML = html;
+  }
+
+  function runQuery() {
+    var q = get();
+    if (!q) {
+      alert('请选择开始日期和结束日期');
+      return;
+    }
+    qs('btnQuery').disabled = true;
+    Promise.all([
+      fetchJson(base + '/api/labor_analysis/overview' + q),
+      fetchJson(base + '/api/labor_analysis/by_category' + q),
+      fetchJson(base + '/api/labor_analysis/management' + q)
+    ]).then(function (res) {
+      if (res[0].success) renderOverview(res[0]);
+      else qs('overviewCards').innerHTML = '<div class="empty">' + (res[0].message || '加载失败') + '</div>';
+      if (res[1].success) renderByCategory(res[1]);
+      else qs('byCategoryTable').innerHTML = '<p class="empty">' + (res[1].message || '加载失败') + '</p>';
+      if (res[2].success) renderManagement(res[2]);
+      else qs('managementContent').innerHTML = '<p class="empty">' + (res[2].message || '加载失败') + '</p>';
+    }).catch(function (err) {
+      qs('overviewCards').innerHTML = '<div class="empty">请求失败: ' + (err && err.message) + '</div>';
+    }).then(function () { qs('btnQuery').disabled = false; });
+  }
+
+  qs('btnQuery').onclick = runQuery;
+
+  // 配置
+  qs('linkConfig').onclick = function (e) {
+    e.preventDefault();
+    qs('configPanel').classList.toggle('show');
+  };
+
+  var laborCategories = [];
+  var categoriesTree = [];
+  var laborPositions = [];
+
+  function setCategoriesList(htmlOrText) {
+    var el = qs('categoriesList');
+    if (typeof htmlOrText === 'string' && htmlOrText.indexOf('<') === -1) el.textContent = htmlOrText;
+    else el.innerHTML = htmlOrText;
+  }
+  function setLaborPositionsList(htmlOrText) {
+    var el = qs('laborPositionsList');
+    if (typeof htmlOrText === 'string' && htmlOrText.indexOf('<') === -1) el.textContent = htmlOrText;
+    else el.innerHTML = htmlOrText;
+  }
+
+  // 与看板一致：使用 /api/categories 按代码拉取大类、中类（value=code，匹配按 code）
+  qs('btnLoadCategories').onclick = function () {
+    setCategoriesList('拉取中…');
+    fetch(base + '/api/categories?level=large', { credentials: 'include' })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (list) {
+        var arr = Array.isArray(list) ? list : [];
+        laborCategories = arr.filter(function (x) { return (x.code != null && x.code !== '') || (x.name != null && x.name !== ''); });
+        categoriesTree = [];
+        var parts = laborCategories.map(function (c) {
+          return (c.code ? c.code + ' ' : '') + (c.name || c.code || '');
+        });
+        setCategoriesList('销售大类（与看板一致，按代码匹配）:<br/><span style="word-break:break-all;">' + (parts.length ? '已加载 ' + parts.length + ' 个大类；选择大类后将加载中类。' : '（无，请先导入销售日报或品类主数据）') + '</span>');
+        if (laborPositions.length) renderBatchTable();
+      })
+      .catch(function (err) {
+        laborCategories = [];
+        categoriesTree = [];
+        setCategoriesList('请求失败（' + (err && err.message ? err.message : '网络错误') + '）。请确认已登录。');
+      });
+  };
+
+  function loadMidOptionsForLargeCode(midSelectEl, largeCode, done) {
+    if (!midSelectEl) return;
+    midSelectEl.innerHTML = '<option value="">--</option>';
+    if (!largeCode) { if (done) done(); return; }
+    fetch(base + '/api/categories?level=mid&category_large_code=' + encodeURIComponent(largeCode), { credentials: 'include' })
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (list) {
+        var arr = Array.isArray(list) ? list : [];
+        arr.forEach(function (x) {
+          var opt = document.createElement('option');
+          opt.value = (x.code != null && x.code !== '') ? x.code : (x.name || '');
+          opt.textContent = (x.code ? x.code + ' ' : '') + (x.name || x.code || '-');
+          midSelectEl.appendChild(opt);
+        });
+        if (done) done();
+      })
+      .catch(function () {
+        if (done) done();
+      });
+  }
+
+  function renderBatchTable() {
+    var tbody = qs('batchMappingBody');
+    if (!laborPositions.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty">请先拉取人力成本汇总</td></tr>'; return; }
+    var largeOpts = laborCategories.map(function (c) {
+      var code = (c.code != null && c.code !== '') ? c.code : (c.name || '');
+      var name = (c.name != null && c.name !== '') ? c.name : (c.code || '');
+      var text = (code ? code + ' ' : '') + name;
+      return '<option value="' + String(code).replace(/"/g, '&quot;') + '">' + String(text).replace(/</g, '&lt;') + '</option>';
+    }).join('');
+    var html = '';
+    for (var i = 0; i < laborPositions.length; i++) {
+      var p = laborPositions[i];
+      var posName = (p.position_name || '') + (p.position_type_label ? ' (' + p.position_type_label + ')' : '');
+      html += '<tr data-position="' + (p.position_name || '').replace(/"/g, '&quot;') + '">';
+      html += '<td>' + posName.replace(/</g, '&lt;') + '</td>';
+      html += '<td><select class="batch-type" style="padding:4px;background:#1e293b;color:#e2e8f0;border:1px solid #334155;"><option value="operational">经营</option><option value="management">管理</option></select></td>';
+      html += '<td><select class="batch-large" style="padding:4px;background:#1e293b;color:#e2e8f0;border:1px solid #334155;"><option value="">--</option>' + largeOpts + '</select></td>';
+      html += '<td><select class="batch-mid" style="padding:4px;background:#1e293b;color:#e2e8f0;border:1px solid #334155;"><option value="">--</option></select></td>';
+      html += '<td><select class="batch-match" style="padding:4px;background:#1e293b;color:#e2e8f0;border:1px solid #334155;"><option value="prefix">prefix</option><option value="exact">exact</option></select></td>';
+      html += '<td><input type="date" class="batch-from" style="padding:4px;background:#1e293b;color:#e2e8f0;border:1px solid #334155;" /></td>';
+      html += '<td><input type="date" class="batch-to" style="padding:4px;background:#1e293b;color:#e2e8f0;border:1px solid #334155;" /></td></tr>';
+    }
+    tbody.innerHTML = html;
+    tbody.querySelectorAll('.batch-large').forEach(function (sel) {
+      sel.addEventListener('change', function () {
+        var row = sel.closest('tr');
+        var midSel = row ? row.querySelector('.batch-mid') : null;
+        loadMidOptionsForLargeCode(midSel, sel.value);
+      });
+    });
+  }
+
+  qs('btnLoadLaborPositions').onclick = function () {
+    setLaborPositionsList('拉取中…');
+    function doFetch(method) {
+      return fetch(base + '/api/labor_analysis/labor_positions', { method: method || 'GET', credentials: 'include' })
+        .then(function (r) {
+          if (r.status === 405 && (method || 'GET') === 'GET') return doFetch('POST');
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        });
+    }
+    doFetch('GET')
+      .then(function (res) {
+        if (res.success && res.positions && res.positions.length) {
+          laborPositions = res.positions.filter(function (p) { return p.position_name; });
+          var parts = laborPositions.map(function (p) {
+            return (p.position_name || '') + (p.position_type_label ? ' (' + p.position_type_label + ')' : '');
+          });
+          setLaborPositionsList('人力成本汇总（以组长表为准）:<br/><span style="word-break:break-all;">' + (parts.length ? parts.join('、') : '（无）') + '</span>');
+          if (laborCategories.length) renderBatchTable();
+        } else {
+          laborPositions = [];
+          setLaborPositionsList('暂无人力成本数据，请先在「人力成本」导入组长表/薪资表');
+        }
+      })
+      .catch(function (err) {
+        laborPositions = [];
+        setLaborPositionsList('请求失败（' + (err && err.message ? err.message : '网络错误') + '）。若为 405 请部署最新代码并重启看板。');
+      });
+  };
+
+  qs('btnBatchSave').onclick = function () {
+    var rows = qs('batchMappingBody').querySelectorAll('tr[data-position]');
+    var items = [];
+    rows.forEach(function (row) {
+      var position = (row.getAttribute('data-position') || '').trim();
+      if (!position) return;
+      var typeSel = row.querySelector('.batch-type');
+      var largeSel = row.querySelector('.batch-large');
+      var midSel = row.querySelector('.batch-mid');
+      var matchSel = row.querySelector('.batch-match');
+      var fromInp = row.querySelector('.batch-from');
+      var toInp = row.querySelector('.batch-to');
+      var costType = typeSel ? typeSel.value : 'operational';
+      var largeCode = largeSel ? (largeSel.value || '').trim() : '';
+      var midCode = midSel ? (midSel.value || '').trim() : '';
+      var largeName = largeSel && largeSel.selectedIndex >= 0 ? (largeSel.options[largeSel.selectedIndex].textContent || '') : '';
+      var midName = midSel && midSel.selectedIndex >= 0 ? (midSel.options[midSel.selectedIndex].textContent || '') : '';
+      if (costType === 'management' || largeCode) {
+        items.push({
+          labor_position_name: position,
+          cost_type: costType,
+          sales_category_large_code: largeCode,
+          sales_category_mid_code: midCode,
+          sales_category: largeName,
+          sales_category_mid: midName,
+          match_type: matchSel ? matchSel.value : 'prefix',
+          effective_from: fromInp && fromInp.value ? fromInp.value : null,
+          effective_to: toInp && toInp.value ? toInp.value : null,
+          sort_order: 0
+        });
+      }
+    });
+    if (!items.length) { alert('请至少填写一行：选择类型，经营时选择销售大类'); return; }
+    fetch(base + '/api/labor_analysis/mapping', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: items })
+    }).then(function (r) { return r.json(); }).then(function (res) {
+      if (res.success) { loadMapping(); alert('已保存 ' + items.length + ' 条映射'); } else alert(res.message || '保存失败');
+    }).catch(function () { alert('请求失败'); });
+  };
+
+  function loadMapping() {
+    fetch(base + '/api/labor_analysis/mapping', { credentials: 'include' })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (res) {
+        var tbody = qs('mappingBody');
+        if (!res.success || !res.items || res.items.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="8" class="empty">暂无映射，请新增或使用批量映射</td></tr>';
+          return;
+        }
+        tbody.innerHTML = res.items.map(function (it) {
+          var largeDisplay = (it.sales_category_large_code ? it.sales_category_large_code + ' ' : '') + (it.sales_category || '-');
+          var midDisplay = (it.sales_category_mid_code ? it.sales_category_mid_code + ' ' : '') + (it.sales_category_mid || '-');
+          return '<tr><td>' + (largeDisplay || '-') + '</td><td>' + (midDisplay || '-') + '</td><td>' + (it.cost_type === 'management' ? '管理' : '经营') + '</td><td>' + (it.labor_position_name || '') + '</td><td>' + (it.match_type || 'prefix') + '</td><td>' + (it.effective_from || '-') + '</td><td>' + (it.effective_to || '-') + '</td><td>-</td></tr>';
+        }).join('');
+      })
+      .catch(function (err) {
+        qs('mappingBody').innerHTML = '<tr><td colspan="8" class="empty">请求失败（' + (err && err.message ? err.message : '') + '）。请确认已登录。</td></tr>';
+      });
+  }
+  qs('btnLoadMapping').onclick = loadMapping;
+
+  function fillMidOptionsForSingleForm(largeCode) {
+    var midSel = qs('newMappingCategoryMid');
+    if (!midSel) return;
+    midSel.innerHTML = '<option value="">-- 先选大类或留空 --</option>';
+    loadMidOptionsForLargeCode(midSel, largeCode || '');
+  }
+
+  function showAddMappingForm() {
+    var posSel = qs('newMappingPosition');
+    posSel.innerHTML = '<option value="">-- 请先拉取人力成本汇总（以组长表为准）--</option>';
+    laborPositions.forEach(function (p) {
+      var opt = document.createElement('option');
+      opt.value = p.position_name || '';
+      opt.textContent = (p.position_name || '') + (p.position_type_label ? ' (' + p.position_type_label + ')' : '');
+      posSel.appendChild(opt);
+    });
+    var catSel = qs('newMappingCategory');
+    catSel.innerHTML = '<option value="">-- 管理类不选大类 --</option>';
+    laborCategories.forEach(function (c) {
+      var code = (c.code != null && c.code !== '') ? c.code : (c.name || '');
+      var name = (c.name != null && c.name !== '') ? c.name : (c.code || '');
+      var opt = document.createElement('option');
+      opt.value = code;
+      opt.textContent = (code ? code + ' ' : '') + name;
+      catSel.appendChild(opt);
+    });
+    fillMidOptionsForSingleForm(catSel.value);
+    if (catSel) catSel.onchange = function () { fillMidOptionsForSingleForm(this.value); };
+    updateCategoryFieldState();
+    qs('addMappingForm').style.display = 'block';
+  }
+
+  function updateCategoryFieldState() {
+    var isManagement = qs('newMappingCostType').value === 'management';
+    var catSel = qs('newMappingCategory');
+    var labelCat = qs('labelNewMappingCategory');
+    catSel.disabled = isManagement;
+    if (isManagement) catSel.value = '';
+    if (labelCat) labelCat.style.color = isManagement ? '#64748b' : '#94a3b8';
+  }
+
+  qs('btnAddMapping').onclick = function () {
+    function openForm() {
+      if (laborCategories.length === 0 || laborPositions.length === 0) {
+        var need = [];
+        if (laborCategories.length === 0) need.push('拉取销售大类');
+        if (laborPositions.length === 0) need.push('拉取人力成本汇总（以组长表为准）');
+        alert('请先点击「' + need.join('」和「') + '」再新增映射');
+        return;
+      }
+      showAddMappingForm();
+    }
+    if (laborCategories.length === 0) {
+      fetchJson(base + '/api/categories?level=large').then(function (list) {
+        var arr = Array.isArray(list) ? list : [];
+        laborCategories = arr.filter(function (x) { return (x && (x.code != null && x.code !== '') || (x.name != null && x.name !== '')); });
+        if (laborPositions.length === 0) {
+          return fetchJson(base + '/api/labor_analysis/labor_positions').then(function (r) {
+            if (r.success && r.positions && r.positions.length) laborPositions = r.positions;
+            openForm();
+          });
+        }
+        openForm();
+      }).catch(function () { openForm(); });
+    } else if (laborPositions.length === 0) {
+      fetchJson(base + '/api/labor_analysis/labor_positions').then(function (res) {
+        if (res.success && res.positions && res.positions.length) laborPositions = res.positions;
+        openForm();
+      }).catch(function () { openForm(); });
+    } else {
+      openForm();
+    }
+  };
+
+  qs('btnCancelNewMapping').onclick = function () {
+    qs('addMappingForm').style.display = 'none';
+  };
+
+  qs('newMappingCostType').onchange = updateCategoryFieldState;
+
+  qs('btnSaveNewMapping').onclick = function () {
+    var costType = qs('newMappingCostType').value || 'operational';
+    var catSel = qs('newMappingCategory');
+    var midSel = qs('newMappingCategoryMid');
+    var sales_category_large_code = (costType === 'management') ? '' : (catSel ? (catSel.value || '').trim() : '');
+    var sales_category_mid_code = (midSel && midSel.value) ? midSel.value.trim() : '';
+    var sales_category = (catSel && catSel.selectedIndex >= 0) ? (catSel.options[catSel.selectedIndex].textContent || '') : '';
+    var sales_category_mid = (midSel && midSel.selectedIndex >= 0) ? (midSel.options[midSel.selectedIndex].textContent || '') : '';
+    var labor_position_name = (qs('newMappingPosition').value || '').trim();
+    if (!labor_position_name) {
+      alert('请选择人力岗位名（请先拉取所有人力成本汇总）');
+      return;
+    }
+    if (costType === 'operational' && !sales_category_large_code) {
+      alert('经营类映射请选择销售大类');
+      return;
+    }
+    var effective_from = (qs('newMappingFrom').value || '').trim() || null;
+    var effective_to = (qs('newMappingTo').value || '').trim() || null;
+    fetch(base + '/api/labor_analysis/mapping', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sales_category_large_code: sales_category_large_code,
+        sales_category_mid_code: sales_category_mid_code,
+        sales_category: sales_category,
+        sales_category_mid: sales_category_mid,
+        cost_type: (qs('newMappingCostType').value || 'operational').toLowerCase(),
+        labor_position_name: labor_position_name,
+        match_type: (qs('newMappingMatchType').value || 'prefix').toLowerCase(),
+        effective_from: effective_from,
+        effective_to: effective_to,
+        sort_order: 0
+      })
+    }).then(function (r) { return r.json(); }).then(function (res) {
+      if (res.success) { loadMapping(); qs('addMappingForm').style.display = 'none'; alert('已保存'); } else alert(res.message || '保存失败');
+    }).catch(function () { alert('请求失败'); });
+  };
+
+  // 首次加载可自动查一次
+  runQuery();
+})();
+  </script>
+</body>
+</html>

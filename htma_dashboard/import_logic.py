@@ -118,10 +118,24 @@ def _is_sale_summary_row(row, cols):
     return False
 
 
+def _row_val_raw(row, idx):
+    """取行中某列原始值，支持 Series 或 tuple/list（itertuples 等），用于日期时间等需原始类型的场景。"""
+    if idx is None or idx < 0:
+        return None
+    if isinstance(row, (tuple, list)):
+        return row[idx] if idx < len(row) else None
+    if hasattr(row, "iloc"):
+        return row.iloc[idx] if idx < len(row) else None
+    return None
+
+
 def _row_val(row, idx, default=None, as_decimal=False):
-    if idx >= len(row):
+    if idx is None or idx < 0 or idx >= len(row):
         return _safe_decimal(default, 0) if as_decimal else default
-    v = row.iloc[idx]
+    if isinstance(row, (tuple, list)):
+        v = row[idx] if idx < len(row) else None
+    else:
+        v = row.iloc[idx]
     if as_decimal:
         return _safe_decimal(v, default or 0)
     if v is None or (isinstance(v, float) and pd.isna(v)):
@@ -513,15 +527,18 @@ def import_sale_daily(excel_path, conn, overwrite_on_duplicate=False):
                         first_err = str(e2)
         buf.clear()
 
-    # 按 (日期, 货号) 去重合并后再写入，避免重复数据上传
+    # 按 (日期, 货号) 去重合并后再写入，避免重复数据上传（用 itertuples 替代 iterrows 提升遍历效率）
     agg_sale = {}  # (dt, sku) -> (qty_sum, amount_sum, cost_sum, gross_sum, row)
-    for _, row in data_rows.iterrows():
+    for row in data_rows.itertuples(index=False, name=None):
+        row = tuple(row)
         if _is_sale_summary_row(row, cols):
             skipped_summary += 1
             continue
         dt = _parse_date(_row_val(row, cols["date"]))
-        sku = _row_val(row, cols["sku"])
-        if not sku:
+        sku_raw = _row_val(row, cols["sku"])
+        sku = (str(sku_raw or "").strip())[:64]
+        # 无货号或货号为表头/合计等：一律视为「无商品、仅合计」行，不导入，避免重复计算
+        if not sku or sku in SALE_SUMMARY_ROW_KEYWORDS or _is_summary_like(sku):
             skipped_no_sku += 1
             continue
         if not dt:
@@ -535,7 +552,7 @@ def import_sale_daily(excel_path, conn, overwrite_on_duplicate=False):
         qty = _row_val(row, qty_idx, as_decimal=True) or 0
         key = (dt, sku)
         if key not in agg_sale:
-            agg_sale[key] = [0, 0, 0, 0, row.copy()]
+            agg_sale[key] = [0, 0, 0, 0, row]
         agg_sale[key][0] += qty
         agg_sale[key][1] += sale_amount
         agg_sale[key][2] += cost
@@ -572,8 +589,8 @@ def import_sale_daily(excel_path, conn, overwrite_on_duplicate=False):
     return inserted, diag
 
 
-# 批量写入每批行数，减少数据库往返，避免长时间导入超时（如 Cloudflare 524）
-_IMPORT_BATCH_SIZE = 1000
+# 批量写入每批行数，减少数据库往返，避免长时间导入超时（如 Cloudflare 524）；适当增大可提升导入速度
+_IMPORT_BATCH_SIZE = 2500
 
 
 def _build_sale_row_vals(row, dt, sku, sale_amount, cost, gross, cols, full_map, source_sheet="sale_daily", qty_override=None):
@@ -718,15 +735,18 @@ def import_sale_summary(excel_path, conn, overwrite_on_duplicate=False):
                         first_err = str(e2)
         buf.clear()
 
-    # 按 (日期, 货号) 去重合并后再写入，避免重复数据上传
+    # 按 (日期, 货号) 去重合并后再写入，避免重复数据上传（用 itertuples 替代 iterrows 提升遍历效率）
     agg_sale = {}  # (dt, sku) -> (qty_sum, amount_sum, cost_sum, gross_sum, row)
-    for _, row in data_rows.iterrows():
+    for row in data_rows.itertuples(index=False, name=None):
+        row = tuple(row)
         if _is_sale_summary_row(row, cols):
             skipped_summary += 1
             continue
         dt = _parse_date(_row_val(row, cols["date"]))
-        sku = _row_val(row, cols["sku"])
-        if not sku:
+        sku_raw = _row_val(row, cols["sku"])
+        sku = (str(sku_raw or "").strip())[:64]
+        # 无货号或货号为表头/合计等：一律视为「无商品、仅合计」行，不导入，避免重复计算
+        if not sku or sku in SALE_SUMMARY_ROW_KEYWORDS or _is_summary_like(sku):
             skipped_no_sku += 1
             continue
         if not dt:
@@ -744,7 +764,7 @@ def import_sale_summary(excel_path, conn, overwrite_on_duplicate=False):
         qty = _row_val(row, qty_idx, as_decimal=True) or 0
         key = (dt, sku)
         if key not in agg_sale:
-            agg_sale[key] = [0, 0, 0, 0, row.copy()]
+            agg_sale[key] = [0, 0, 0, 0, row]
         agg_sale[key][0] += qty
         agg_sale[key][1] += sale_amount
         agg_sale[key][2] += cost
@@ -764,20 +784,18 @@ def import_sale_summary(excel_path, conn, overwrite_on_duplicate=False):
                 first_err = str(e)
     flush_sale_batch()
     conn.commit()
-    diag = None
-    if inserted == 0 or skipped_summary > 0:
-        parts = [f"总行{len(data_rows)}", f"去重后{len(agg_sale)}条", f"导入{inserted}条"]
-        if skipped_summary:
-            parts.append(f"跳过汇总行{skipped_summary}条")
-        if skipped_no_sku:
-            parts.append(f"无货号{skipped_no_sku}")
-        if skipped_no_date:
-            parts.append(f"无日期{skipped_no_date}")
-        if skipped_err:
-            parts.append(f"导入失败{skipped_err}行")
-        if first_err:
-            parts.append(f"异常:{first_err[:100]}")
-        diag = "销售汇总: " + ", ".join(parts)
+    parts = [f"总行{len(data_rows)}", f"去重后{len(agg_sale)}条", f"导入{inserted}条"]
+    if skipped_summary:
+        parts.append(f"跳过汇总行{skipped_summary}条")
+    if skipped_no_sku:
+        parts.append(f"无货号{skipped_no_sku}")
+    if skipped_no_date:
+        parts.append(f"无日期{skipped_no_date}")
+    if skipped_err:
+        parts.append(f"导入失败{skipped_err}行")
+    if first_err:
+        parts.append(f"异常:{first_err[:100]}")
+    diag = ", ".join(parts)
     return inserted, diag
 
 
@@ -938,7 +956,7 @@ def _build_stock_row_vals(row, data_date, qty, amount, cols, full_map):
         if idx is None or idx < 0 or idx >= row_len:
             v = (0 if as_dec else None)
         elif db_col == "last_change_date":
-            v = _parse_datetime(row.iloc[idx]) if idx < row_len else None
+            v = _parse_datetime(_row_val_raw(row, idx)) if idx < row_len else None
         else:
             v = _row_val(row, idx, as_decimal=as_dec) if as_dec else _row_val(row, idx)
         extra_cols.append(db_col)
@@ -1024,9 +1042,10 @@ def import_stock(excel_path, conn):
     fallback_amt = 26 if ncol >= 26 else 17
     qty_idx = cols.get("stock_qty", fallback_qty)
     amt_idx = cols.get("stock_amount", fallback_amt)
-    # 按货号聚合：同一货号多行（多仓库/库位）数量、金额相加，避免唯一键 (data_date, sku_code) 只保留最后一行导致统计偏小
-    agg = {}  # sku -> (qty_sum, amount_sum, first_row)
-    for _, row in data_rows.iterrows():
+    # 按货号聚合：同一货号多行（多仓库/库位）数量、金额相加，避免唯一键 (data_date, sku_code) 只保留最后一行导致统计偏小（用 itertuples 替代 iterrows，按 sku 只保留首行索引，写库时再取行，减少拷贝与遍历）
+    agg = {}  # sku -> (qty_sum, amount_sum, first_row_index)
+    for i, row in enumerate(data_rows.itertuples(index=False, name=None)):
+        row = tuple(row)
         sku = _row_val(row, sku_idx)
         if not sku:
             continue
@@ -1043,7 +1062,7 @@ def import_stock(excel_path, conn):
             if ap:
                 amount = ap * qty
         if sku not in agg:
-            agg[sku] = [0, 0, row.copy()]
+            agg[sku] = [0, 0, i]
         agg[sku][0] += qty
         agg[sku][1] += amount
     cur = conn.cursor()
@@ -1068,10 +1087,10 @@ def import_stock(excel_path, conn):
 
     buf_rows = []  # 与 buf 一一对应，用于 fallback 时调用 _import_stock_full(first_row,...)
 
-    for sku, (qty_sum, amt_sum, first_row) in agg.items():
+    for sku, (qty_sum, amt_sum, first_i) in agg.items():
         if _is_summary_like(sku):
             continue
-        first_row = first_row.copy()
+        first_row = data_rows.iloc[first_i].copy()
         if qty_idx < len(first_row):
             first_row.iloc[qty_idx] = qty_sum
         if amt_idx < len(first_row):
@@ -1565,3 +1584,1155 @@ def refresh_profit(conn):
     """)
     conn.commit()
     return cur.rowcount
+
+
+# ---------- 人力成本导入（组长表 + 全职表，附图格式）----------
+
+def _normalize_header(h):
+    """表头规范化：去掉 求和项:、换行、括号说明、合并空格等，便于匹配（如「姓  名」→「姓名」）"""
+    if h is None or (isinstance(h, float) and pd.isna(h)):
+        return ""
+    s = str(h).replace("\n", " ").replace("\r", " ").strip()
+    if s.startswith("求和项:"):
+        s = s[4:].strip()
+    if "(" in s:
+        s = s.split("(")[0].strip()
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def _normalize_position_name(s, max_len=64):
+    """清洗岗位/属性名：去首尾空白、合并连续空格、截断长度，便于归类与展示。"""
+    if s is None or (isinstance(s, float) and pd.isna(s)):
+        return ""
+    t = str(s).strip()
+    if not t:
+        return ""
+    t = re.sub(r"\s+", " ", t)
+    return t[:max_len] if len(t) > max_len else t
+
+
+def _normalize_person_name(s, max_len=64):
+    """清洗姓名：去空白、合并空格；若为纯数字或序号则返回空，便于用行号区分而不误存为姓名。"""
+    if s is None or (isinstance(s, float) and pd.isna(s)):
+        return ""
+    t = str(s).strip()
+    if not t:
+        return ""
+    try:
+        float(t)
+        return ""
+    except (TypeError, ValueError):
+        pass
+    if t.isdigit() or (len(t) <= 4 and t.replace(".", "").isdigit()):
+        return ""
+    t = re.sub(r"\s+", " ", t)
+    return t[:max_len] if len(t) > max_len else t
+
+
+def _supplier_from_sheet(sheet_name, max_len=64):
+    """从 sheet 名推断供应商，与汇总表口径一致：斗米/中锐/快聘/保洁。"""
+    if not sheet_name:
+        return "斗米"[:max_len]
+    s = str(sheet_name).strip()
+    if "保洁" in s:
+        return "保洁"[:max_len]
+    if "中锐" in s:
+        return "中锐"[:max_len]
+    if "快聘" in s:
+        return "快聘"[:max_len]
+    return "斗米"[:max_len]
+
+
+def import_labor_cost(excel_path, report_month, conn, store_id=None):
+    """
+    导入人力成本 Excel：支持单 sheet 或多 sheet，自动识别类型并归类。
+    用工类型与汇总表一致：管理组→leader(组长)、全职→fulltime(组员)、保洁全职→cleaner、兼职→parttime、小时工→hourly；
+    成本以「开票金额/总成本」为准；供应商(斗米/中锐/快聘/保洁)从列或 sheet 名解析。
+    组长/组员 sheet：全部到人导入（姓名为空或汇总行跳过）；兼职/小时工/保洁：到人且每人有人名。
+    report_month 如 2026-01。返回 (counts_dict, diagnostics)。
+    """
+    store_id = store_id or STORE_ID
+    counts = {"leader": 0, "fulltime": 0, "parttime": 0, "hourly": 0, "cleaner": 0, "management": 0}
+    diagnostics = []
+    n_to_person_with_real_name = [0]
+    n_to_person_total = [0]
+    # 唯一键 (report_month, position_type, position_name, person_name, supplier_name, store_id)。
+    # 同键重复时不再合并：第一人用本名，第2次用 姓名1，第3次用 姓名2，确保人数与汇总一致。
+    _seen_keys = {}  # report_month -> dict: key -> 已出现次数 (0=首条用本名, 1=第2条用名+1, 2=第3条用名+2...)
+    duplicates = []  # 仅记录“因重复而加了后缀”的人员，用于日志提示
+
+    def _dup_key(ptype, pos_name, person_name, supplier_name):
+        pn = (person_name or "").strip()[:64]
+        sup = (supplier_name or "").strip()[:64]
+        key = (ptype, (pos_name or "").strip()[:64], pn, sup)
+        return key
+
+    def _person_name_with_suffix(report_month, ptype, pos_name, person_name, supplier_name):
+        """若该键已出现过，返回 姓名+后缀（姓名1、姓名2…），否则返回原姓名；并更新计数。"""
+        key = _dup_key(ptype, pos_name, person_name, supplier_name)
+        if report_month not in _seen_keys:
+            _seen_keys[report_month] = {}
+        count = _seen_keys[report_month].get(key, -1) + 1
+        _seen_keys[report_month][key] = count
+        if count == 0:
+            return (person_name or "").strip() or ""
+        suffix = str(count)  # 第2条 -> 1, 第3条 -> 2
+        base = (person_name or "").strip() or "-"
+        if base.startswith("#"):
+            return base + suffix  # #1 -> #11, #12
+        duplicates.append({
+            "report_month": report_month,
+            "position_type": ptype,
+            "person_name": base,
+            "position_name": (pos_name or "").strip() or "-",
+            "supplier_name": (supplier_name or "").strip() or "-",
+            "suffix": suffix,
+        })
+        return base + suffix  # 高伟 -> 高伟1, 高伟2
+
+    # 导入前删除该月数据，避免旧逻辑（person_name 空）与新逻辑（到人）并存造成重复，避免旧逻辑（person_name 空）与新逻辑（到人）并存造成重复
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM t_htma_labor_cost WHERE report_month = %s", (report_month,))
+        conn.commit()
+    except Exception as e:
+        diagnostics.append("清理该月数据时: " + str(e))
+
+    def _safe_num(v, default=0):
+        if v is None or (isinstance(v, float) and pd.isna(v)):
+            return default
+        try:
+            if isinstance(v, str):
+                v = v.replace(",", "").strip()
+            return float(v)
+        except (TypeError, ValueError):
+            return default
+
+    def _is_skip_position(name):
+        if name is None or (isinstance(name, float) and pd.isna(name)):
+            return True
+        if not str(name).strip():
+            return True
+        t = str(name).strip().lower()
+        if t in ("nan", "none", "#n/a", "-"):
+            return True
+        for k in ("合计", "总计", "小计", "汇总", "求和项"):
+            if k in t:
+                return True
+        return False
+
+    def _is_skip_person_row(name_val):
+        """姓名为空或为汇总关键字（合计、小计等）时视为汇总行，跳过该行，避免重复计算。"""
+        if name_val is None or (isinstance(name_val, float) and pd.isna(name_val)):
+            return True
+        t = str(name_val).strip()
+        if not t:
+            return True
+        t_lower = t.lower()
+        if t_lower in ("nan", "none", "#n/a", "-"):
+            return True
+        for k in ("合计", "总计", "小计", "汇总", "求和项"):
+            if k in t_lower:
+                return True
+        if t.isdigit() or (len(t) <= 6 and t.replace(".", "", 1).replace("-", "", 1).isdigit()):
+            return True
+        return False
+
+    def _is_header_or_invalid_row(pos_val, row, pos_col, num_cols):
+        """表头行或无效行：岗位列为「岗位」字样、纯序号、空；仅保留有效数据行"""
+        if pos_val is None:
+            return True
+        t = str(pos_val).strip()
+        if not t:
+            return True
+        if "岗位" == t or "求和项:岗位" in t or t.replace(" ", "") == "岗位" or t == "职务":
+            return True
+        if t.isdigit() and len(t) <= 5:
+            return True
+        if num_cols:
+            has_num = any(_safe_num(row.get(c)) != 0 for c in num_cols if c is not None)
+            if not has_num and len(t) < 3:
+                return True
+        return False
+
+    try:
+        xl = pd.ExcelFile(excel_path)
+        sheets = xl.sheet_names
+    except Exception as e:
+        diagnostics.append(str(e))
+        return counts, diagnostics, []
+
+    for sheet_name in sheets:
+        # 跳过汇总表 sheet（合计/跟发票或发薪对应）：仅人数与总成本，无到人明细，避免重复计入
+        _sn = (sheet_name or "").strip()
+        if "合计" in _sn and ("发票" in _sn or "发薪" in _sn or "对应" in _sn):
+            continue
+        df = pd.read_excel(excel_path, sheet_name=sheet_name, header=None)
+        if df.shape[0] == 0:
+            continue
+        # 按 sheet 名称优先判定类型：组长/管理组、组员/全职、兼职、小时工、保洁、管理岗（全面识别各 sheet）
+        sheet_name_lower = _sn.lower()
+        preferred_leader = "组长" in sheet_name_lower or "管理组" in sheet_name_lower
+        preferred_fulltime = "组员" in sheet_name_lower or ("全职" in sheet_name_lower and "保洁" not in sheet_name_lower)
+
+        header_row = 0
+        for r in range(min(12, df.shape[0])):
+            row = df.iloc[r]
+            for c in range(min(50, len(row))):
+                v = str(row.iloc[c]).strip() if c < len(row) else ""
+                if any(k in v for k in (
+                    "岗位", "职务", "合计薪资", "总工时", "本月合计薪资", "费用总额",
+                    "费用合计", "属性", "开票金额", "总成本",
+                )):
+                    header_row = r
+                    break
+            else:
+                continue
+            break
+        df_header = pd.read_excel(excel_path, sheet_name=sheet_name, header=header_row)
+        df_header = df_header.dropna(how="all", axis=0).dropna(how="all", axis=1)
+        col_map = {}
+        for col in df_header.columns:
+            n = _normalize_header(col)
+            if n:
+                col_map[col] = n
+
+        # 岗位列：组长表可能用「职务」，组员表用「岗位」；先确定 pos_col 再对合并单元格做向前填充
+        pos_col = None
+        for c in df_header.columns:
+            nm = col_map.get(c) or _normalize_header(str(c))
+            if "岗位" in nm:
+                pos_col = c
+                break
+        if not pos_col and (preferred_leader or not preferred_fulltime):
+            for c in df_header.columns:
+                nm = col_map.get(c) or _normalize_header(str(c))
+                if "职务" in nm:
+                    pos_col = c
+                    break
+        if not pos_col and ("兼职" in sheet_name_lower or "小时工" in sheet_name_lower):
+            for c in df_header.columns:
+                nm = col_map.get(c) or _normalize_header(str(c))
+                if "属性" in nm:
+                    pos_col = c
+                    break
+        if not pos_col:
+            for c in df_header.columns:
+                nm = col_map.get(c) or _normalize_header(str(c))
+                if "姓名" in nm or "人员" in nm or "名字" in nm:
+                    pos_col = c
+                    break
+        has_any_cost_col = any(
+            (col_map.get(c) or "").find("费用") >= 0 or (col_map.get(c) or "").find("开票") >= 0 or (col_map.get(c) or "").find("总成本") >= 0
+            for c in df_header.columns
+        )
+        if not pos_col and has_any_cost_col:
+            first_col = df_header.columns[0] if len(df_header.columns) else None
+            if first_col is not None:
+                pos_col = first_col
+        if not pos_col:
+            continue
+
+        # 岗位/职务列合并单元格：向前填充，避免同一岗位多行只显示首行、其余为 NaN
+        if pos_col in df_header.columns:
+            df_header[pos_col] = df_header[pos_col].ffill()
+
+        has_total_cost = any("费用总额" in (col_map.get(c) or "") or "人力成本" in (col_map.get(c) or "") or "开票金额" in (col_map.get(c) or "") or "总成本" in (col_map.get(c) or "") for c in df_header.columns)
+        has_fee_total = any("费用合计" in (col_map.get(c) or "") for c in df_header.columns)
+        has_luxury_bonus = any("奢品奖金" in (col_map.get(c) or "") for c in df_header.columns)
+        has_work_hours = any("总工时" in (col_map.get(c) or "") or "12月" in (col_map.get(c) or "") or "当月总工时" in (col_map.get(c) or "") or "本月总工时" in (col_map.get(c) or "") for c in df_header.columns)
+        has_base_salary = any("基本工资" in (col_map.get(c) or "") for c in df_header.columns)
+
+        def _col(name, fallbacks=None):
+            for c in df_header.columns:
+                n = col_map.get(c) or _normalize_header(str(c))
+                if n == name or (fallbacks and any(f in n for f in fallbacks)):
+                    return c
+                if name == "姓名" and n.replace(" ", "").replace("\u3000", "") == "姓名":
+                    return c
+            return None
+
+        def _total_cost_col():
+            """优先取开票金额/总成本（与汇总表口径一致），再取费用总额、公司实际成本。"""
+            col = _col("开票金额", ["开票金额/总成本", "总成本", "开票金额"])
+            if col is not None:
+                return col
+            col = _col("费用总额", ["费用总额", "人力成本总额", "含服务费"])
+            if col is not None:
+                return col
+            return _col("公司实际成本")
+
+        supplier_col = _col("供应商")
+        default_supplier = _supplier_from_sheet(sheet_name)
+
+        def _row_supplier(row):
+            v = row.get(supplier_col) if supplier_col is not None else None
+            v = _normalize_position_name(v) if v is not None else ""
+            return (v or default_supplier)[:64]
+
+        # 组长表：按 sheet 名或列特征；明确为兼职/小时工 sheet 时不做组长表
+        is_leader_table = (has_total_cost or has_luxury_bonus) and not has_work_hours
+        if preferred_leader:
+            is_leader_table = True
+        if preferred_fulltime or "兼职" in sheet_name_lower or "小时工" in sheet_name_lower:
+            is_leader_table = False
+        is_fulltime_table = has_work_hours and has_base_salary
+        if preferred_fulltime:
+            is_fulltime_table = True
+        if preferred_leader:
+            is_fulltime_table = False
+        # 兼职/小时工：有「费用合计」或「开票金额/总成本」即视为成本列，与汇总表口径一致
+        has_cost_for_ph = has_fee_total or has_total_cost
+        is_parttime_table = "兼职" in sheet_name_lower and has_cost_for_ph and pos_col is not None
+        is_hourly_table = "小时工" in sheet_name_lower and has_cost_for_ph and pos_col is not None
+        is_cleaner_table = "保洁" in sheet_name_lower
+        is_management_table = ("管理岗" in sheet_name_lower or "宝赞" in sheet_name_lower) and (has_total_cost or has_fee_total)
+
+        if is_cleaner_table or is_management_table:
+            ptype = "cleaner" if "保洁" in sheet_name_lower else "management"
+            total_cost_col = _total_cost_col()
+            if total_cost_col is None and is_cleaner_table:
+                # 保洁表可能无「开票金额/总成本」列，尝试：公司实际成本、应发、实发、本月应发、人力成本
+                total_cost_col = _col("公司实际成本") or _col("应发") or _col("实发") or _col("本月应发") or _col("人力成本") or _col("应发工资")
+            company_cost_col_other = _col("公司实际成本")
+            person_col_other = _col("姓名", ["人员", "名字", "员工姓名", "中文姓名"])
+            first_col_other = df_header.columns[0] if len(df_header.columns) else None
+            # 保洁表无单一费用列时，用 基本工资+绩效+岗位补贴+饭补 合计
+            base_sal_col = _col("基本工资")
+            perf_col = _col("绩效")
+            allow_col = _col("岗位补贴")
+            meal_col = _col("饭补")
+            cur = conn.cursor()
+            if person_col_other is not None:
+                # 到人：每行一条，姓名为空或汇总行跳过
+                for i, (_, row) in enumerate(df_header.iterrows()):
+                    pos = row.get(pos_col)
+                    if _is_skip_position(pos) or _is_skip_person_row(row.get(person_col_other)):
+                        continue
+                    pos_name = _normalize_position_name(pos)
+                    if not pos_name:
+                        continue
+                    person_name = _normalize_person_name(row.get(person_col_other)) or ""
+                    if not person_name and first_col_other is not None:
+                        first_val = row.get(first_col_other)
+                        person_name = _normalize_person_name(first_val) or ("#%d" % (i + 1))
+                    cost_val = _safe_num(row.get(total_cost_col)) if total_cost_col else _safe_num(row.get(company_cost_col_other))
+                    if not cost_val and company_cost_col_other:
+                        cost_val = _safe_num(row.get(company_cost_col_other))
+                    if not cost_val and is_cleaner_table and (base_sal_col is not None or perf_col is not None):
+                        cost_val = _safe_num(row.get(base_sal_col)) + _safe_num(row.get(perf_col)) + _safe_num(row.get(allow_col)) + _safe_num(row.get(meal_col))
+                    sup = _row_supplier(row)
+                    person_name = _person_name_with_suffix(report_month, ptype, pos_name, person_name, sup)
+                    cur.execute("""
+                        INSERT INTO t_htma_labor_cost
+                        (report_month, position_type, position_name, person_name, company_cost, total_cost, supplier_name, store_id)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                        ON DUPLICATE KEY UPDATE company_cost=VALUES(company_cost), total_cost=VALUES(total_cost)
+                    """, (report_month, ptype, pos_name, person_name or "", cost_val, cost_val, sup, store_id))
+                    counts[ptype] += 1
+                    n_to_person_total[0] += 1
+                    if person_name and not str(person_name).strip().startswith("#"):
+                        n_to_person_with_real_name[0] += 1
+            else:
+                # 无姓名列：按岗位汇总
+                agg_other = {}
+                for _, row in df_header.iterrows():
+                    pos = row.get(pos_col)
+                    if _is_skip_position(pos):
+                        continue
+                    pos_name = _normalize_position_name(pos)
+                    if not pos_name:
+                        continue
+                    cost_val = _safe_num(row.get(total_cost_col)) if total_cost_col else _safe_num(row.get(company_cost_col_other))
+                    if not cost_val and company_cost_col_other:
+                        cost_val = _safe_num(row.get(company_cost_col_other))
+                    if pos_name not in agg_other:
+                        agg_other[pos_name] = 0
+                    agg_other[pos_name] += cost_val
+                for pos_name, total_cost in agg_other.items():
+                    person_name = _person_name_with_suffix(report_month, ptype, pos_name, "", default_supplier)
+                    cur.execute("""
+                        INSERT INTO t_htma_labor_cost
+                        (report_month, position_type, position_name, person_name, company_cost, total_cost, supplier_name, store_id)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                        ON DUPLICATE KEY UPDATE company_cost=VALUES(company_cost), total_cost=VALUES(total_cost)
+                    """, (report_month, ptype, pos_name, person_name or "", total_cost, total_cost, default_supplier, store_id))
+                    counts[ptype] += 1
+            conn.commit()
+        elif is_leader_table:
+            total_salary_col = _col("合计薪资")
+            actual_salary_col = _col("实际薪资合计") or _col("实际薪资")
+            luxury_bonus_col = _col("奢品奖金")
+            actual_income_col = _col("实得收入")
+            company_cost_col = _col("公司实际成本")
+            total_cost_col = _total_cost_col()
+            person_col = _col("姓名", ["人员", "名字", "员工姓名", "中文姓名"])
+            pre_tax_col = _col("税前应发", ["应发", "应发工资"])
+            num_cols_leader = [total_salary_col, actual_salary_col, company_cost_col, total_cost_col]
+            # 导入到人：每行一条明细，不汇总。姓名为空或汇总行（合计/小计等）跳过，避免重复计算
+            first_col = df_header.columns[0] if len(df_header.columns) else None
+            cur = conn.cursor()
+            for i, (_, row) in enumerate(df_header.iterrows()):
+                pos = row.get(pos_col)
+                if _is_skip_position(pos) or _is_header_or_invalid_row(pos, row, pos_col, num_cols_leader):
+                    continue
+                if person_col is not None and _is_skip_person_row(row.get(person_col)):
+                    continue
+                pos_name = _normalize_position_name(pos)
+                if not pos_name:
+                    continue
+                person_name = _normalize_person_name(row.get(person_col)) if person_col else ""
+                if not person_name and first_col is not None:
+                    first_val = row.get(first_col)
+                    name_from_first = _normalize_position_name(first_val)
+                    person_name = name_from_first if _normalize_person_name(name_from_first) else ("#%d" % (i + 1))
+                total_s = _safe_num(row.get(total_salary_col))
+                actual_s = _safe_num(row.get(actual_salary_col))
+                luxury_b = _safe_num(row.get(luxury_bonus_col))
+                actual_inc = _safe_num(row.get(actual_income_col))
+                company_c = _safe_num(row.get(company_cost_col))
+                tcost = _safe_num(row.get(total_cost_col)) or company_c
+                pre_tax = _safe_num(row.get(pre_tax_col)) if pre_tax_col else total_s
+                sup = _row_supplier(row)
+                person_name = _person_name_with_suffix(report_month, "leader", pos_name, person_name, sup)
+                cur.execute("""
+                    INSERT INTO t_htma_labor_cost
+                    (report_month, position_type, position_name, person_name, total_salary, pre_tax_pay, actual_salary, luxury_bonus,
+                     actual_income, company_cost, total_cost, supplier_name, store_id)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON DUPLICATE KEY UPDATE
+                    total_salary=VALUES(total_salary), pre_tax_pay=VALUES(pre_tax_pay), actual_salary=VALUES(actual_salary),
+                    luxury_bonus=VALUES(luxury_bonus), actual_income=VALUES(actual_income),
+                    company_cost=VALUES(company_cost), total_cost=VALUES(total_cost)
+                """, (report_month, "leader", pos_name, person_name or "",
+                      total_s, pre_tax, actual_s, luxury_b, actual_inc, company_c, tcost, sup, store_id))
+                counts["leader"] += 1
+                n_to_person_total[0] += 1
+                if person_name and not str(person_name).strip().startswith("#"):
+                    n_to_person_with_real_name[0] += 1
+            conn.commit()
+        elif is_fulltime_table:
+            work_hours_col = _col("总工时", ["12月总工时", "总工时", "当月总工时", "本月总工时"]) or _col("12月总工时") or _col("当月总工时") or _col("本月总工时")
+            base_salary_col = _col("基本工资")
+            performance_col = _col("绩效", ["绩效工资"])
+            position_allowance_col = _col("岗位补贴")
+            total_salary_col = _col("合计薪资", ["本月合计薪资"])
+            luxury_amount_col = _col("奢品", ["奢品奖金"])
+            actual_income_col = _col("实得收入", ["本月实得收入"])
+            company_cost_col = _col("公司实际成本")
+            total_cost_col_ft = _total_cost_col()
+            person_col_ft = _col("姓名", ["人员", "名字", "员工姓名", "中文姓名"])
+            pre_tax_col_ft = _col("税前应发", ["应发", "应发工资"])
+            num_cols_fulltime = [work_hours_col, base_salary_col, total_salary_col, company_cost_col]
+            first_col_ft = df_header.columns[0] if len(df_header.columns) else None
+            cur = conn.cursor()
+            for i, (_, row) in enumerate(df_header.iterrows()):
+                pos = row.get(pos_col)
+                if _is_skip_position(pos) or _is_header_or_invalid_row(pos, row, pos_col, num_cols_fulltime):
+                    continue
+                if person_col_ft is not None and _is_skip_person_row(row.get(person_col_ft)):
+                    continue
+                pos_name = _normalize_position_name(pos)
+                if not pos_name:
+                    continue
+                person_name = _normalize_person_name(row.get(person_col_ft)) if person_col_ft else ""
+                if not person_name and first_col_ft is not None:
+                    first_val = row.get(first_col_ft)
+                    name_from_first = _normalize_position_name(first_val)
+                    person_name = name_from_first if _normalize_person_name(name_from_first) else ("#%d" % (i + 1))
+                cost_val = _safe_num(row.get(total_cost_col_ft)) or _safe_num(row.get(company_cost_col))
+                wh = _safe_num(row.get(work_hours_col))
+                base_s = _safe_num(row.get(base_salary_col))
+                perf = _safe_num(row.get(performance_col))
+                allow = _safe_num(row.get(position_allowance_col))
+                total_s = _safe_num(row.get(total_salary_col))
+                luxury_a = _safe_num(row.get(luxury_amount_col))
+                actual_inc = _safe_num(row.get(actual_income_col))
+                company_c = _safe_num(row.get(company_cost_col))
+                pre_tax = _safe_num(row.get(pre_tax_col_ft)) if pre_tax_col_ft else total_s
+                sup = _row_supplier(row)
+                person_name = _person_name_with_suffix(report_month, "fulltime", pos_name, person_name, sup)
+                cur.execute("""
+                    INSERT INTO t_htma_labor_cost
+                    (report_month, position_type, position_name, person_name, work_hours, base_salary, performance,
+                     position_allowance, total_salary, pre_tax_pay, luxury_amount, actual_income, company_cost, total_cost, supplier_name, store_id)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON DUPLICATE KEY UPDATE
+                    work_hours=VALUES(work_hours), base_salary=VALUES(base_salary), performance=VALUES(performance),
+                    position_allowance=VALUES(position_allowance), total_salary=VALUES(total_salary), pre_tax_pay=VALUES(pre_tax_pay),
+                    luxury_amount=VALUES(luxury_amount), actual_income=VALUES(actual_income),
+                    company_cost=VALUES(company_cost), total_cost=VALUES(total_cost)
+                """, (report_month, "fulltime", pos_name, person_name or "",
+                      wh, base_s, perf, allow, total_s, pre_tax, luxury_a, actual_inc, company_c, cost_val, sup, store_id))
+                counts["fulltime"] += 1
+                n_to_person_total[0] += 1
+                if person_name and not str(person_name).strip().startswith("#"):
+                    n_to_person_with_real_name[0] += 1
+            conn.commit()
+        elif is_parttime_table or is_hourly_table:
+            ptype = "parttime" if "兼职" in sheet_name_lower else "hourly"
+            # 成本列：开票金额/总成本 或 费用合计（斗米兼职/中锐/快聘表头多为「费用合计」）
+            cost_col = _total_cost_col() or _col("费用合计", ["总成本", "费用合计"])
+            if cost_col is None:
+                continue
+            person_col_ph = _col("姓名", ["人员", "名字", "员工姓名", "中文姓名"])
+            first_col_ph = df_header.columns[0] if len(df_header.columns) else None
+            # 兼职/小时工全量明细列（与 Excel 一致）
+            store_name_col = _col("店铺名", ["门店"])
+            city_col = _col("城市")
+            join_date_col = _col("入职日期")
+            leave_date_col = _col("离职日期")
+            total_hours_col = _col("总工时")
+            normal_hours_col = _col("普通工时")
+            triple_pay_col = _col("三薪工时")
+            hourly_rate_col = _col("时薪")
+            pay_amount_col = _col("发薪金额")
+            service_fee_unit_col = _col("服务费单价")
+            service_fee_total_col = _col("服务费总计")
+            tax_col = _col("税费")
+            cost_include_col = _col("成本计入")
+            department_col = _col("用人部门")
+
+            def _row_str(r, col, max_len=64):
+                v = r.get(col) if col is not None else None
+                if v is None or (isinstance(v, float) and pd.isna(v)):
+                    return None
+                return str(v).strip()[:max_len] or None
+
+            cur = conn.cursor()
+            if person_col_ph is not None:
+                # 到人：每行一条，姓名为空或汇总行跳过；全量写入明细列
+                for i, (_, row) in enumerate(df_header.iterrows()):
+                    pos = row.get(pos_col)
+                    if _is_skip_position(pos) or _is_skip_person_row(row.get(person_col_ph)):
+                        continue
+                    pos_name = _normalize_position_name(pos)
+                    if not pos_name:
+                        continue
+                    person_name = _normalize_person_name(row.get(person_col_ph)) or ""
+                    if not person_name and first_col_ph is not None:
+                        first_val = row.get(first_col_ph)
+                        first_str = _normalize_person_name(first_val) if first_val is not None else ""
+                        # 首列为「门店」「成本计入」「合计」等非人名的，用行号区分，避免多行合并为同一人
+                        if first_str and not _is_skip_person_row(first_val) and first_str not in ("门店", "成本计入"):
+                            person_name = first_str
+                        else:
+                            person_name = "#%d" % (i + 1)
+                    cost_val = _safe_num(row.get(cost_col))
+                    sup = _row_supplier(row)
+                    store_name_val = _row_str(row, store_name_col)
+                    city_val = _row_str(row, city_col, 32)
+                    join_date_val = _row_str(row, join_date_col, 32)
+                    leave_date_val = _row_str(row, leave_date_col, 32)
+                    total_hrs = _safe_num(row.get(total_hours_col)) if total_hours_col else None
+                    normal_hrs = _safe_num(row.get(normal_hours_col)) if normal_hours_col else None
+                    triple_hrs = _safe_num(row.get(triple_pay_col)) if triple_pay_col else None
+                    rate = _safe_num(row.get(hourly_rate_col)) if hourly_rate_col else None
+                    pay_amt = _safe_num(row.get(pay_amount_col)) if pay_amount_col else None
+                    svc_unit = _safe_num(row.get(service_fee_unit_col)) if service_fee_unit_col else None
+                    svc_total = _safe_num(row.get(service_fee_total_col)) if service_fee_total_col else None
+                    tax_val = _safe_num(row.get(tax_col)) if tax_col else None
+                    cost_include_val = _row_str(row, cost_include_col, 32)
+                    department_val = _row_str(row, department_col, 64)
+                    person_name = _person_name_with_suffix(report_month, ptype, pos_name, person_name, sup)
+                    cur.execute("""
+                        INSERT INTO t_htma_labor_cost
+                        (report_month, position_type, position_name, person_name, company_cost, total_cost, supplier_name, store_id,
+                         store_name, city, join_date, leave_date, work_hours, normal_hours, triple_pay_hours, hourly_rate, pay_amount, service_fee_unit, service_fee_total, tax, cost_include, department)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                        ON DUPLICATE KEY UPDATE company_cost=VALUES(company_cost), total_cost=VALUES(total_cost),
+                        store_name=VALUES(store_name), city=VALUES(city), join_date=VALUES(join_date), leave_date=VALUES(leave_date),
+                        work_hours=VALUES(work_hours), normal_hours=VALUES(normal_hours), triple_pay_hours=VALUES(triple_pay_hours),
+                        hourly_rate=VALUES(hourly_rate), pay_amount=VALUES(pay_amount), service_fee_unit=VALUES(service_fee_unit), service_fee_total=VALUES(service_fee_total), tax=VALUES(tax),
+                        cost_include=VALUES(cost_include), department=VALUES(department)
+                    """, (report_month, ptype, pos_name, person_name or "", cost_val, cost_val, sup, store_id,
+                          store_name_val, city_val, join_date_val, leave_date_val, total_hrs, normal_hrs, triple_hrs, rate, pay_amt, svc_unit, svc_total, tax_val, cost_include_val, department_val))
+                    counts[ptype] += 1
+                    n_to_person_total[0] += 1
+                    if person_name and not str(person_name).strip().startswith("#"):
+                        n_to_person_with_real_name[0] += 1
+            else:
+                # 无姓名列：按岗位汇总
+                agg_fee = {}
+                for _, row in df_header.iterrows():
+                    pos = row.get(pos_col)
+                    if _is_skip_position(pos):
+                        continue
+                    pos_name = _normalize_position_name(pos)
+                    if not pos_name:
+                        continue
+                    if pos_name not in agg_fee:
+                        agg_fee[pos_name] = 0
+                    agg_fee[pos_name] += _safe_num(row.get(cost_col))
+                for pos_name, total_cost in agg_fee.items():
+                    cur.execute("""
+                        INSERT INTO t_htma_labor_cost
+                        (report_month, position_type, position_name, person_name, company_cost, total_cost, supplier_name, store_id)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                        ON DUPLICATE KEY UPDATE company_cost=VALUES(company_cost), total_cost=VALUES(total_cost)
+                    """, (report_month, ptype, pos_name, "", total_cost, total_cost, default_supplier, store_id))
+                    counts[ptype] += 1
+            conn.commit()
+
+    if n_to_person_total[0] > 0 and n_to_person_with_real_name[0] / n_to_person_total[0] < 0.5:
+        diagnostics.append("建议：多数明细姓名为空或行号，请在 Excel 中增加「姓名」列（或「人员」「员工姓名」）后重新导入，以便到人明细准确。")
+
+    return counts, diagnostics, duplicates
+
+
+def _ocr_image_to_table(image_path):
+    """对附图做 OCR，返回 (headers, rows) 或 (None, None)。"""
+    try:
+        from PIL import Image
+        import pytesseract
+    except ImportError:
+        return None, None
+    try:
+        im = Image.open(image_path)
+        if im.mode not in ("L", "RGB", "RGBA"):
+            im = im.convert("RGB")
+        try:
+            data = pytesseract.image_to_data(im, lang="chi_sim+eng", config="--psm 6")
+        except Exception:
+            data = pytesseract.image_to_data(im, lang="eng", config="--psm 6")
+        by_line = {}
+        for line in data.strip().split("\n")[1:]:
+            parts = line.split("\t")
+            if len(parts) < 12:
+                continue
+            try:
+                text = (parts[11] or "").strip()
+                if not text:
+                    continue
+                left = int(parts[6])
+                top = int(parts[7])
+                block = int(parts[1] or 0)
+                line_num = int(parts[2] or 0)
+                key = (block, line_num)
+                if key not in by_line:
+                    by_line[key] = []
+                by_line[key].append((left, top, text))
+            except (ValueError, IndexError):
+                continue
+        keys = sorted(by_line.keys(), key=lambda k: (by_line[k][0][1], by_line[k][0][0]))
+        lines = []
+        for key in keys:
+            items = sorted(by_line[key], key=lambda x: (x[0], x[1]))
+            xs = [x[0] for x in items]
+            gap_threshold = 30
+            if len(xs) > 1:
+                gaps = [xs[i+1] - xs[i] for i in range(len(xs)-1)]
+                if gaps:
+                    gap_threshold = max(30, min(80, sum(gaps)/len(gaps) * 1.5))
+            row = []
+            current = []
+            last_left = -999
+            for left, _, text in items:
+                if current and (left - last_left) > gap_threshold:
+                    row.append(" ".join(current).strip())
+                    current = [text]
+                else:
+                    current.append(text)
+                last_left = left + 50
+            if current:
+                row.append(" ".join(current).strip())
+            if row:
+                lines.append(row)
+        if not lines:
+            return None, None
+        return lines[0], lines[1:]
+    except Exception:
+        return None, None
+
+
+def import_labor_cost_from_image(image_path, report_month, conn, store_id=None, position_type=None):
+    """从附图 OCR 识别表格并导入人力成本。position_type='leader'|'fulltime' 必填，与组长表/组员表一一对应。返回 (leader_count, fulltime_count, diagnostics)。"""
+    store_id = store_id or STORE_ID
+    leader_count = 0
+    fulltime_count = 0
+    diagnostics = []
+    if position_type not in ("leader", "fulltime"):
+        diagnostics.append("附图导入请指定 position_type=leader（组长表）或 fulltime（组员表）。")
+        return 0, 0, diagnostics
+
+    def _safe_num(v, default=0):
+        if v is None or (isinstance(v, float) and pd.isna(v)):
+            return default
+        try:
+            if isinstance(v, str):
+                v = v.replace(",", "").replace(" ", "").strip()
+            return float(v)
+        except (TypeError, ValueError):
+            return default
+
+    def _is_skip_position(name):
+        if not name or not str(name).strip():
+            return True
+        t = str(name).strip()
+        for k in ("合计", "总计", "小计", "汇总", "求和项"):
+            if k in t:
+                return True
+        return False
+
+    def _is_header_or_junk_row(pos_cell, whole_row):
+        """附图 OCR 后：岗位列为表头字样或整行为合计行则跳过"""
+        if not pos_cell or not str(pos_cell).strip():
+            return True
+        t = str(pos_cell).strip()
+        if t in ("岗位", "求和项:岗位") or t.replace(" ", "") == "岗位":
+            return True
+        if t.isdigit() and len(t) <= 5:
+            return True
+        for cell in (whole_row or []):
+            if cell and ("合计" in str(cell) or "总计" in str(cell)):
+                return True
+        return False
+
+    headers, rows = _ocr_image_to_table(image_path)
+    if not headers or not rows:
+        try:
+            import pytesseract
+            pytesseract.get_tesseract_version()
+        except Exception as e:
+            diagnostics.append("OCR 不可用: " + str(e) + "。请安装 Tesseract（如 brew install tesseract tesseract-lang）或改用 Excel 导入。")
+        else:
+            diagnostics.append("未能从附图中识别出表格，请确保图片清晰、表头含「岗位」，或改用 Excel 导入。")
+        return 0, 0, diagnostics
+
+    def _norm(h):
+        if not h:
+            return ""
+        s = str(h).strip().replace("求和项:", "").strip()
+        if "(" in s:
+            s = s.split("(")[0].strip()
+        return s
+
+    norm_headers = [_norm(h) for h in headers]
+    pos_idx = None
+    for i, h in enumerate(norm_headers):
+        if "岗位" in h:
+            pos_idx = i
+            break
+    if pos_idx is None:
+        diagnostics.append("未识别到「岗位」列。")
+        return 0, 0, diagnostics
+
+    has_total_cost = any("费用总额" in h for h in norm_headers)
+    has_luxury_bonus = any("奢品奖金" in h for h in norm_headers)
+    has_work_hours = any("总工时" in h or "12月" in h or "当月总工时" in h or "本月总工时" in h for h in norm_headers)
+    has_base_salary = any("基本工资" in h for h in norm_headers)
+
+    def _col_idx(name, fallbacks=None):
+        for i, h in enumerate(norm_headers):
+            if name in h or (fallbacks and any(f in h for f in fallbacks)):
+                return i
+        return None
+
+    is_leader_table = (has_total_cost or has_luxury_bonus) and not has_work_hours
+    is_fulltime_table = has_work_hours and has_base_salary
+
+    if position_type == "leader":
+        if not is_leader_table:
+            diagnostics.append("当前附图未识别为组长表（需含「费用总额」或「奢品奖金」且无「总工时」）。请上传组长表截图或检查表头是否清晰。")
+            return 0, 0, diagnostics
+        total_salary_idx = _col_idx("合计薪资")
+        actual_salary_idx = _col_idx("实际薪资合计")
+        luxury_bonus_idx = _col_idx("奢品奖金")
+        actual_income_idx = _col_idx("实得收入")
+        company_cost_idx = _col_idx("公司实际成本")
+        total_cost_idx = _col_idx("费用总额")
+        for row in rows:
+            if len(row) <= pos_idx:
+                continue
+            pos_name = str(row[pos_idx]).strip()[:64] if pos_idx < len(row) else ""
+            if _is_skip_position(pos_name) or _is_header_or_junk_row(row[pos_idx], row) or not pos_name:
+                continue
+            total_salary = _safe_num(row[total_salary_idx]) if total_salary_idx is not None and total_salary_idx < len(row) else 0
+            actual_salary = _safe_num(row[actual_salary_idx]) if actual_salary_idx is not None and actual_salary_idx < len(row) else 0
+            luxury_bonus = _safe_num(row[luxury_bonus_idx]) if luxury_bonus_idx is not None and luxury_bonus_idx < len(row) else 0
+            actual_income = _safe_num(row[actual_income_idx]) if actual_income_idx is not None and actual_income_idx < len(row) else 0
+            company_cost = _safe_num(row[company_cost_idx]) if company_cost_idx is not None and company_cost_idx < len(row) else 0
+            total_cost = _safe_num(row[total_cost_idx]) if total_cost_idx is not None and total_cost_idx < len(row) else company_cost
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO t_htma_labor_cost
+                (report_month, position_type, position_name, person_name, total_salary, actual_salary, luxury_bonus,
+                 actual_income, company_cost, total_cost, supplier_name, store_id)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON DUPLICATE KEY UPDATE
+                total_salary=VALUES(total_salary), actual_salary=VALUES(actual_salary),
+                luxury_bonus=VALUES(luxury_bonus), actual_income=VALUES(actual_income),
+                company_cost=VALUES(company_cost), total_cost=VALUES(total_cost)
+            """, (report_month, "leader", pos_name, "", total_salary, actual_salary, luxury_bonus,
+                  actual_income, company_cost, total_cost, "斗米", store_id))
+            leader_count += 1
+        conn.commit()
+        return leader_count, 0, diagnostics
+
+    if position_type == "fulltime":
+        if not is_fulltime_table:
+            diagnostics.append("当前附图未识别为组员表（需含「总工时」「基本工资」等）。请上传组员表截图或检查表头是否清晰。")
+            return 0, 0, diagnostics
+        work_hours_idx = _col_idx("总工时", ["12月总工时", "总工时", "当月总工时", "本月总工时"])
+        base_salary_idx = _col_idx("基本工资")
+        performance_idx = _col_idx("绩效", ["绩效工资"])
+        position_allowance_idx = _col_idx("岗位补贴")
+        total_salary_idx = _col_idx("合计薪资", ["本月合计薪资"])
+        luxury_amount_idx = _col_idx("奢品", ["奢品奖金"])
+        actual_income_idx = _col_idx("实得收入", ["本月实得收入"])
+        company_cost_idx = _col_idx("公司实际成本")
+        for row in rows:
+            if len(row) <= pos_idx:
+                continue
+            pos_name = str(row[pos_idx]).strip()[:64] if pos_idx < len(row) else ""
+            if _is_skip_position(pos_name) or _is_header_or_junk_row(row[pos_idx], row) or not pos_name:
+                continue
+            work_hours = _safe_num(row[work_hours_idx]) if work_hours_idx is not None and work_hours_idx < len(row) else 0
+            base_salary = _safe_num(row[base_salary_idx]) if base_salary_idx is not None and base_salary_idx < len(row) else 0
+            performance = _safe_num(row[performance_idx]) if performance_idx is not None and performance_idx < len(row) else 0
+            position_allowance = _safe_num(row[position_allowance_idx]) if position_allowance_idx is not None and position_allowance_idx < len(row) else 0
+            total_salary = _safe_num(row[total_salary_idx]) if total_salary_idx is not None and total_salary_idx < len(row) else 0
+            luxury_amount = _safe_num(row[luxury_amount_idx]) if luxury_amount_idx is not None and luxury_amount_idx < len(row) else 0
+            actual_income = _safe_num(row[actual_income_idx]) if actual_income_idx is not None and actual_income_idx < len(row) else 0
+            company_cost = _safe_num(row[company_cost_idx]) if company_cost_idx is not None and company_cost_idx < len(row) else 0
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO t_htma_labor_cost
+                (report_month, position_type, position_name, person_name, work_hours, base_salary, performance,
+                 position_allowance, total_salary, luxury_amount, actual_income, company_cost, total_cost, supplier_name, store_id)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON DUPLICATE KEY UPDATE
+                work_hours=VALUES(work_hours), base_salary=VALUES(base_salary), performance=VALUES(performance),
+                position_allowance=VALUES(position_allowance), total_salary=VALUES(total_salary),
+                luxury_amount=VALUES(luxury_amount), actual_income=VALUES(actual_income),
+                company_cost=VALUES(company_cost), total_cost=VALUES(company_cost)
+            """, (report_month, "fulltime", pos_name, "", work_hours, base_salary, performance,
+                  position_allowance, total_salary, luxury_amount, actual_income, company_cost, company_cost, "斗米", store_id))
+            fulltime_count += 1
+        conn.commit()
+        return 0, fulltime_count, diagnostics
+
+    return 0, 0, diagnostics
+
+
+def refresh_labor_cost_analysis(conn):
+    """从 t_htma_labor_cost 汇总写入 t_htma_labor_cost_analysis，用于月度比对分析。返回刷新的月份数。"""
+    cur = conn.cursor(pymysql.cursors.DictCursor)
+    cur.execute("""
+        SELECT report_month,
+               SUM(CASE WHEN position_type='leader' THEN 1 ELSE 0 END) AS leader_count,
+               COALESCE(SUM(CASE WHEN position_type='leader' THEN total_cost ELSE 0 END), 0) AS leader_total_cost,
+               SUM(CASE WHEN position_type='fulltime' THEN 1 ELSE 0 END) AS fulltime_count,
+               COALESCE(SUM(CASE WHEN position_type='fulltime' THEN COALESCE(total_cost, company_cost) ELSE 0 END), 0) AS fulltime_total_cost,
+               COALESCE(SUM(CASE WHEN position_type='fulltime' THEN work_hours ELSE 0 END), 0) AS fulltime_total_hours,
+               COALESCE(SUM(total_cost), 0) AS total_all_cost
+        FROM t_htma_labor_cost
+        GROUP BY report_month
+        ORDER BY report_month
+    """)
+    rows = cur.fetchall()
+    if not rows:
+        return 0
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS t_htma_labor_cost_analysis (
+          report_month VARCHAR(7) NOT NULL PRIMARY KEY,
+          leader_count INT NOT NULL DEFAULT 0,
+          leader_total_cost DECIMAL(14,2) NOT NULL DEFAULT 0,
+          fulltime_count INT NOT NULL DEFAULT 0,
+          fulltime_total_cost DECIMAL(14,2) NOT NULL DEFAULT 0,
+          fulltime_total_hours DECIMAL(12,2) NOT NULL DEFAULT 0,
+          total_labor_cost DECIMAL(14,2) NOT NULL DEFAULT 0,
+          prev_month_total DECIMAL(14,2) DEFAULT NULL,
+          mom_pct DECIMAL(8,2) DEFAULT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """)
+    conn.commit()
+    prev_by_month = {}
+    for r in rows:
+        total_all = float(r.get("total_all_cost") or 0)
+        prev_by_month[r["report_month"]] = total_all
+    n = 0
+    for r in rows:
+        month = r["report_month"]
+        leader_total = round(float(r["leader_total_cost"] or 0), 2)
+        fulltime_total = round(float(r["fulltime_total_cost"] or 0), 2)
+        hours = round(float(r["fulltime_total_hours"] or 0), 2)
+        total = round(float(r.get("total_all_cost") or 0), 2)
+        prev_total = None
+        mom_pct = None
+        try:
+            y, m = map(int, month.split("-"))
+            if m == 1:
+                prev_month = f"{y-1}-12"
+            else:
+                prev_month = f"{y}-{m-1:02d}"
+            prev_total = prev_by_month.get(prev_month)
+            if prev_total is not None and prev_total != 0:
+                mom_pct = round((total - prev_total) / prev_total * 100, 2)
+        except Exception:
+            pass
+        cur.execute("""
+            INSERT INTO t_htma_labor_cost_analysis
+            (report_month, leader_count, leader_total_cost, fulltime_count, fulltime_total_cost,
+             fulltime_total_hours, total_labor_cost, prev_month_total, mom_pct)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON DUPLICATE KEY UPDATE
+            leader_count=VALUES(leader_count), leader_total_cost=VALUES(leader_total_cost),
+            fulltime_count=VALUES(fulltime_count), fulltime_total_cost=VALUES(fulltime_total_cost),
+            fulltime_total_hours=VALUES(fulltime_total_hours), total_labor_cost=VALUES(total_labor_cost),
+            prev_month_total=VALUES(prev_month_total), mom_pct=VALUES(mom_pct)
+        """, (month, r["leader_count"], leader_total, r["fulltime_count"], fulltime_total,
+              hours, total, prev_total, mom_pct))
+        n += 1
+    conn.commit()
+    return n
+
+
+# ---------- 分店商品档案导入 ----------
+# Excel 表头（中文）-> 表字段名；str=字符串, dec=数值, dt=日期, dtt=日期时间
+PRODUCT_MASTER_HEADERS = [
+    ("商品状态", "product_status", "str"),
+    ("货号", "sku_code", "str"),
+    ("国际条码", "barcode", "str"),
+    ("品名", "product_name", "str"),
+    ("类别编码", "category_code", "str"),
+    ("类别", "category_name", "str"),
+    ("供应商编码", "supplier_code", "str"),
+    ("供应商", "supplier_name", "str"),
+    ("批发价", "wholesale_price", "dec"),
+    ("零售价", "retail_price", "dec"),
+    ("会员价", "member_price", "dec"),
+    ("会员价1", "member_price_1", "dec"),
+    ("会员价2", "member_price_2", "dec"),
+    ("配送价", "delivery_price", "dec"),
+    ("最低售价", "min_sale_price", "dec"),
+    ("划线价", "list_price", "dec"),
+    ("单位", "unit", "str"),
+    ("规格", "spec", "str"),
+    ("产地", "origin", "str"),
+    ("商品类型", "product_type", "str"),
+    ("允许折扣", "allow_discount", "str"),
+    ("采购范围", "purchase_scope", "str"),
+    ("前台议价", "counter_bargain", "str"),
+    ("会员折扣", "member_discount", "str"),
+    ("进项税", "input_tax", "dec"),
+    ("是否扣除税", "deduct_tax", "str"),
+    ("销项税", "output_tax", "dec"),
+    ("是否免税", "tax_free", "str"),
+    ("进货规格", "purchase_spec", "dec"),
+    ("经销方式", "distribution_mode", "str"),
+    ("维护库存", "maintain_stock", "str"),
+    ("联营扣率", "joint_rate", "dec"),
+    ("分店变价", "store_price_change", "str"),
+    ("保质期", "shelf_life", "dec"),
+    ("到期预警天数", "expiry_warning_days", "int"),
+    ("计价方式", "pricing_mode", "str"),
+    ("生鲜商品", "is_fresh", "str"),
+    ("损耗率", "loss_rate", "dec"),
+    ("积分值", "points_value", "dec"),
+    ("品牌编码", "brand_code", "str"),
+    ("品牌", "brand_name", "str"),
+    ("课组", "class_group", "str"),
+    ("助记码", "mnemonic_code", "str"),
+    ("商品简称", "product_short_name", "str"),
+    ("业务员提成比率", "salesman_commission_rate", "dec"),
+    ("建档人编码", "creator_code", "str"),
+    ("建档人名称", "creator_name", "str"),
+    ("建档日期", "created_at", "dtt"),
+    ("最后修改人编码", "modifier_code", "str"),
+    ("最后修改人名称", "modifier_name", "str"),
+    ("修改日期", "updated_at", "dtt"),
+    ("停购日期", "stop_purchase_date", "dt"),
+    ("出货规格", "shipment_spec", "dec"),
+    ("提成率", "commission_rate", "dec"),
+    ("采购周期", "purchase_cycle", "int"),
+    ("批发价1", "wholesale_price_1", "dec"),
+    ("批发价2", "wholesale_price_2", "dec"),
+    ("批发价3", "wholesale_price_3", "dec"),
+    ("批发价4", "wholesale_price_4", "dec"),
+    ("是否积分", "is_points", "str"),
+    ("备注", "remark", "str"),
+    ("性别", "gender", "str"),
+    ("上下装", "clothing_type", "str"),
+    ("风格", "style", "str"),
+    ("事业部", "division", "str"),
+    ("色系", "color_family", "str"),
+    ("色深", "color_depth", "str"),
+    ("标准码", "standard_code", "str"),
+    ("原条码", "original_barcode", "str"),
+    ("厚度", "thickness", "str"),
+    ("长度", "length_dim", "str"),
+]
+
+
+def _parse_datetime(v):
+    """解析日期时间，支持 datetime、Excel 序列、YYYY-MM-DD HH:MM:SS"""
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return None
+    if isinstance(v, datetime):
+        return v.strftime("%Y-%m-%d %H:%M:%S") if v else None
+    if isinstance(v, (int, float)) and not pd.isna(v) and v > 1000:
+        try:
+            from datetime import timedelta
+            d = datetime(1899, 12, 30) + timedelta(days=float(v))
+            return d.strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            pass
+    s = str(v).strip()
+    if not s or s.lower() == "nan":
+        return None
+    m = re.search(r"(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})\s*(\d{1,2})?:?\s*(\d{1,2})?:?\s*(\d{1,2})?", s)
+    if m:
+        y, mo, d = m.group(1), int(m.group(2)), int(m.group(3))
+        h = int(m.group(4) or 0)
+        mi = int(m.group(5) or 0)
+        sec = int(m.group(6) or 0)
+        return f"{y}-{mo:02d}-{d:02d} {h:02d}:{mi:02d}:{sec:02d}"
+    return _parse_date(v) + " 00:00:00" if _parse_date(v) else None
+
+
+def _ensure_product_master_distribution_mode(conn):
+    """确保 t_htma_product_master 有 distribution_mode 列（消费洞察等依赖）。
+    表不存在时跳过；列已存在时跳过；缺列时补齐。供数据导入、启动脚本统一调用。"""
+    try:
+        cur = conn.cursor()
+        # 表不存在则跳过（建表脚本 19 已含该列）
+        cur.execute("""
+            SELECT 1 FROM information_schema.TABLES
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 't_htma_product_master' LIMIT 1
+        """)
+        if not cur.fetchone():
+            cur.close()
+            return
+        # 列已存在则跳过
+        cur.execute("""
+            SELECT COUNT(*) FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 't_htma_product_master' AND COLUMN_NAME = 'distribution_mode'
+        """)
+        if (cur.fetchone() or (0,))[0] > 0:
+            cur.close()
+            return
+        # 补齐列（加在表末，避免依赖其他列）
+        cur.execute("""
+            ALTER TABLE t_htma_product_master ADD COLUMN distribution_mode VARCHAR(32) DEFAULT NULL
+            COMMENT '经销方式(购销/代销等)'
+        """)
+        conn.commit()
+        cur.close()
+    except Exception:
+        pass
+
+
+def import_product_master(excel_path, conn, store_id=None, archive_date=None):
+    """分店商品档案 Excel 导入 t_htma_product_master。按文件名解析 archive_date（分店商品档案_20260306-_101750.xlsx）。
+    返回 (inserted_count, message)。"""
+    _ensure_product_master_distribution_mode(conn)
+    store_id = (store_id or STORE_ID or "默认").strip()[:32]
+    if archive_date is None:
+        m = re.search(r"(\d{4})[-_]?(\d{2})[-_]?(\d{2})", os.path.basename(excel_path))
+        if m:
+            archive_date = f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+        else:
+            archive_date = None
+    try:
+        df = pd.read_excel(excel_path, header=0, engine="openpyxl")
+    except Exception as e:
+        try:
+            df = pd.read_excel(excel_path, header=0)
+        except Exception as e2:
+            return 0, "读取 Excel 失败: " + str(e2)
+    if df.shape[0] == 0:
+        return 0, "无数据行"
+    # 列名 -> 列索引（表头可能带空格）
+    col_map = {}
+    for i, c in enumerate(df.columns):
+        key = str(c).strip() if c is not None else ""
+        if key and key not in col_map:
+            col_map[key] = i
+    # 构建 (列索引, 字段名, 类型) 仅包含 Excel 中存在的列
+    cols_schema = []
+    for chn, fld, typ in PRODUCT_MASTER_HEADERS:
+        if chn in col_map:
+            cols_schema.append((col_map[chn], fld, typ))
+    if not any(c[1] == "sku_code" for c in cols_schema):
+        return 0, "未找到「货号」列"
+    # 插入用字段顺序：store_id, archive_date, 以及所有 Excel 映射到的字段
+    all_fields = ["store_id", "archive_date"] + [c[1] for c in cols_schema]
+    cur = conn.cursor()
+    skip_no_sku = 0
+
+    def _cell(row, idx, typ):
+        if idx >= len(row):
+            return None
+        v = row.iloc[idx]
+        if v is None or (isinstance(v, float) and pd.isna(v)):
+            return None
+        if typ == "str":
+            s = str(v).strip()[:256]
+            return s if s else None
+        if typ == "dec":
+            if v is None or (isinstance(v, float) and pd.isna(v)):
+                return None
+            x = _safe_decimal(v, 0)
+            return x if x is not None else None
+        if typ == "int":
+            try:
+                return int(float(v)) if v is not None and not (isinstance(v, float) and pd.isna(v)) else None
+            except (TypeError, ValueError):
+                return None
+        if typ == "dt":
+            return _parse_date(v)
+        if typ == "dtt":
+            return _parse_datetime(v)
+        return None
+
+    # 去重：按 (store_id, sku_code) 合并，同键保留最后一行（与销售汇总一致），再批量写入；写入时 ON DUPLICATE KEY UPDATE 覆盖表中已有同键数据
+    dedup = {}  # (store_id, sku_code) -> tuple(vals)
+    for _, row in df.iterrows():
+        sku = _cell(row, next((c[0] for c in cols_schema if c[1] == "sku_code"), -1), "str")
+        if not sku:
+            skip_no_sku += 1
+            continue
+        sku = str(sku).strip()[:64]
+        vals = [store_id, archive_date]
+        for _, fld, typ in cols_schema:
+            idx = next((c[0] for c in cols_schema if c[1] == fld), -1)
+            v = _cell(row, idx, typ)
+            vals.append(v)
+        dedup[(store_id, sku)] = tuple(vals)
+
+    inserted = 0
+    batch_size = 500
+    buf = []
+    for v in dedup.values():
+        buf.append(v)
+        if len(buf) >= batch_size:
+            _flush_product_master_batch(cur, all_fields, buf)
+            inserted += len(buf)
+            buf = []
+    if buf:
+        _flush_product_master_batch(cur, all_fields, buf)
+        inserted += len(buf)
+    conn.commit()
+    cur.close()
+    msg = f"去重后导入 {inserted} 条（同门店+货号已覆盖）"
+    if skip_no_sku:
+        msg += f"，跳过无货号 {skip_no_sku} 行"
+    return inserted, msg
+
+
+def _flush_product_master_batch(cur, all_fields, buf):
+    """批量 INSERT ... ON DUPLICATE KEY UPDATE"""
+    if not buf:
+        return
+    placeholders = ", ".join(["(" + ", ".join(["%s"] * len(all_fields)) + ")" for _ in buf])
+    col_str = ", ".join(all_fields)
+    update_parts = [f"{f}=VALUES({f})" for f in all_fields if f not in ("store_id", "sku_code")]
+    sql = f"INSERT INTO t_htma_product_master ({col_str}) VALUES {placeholders} ON DUPLICATE KEY UPDATE " + ", ".join(update_parts)
+    flat = []
+    for v in buf:
+        flat.extend(v)
+    cur.execute(sql, flat)

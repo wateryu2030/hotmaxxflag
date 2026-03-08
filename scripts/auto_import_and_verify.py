@@ -44,28 +44,24 @@ def find_excel_files():
 
 def main():
     print("=== 好特卖自动导入验证 ===", flush=True)
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "htma_dashboard"))
-    import pymysql
-    from import_logic import import_sale_daily, import_sale_summary, import_stock, refresh_profit, refresh_category_from_sale
+    _root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(os.path.join(_root, ".env"))
+    except ImportError:
+        pass
+    sys.path.insert(0, _root)
+    from htma_dashboard.db_config import get_conn
+    from htma_dashboard.import_logic import import_sale_daily, import_sale_summary, import_stock, refresh_profit, refresh_category_from_sale
 
-    conn = pymysql.connect(
-        host=os.environ.get("MYSQL_HOST", "127.0.0.1"),
-        port=int(os.environ.get("MYSQL_PORT", "3306")),
-        user=os.environ.get("MYSQL_USER", "root"),
-        password=os.environ.get("MYSQL_PASSWORD", "62102218"),
-        database="htma_dashboard",
-        charset="utf8mb4",
-        cursorclass=pymysql.cursors.DictCursor,
-    )
+    conn = get_conn()
 
     files = find_excel_files()
     print("找到文件:", files)
 
     cur = conn.cursor()
-    cur.execute("TRUNCATE TABLE t_htma_sale")
-    cur.execute("TRUNCATE TABLE t_htma_profit")
-    cur.execute("TRUNCATE TABLE t_htma_stock")
-    conn.commit()
+    # 增量导入：不再清空历史数据，仅依赖 ON DUPLICATE KEY 去重/覆盖。
+    # 若需全量重建，请使用 scripts/run_full_import.py。
 
     sale_daily_cnt = sale_summary_cnt = stock_cnt = 0
     # 销售汇总覆盖销售日报中重叠的(date,sku)，优先导入销售日报再导入销售汇总

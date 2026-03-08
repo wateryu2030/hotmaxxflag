@@ -8,7 +8,8 @@
 set -e
 cd "$(dirname "$0")/.."
 PROJECT_ROOT="$(pwd)"
-MYSQL_OPTS="-h 127.0.0.1 -u root -p62102218"
+[ -f "$PROJECT_ROOT/.env" ] && set -a && . "$PROJECT_ROOT/.env" 2>/dev/null && set +a
+MYSQL_OPTS="-h ${MYSQL_HOST:-127.0.0.1} -u ${MYSQL_USER:-root} -p${MYSQL_PASSWORD:-62102218}"
 JR_DIR="$PROJECT_ROOT/JimuReport/jimureport-example"
 STANDALONE=0
 [[ "$1" =~ ^(-s|--standalone)$ ]] && STANDALONE=1

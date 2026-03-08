@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""执行 03_add_full_columns.sql，忽略已存在的列"""
+"""执行 03_add_full_columns.sql，忽略已存在的列。数据库配置从 .env 的 MYSQL_* 读取。"""
 import os
 import sys
 
-# 添加项目路径
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'htma_dashboard'))
-import pymysql
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(_ROOT, ".env"))
+except ImportError:
+    pass
+sys.path.insert(0, _ROOT)
 
-DB = {
-    "host": os.environ.get("MYSQL_HOST", "127.0.0.1"),
-    "port": int(os.environ.get("MYSQL_PORT", "3306")),
-    "user": os.environ.get("MYSQL_USER", "root"),
-    "password": os.environ.get("MYSQL_PASSWORD", "62102218"),
-    "database": "htma_dashboard",
-    "charset": "utf8mb4",
-}
+import pymysql
+from htma_dashboard.db_config import DB_CONFIG
+
+# 建列不需要 DictCursor
+DB = {k: v for k, v in DB_CONFIG.items() if k != "cursorclass"}
 
 ALTERS = [
     # t_htma_sale
@@ -119,6 +120,24 @@ ALTERS = [
     ("t_htma_category_mapping", "category_mid", "VARCHAR(64) DEFAULT NULL COMMENT '中类名称'"),
     ("t_htma_category_mapping", "category_small_code", "VARCHAR(32) DEFAULT NULL COMMENT '小类编码'"),
     ("t_htma_category_mapping", "category_small", "VARCHAR(64) DEFAULT NULL COMMENT '小类名称'"),
+    # t_htma_labor_cost：姓名、税前应发、供应商，便于与汇总表口径一致（开票金额/总成本、斗米/中锐/快聘/保洁）
+    ("t_htma_labor_cost", "person_name", "VARCHAR(64) DEFAULT '' COMMENT '姓名'"),
+    ("t_htma_labor_cost", "pre_tax_pay", "DECIMAL(14,2) DEFAULT NULL COMMENT '税前应发'"),
+    ("t_htma_labor_cost", "supplier_name", "VARCHAR(64) NOT NULL DEFAULT '' COMMENT '供应商(斗米/中锐/快聘/保洁等)'"),
+    # 兼职/小时工明细扩展（全量导入）
+    ("t_htma_labor_cost", "store_name", "VARCHAR(64) DEFAULT NULL COMMENT '店铺名'"),
+    ("t_htma_labor_cost", "city", "VARCHAR(32) DEFAULT NULL COMMENT '城市'"),
+    ("t_htma_labor_cost", "join_date", "VARCHAR(32) DEFAULT NULL COMMENT '入职日期'"),
+    ("t_htma_labor_cost", "leave_date", "VARCHAR(32) DEFAULT NULL COMMENT '离职日期'"),
+    ("t_htma_labor_cost", "normal_hours", "DECIMAL(12,2) DEFAULT NULL COMMENT '普通工时'"),
+    ("t_htma_labor_cost", "triple_pay_hours", "DECIMAL(12,2) DEFAULT NULL COMMENT '三薪工时'"),
+    ("t_htma_labor_cost", "hourly_rate", "DECIMAL(10,2) DEFAULT NULL COMMENT '时薪'"),
+    ("t_htma_labor_cost", "pay_amount", "DECIMAL(14,2) DEFAULT NULL COMMENT '发薪金额'"),
+    ("t_htma_labor_cost", "service_fee_unit", "DECIMAL(10,2) DEFAULT NULL COMMENT '服务费单价'"),
+    ("t_htma_labor_cost", "service_fee_total", "DECIMAL(14,2) DEFAULT NULL COMMENT '服务费总计'"),
+    ("t_htma_labor_cost", "tax", "DECIMAL(14,2) DEFAULT NULL COMMENT '税费'"),
+    ("t_htma_labor_cost", "cost_include", "VARCHAR(32) DEFAULT NULL COMMENT '成本计入(兼职/小时工)'"),
+    ("t_htma_labor_cost", "department", "VARCHAR(64) DEFAULT NULL COMMENT '用人部门(中锐/快聘等)'"),
 ]
 
 def main():
@@ -136,6 +155,23 @@ def main():
                 skipped += 1
             else:
                 print(f"  ! {tbl}.{col}: {e}")
+    # t_htma_labor_cost 唯一键改为含 person_name、supplier_name，支持同一岗位多人、多供应商
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE t_htma_labor_cost SET person_name = '' WHERE person_name IS NULL")
+        conn.commit()
+        cur.execute("UPDATE t_htma_labor_cost SET supplier_name = '' WHERE supplier_name IS NULL")
+        conn.commit()
+        cur.execute("ALTER TABLE t_htma_labor_cost DROP INDEX uk_month_type_position")
+        conn.commit()
+        cur.execute("ALTER TABLE t_htma_labor_cost ADD UNIQUE KEY uk_month_type_position (report_month, position_type, position_name, person_name(64), supplier_name(64), store_id)")
+        conn.commit()
+        print("  t_htma_labor_cost: 唯一键已含 person_name, supplier_name")
+    except pymysql.err.OperationalError as e:
+        if "check that column/key exists" in str(e).lower() or "1091" in str(e) or "Duplicate" in str(e) or "Unknown column" in str(e):
+            pass
+        else:
+            print("  ! t_htma_labor_cost 唯一键:", e)
     conn.close()
     print(f"\n完成: 新增 {added} 列, 跳过已存在 {skipped} 列")
 

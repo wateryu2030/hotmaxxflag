@@ -4,26 +4,25 @@
 清空好特卖看板历史数据，便于重新上传。
 会 TRUNCATE：销售表、库存表、毛利表、商品表、品类毛利表（若存在）。
 用法: bash scripts/run_clear_data.sh  或  .venv/bin/python scripts/clear_htma_data.py --confirm
+数据库配置从项目根目录 .env 的 MYSQL_* 读取。
 """
 import os
 import sys
 
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 try:
-    import pymysql
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(_ROOT, ".env"))
 except ImportError:
+    pass
+sys.path.insert(0, _ROOT)
+
+try:
+    from htma_dashboard.db_config import get_conn
+except ImportError:
+    import pymysql
     print("未找到 pymysql。请用: bash scripts/run_clear_data.sh（会使用项目 .venv）", flush=True)
     sys.exit(1)
-
-
-def get_conn():
-    return pymysql.connect(
-        host=os.environ.get("MYSQL_HOST", "127.0.0.1"),
-        port=int(os.environ.get("MYSQL_PORT", "3306")),
-        user=os.environ.get("MYSQL_USER", "root"),
-        password=os.environ.get("MYSQL_PASSWORD", "62102218"),
-        database="htma_dashboard",
-        charset="utf8mb4",
-    )
 
 
 def main():

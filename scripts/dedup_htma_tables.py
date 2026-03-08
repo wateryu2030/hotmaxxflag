@@ -7,34 +7,26 @@
 - 毛利表 t_htma_profit: 主键 (data_date, category, store_id)，合并时累加 total_sale/total_profit
 
 用法: bash scripts/run_dedup.sh [--dry-run]  或  python3 scripts/dedup_htma_tables.py [--dry-run]
-建议用 run_dedup.sh（会使用项目 .venv，避免系统 Python 的 externally-managed-environment）。
+数据库配置从项目根目录 .env 的 MYSQL_* 读取。
 """
 import os
 import sys
 
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 try:
-    import pymysql
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(_ROOT, ".env"))
+except ImportError:
+    pass
+sys.path.insert(0, _ROOT)
+
+try:
+    from htma_dashboard.db_config import get_conn
 except ImportError:
     print("未找到 pymysql。本机为 Homebrew Python 时请用项目虚拟环境运行：", flush=True)
     print("  bash scripts/ensure_venv.sh   # 首次：创建 .venv 并安装依赖", flush=True)
     print("  bash scripts/run_dedup.sh --dry-run   # 用 venv 执行去重脚本", flush=True)
-    print("或手动：", flush=True)
-    print("  python3 -m venv .venv && source .venv/bin/activate", flush=True)
-    print("  pip install -r htma_dashboard/requirements.txt", flush=True)
-    print("  python scripts/dedup_htma_tables.py --dry-run", flush=True)
     sys.exit(1)
-
-
-def get_conn():
-    return pymysql.connect(
-        host=os.environ.get("MYSQL_HOST", "127.0.0.1"),
-        port=int(os.environ.get("MYSQL_PORT", "3306")),
-        user=os.environ.get("MYSQL_USER", "root"),
-        password=os.environ.get("MYSQL_PASSWORD", "62102218"),
-        database="htma_dashboard",
-        charset="utf8mb4",
-        cursorclass=pymysql.cursors.DictCursor,
-    )
 
 
 def main():

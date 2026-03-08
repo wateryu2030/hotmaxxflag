@@ -103,7 +103,8 @@
         btn.textContent = '跳转中…';
         try {
           const base = window.location.origin;
-          const next = new URLSearchParams(window.location.search).get('next') || '/';
+          const pathAndQuery = (window.location.pathname || '/') + (window.location.search || '');
+          const next = new URLSearchParams(window.location.search).get('next') || pathAndQuery || '/';
           const r = await fetch(base + '/api/auth/feishu_url?next=' + encodeURIComponent(next));
           const d = await r.json();
           if (d.success && d.url) {

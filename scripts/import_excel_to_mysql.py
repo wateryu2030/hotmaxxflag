@@ -4,8 +4,7 @@
 将下载目录下的好特卖 Excel（销售日报、销售汇总、实时库存）导入 MySQL htma_dashboard，
 供 JimuReport 通过数据源直接使用。
 用法: python3 import_excel_to_mysql.py [下载目录]
-默认下载目录: /Users/apple/Downloads
-MySQL: -h 127.0.0.1 -u root -p62102218, 库 htma_dashboard
+数据库配置从项目根目录 .env 的 MYSQL_* 读取。
 """
 
 import os
@@ -13,17 +12,25 @@ import re
 import sys
 from datetime import datetime
 
+# 先加载 .env 再导其他
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(_ROOT, ".env"))
+except ImportError:
+    pass
+
 import pandas as pd
 import pymysql
 from pymysql.converters import escape_string
 
 DOWNLOADS = os.environ.get("DOWNLOADS", "/Users/apple/Downloads")
 MYSQL = {
-    "host": "127.0.0.1",
-    "port": 3306,
-    "user": "root",
-    "password": "62102218",
-    "database": "htma_dashboard",
+    "host": os.environ.get("MYSQL_HOST", "127.0.0.1"),
+    "port": int(os.environ.get("MYSQL_PORT", "3306")),
+    "user": os.environ.get("MYSQL_USER", "root"),
+    "password": os.environ.get("MYSQL_PASSWORD", "62102218"),
+    "database": os.environ.get("MYSQL_DATABASE", "htma_dashboard"),
     "charset": "utf8mb4",
 }
 
@@ -250,7 +257,7 @@ def main():
         charset=MYSQL["charset"],
     )
     ensure_db(conn)
-    # 若表不存在，请先执行: mysql -h 127.0.0.1 -u root -p62102218 < scripts/01_create_tables.sql
+    # 若表不存在，请先执行: mysql -h $MYSQL_HOST -u $MYSQL_USER -p$MYSQL_PASSWORD < scripts/01_create_tables.sql（环境变量来自 .env）
 
     total = 0
     for path in sale_daily[:3]:

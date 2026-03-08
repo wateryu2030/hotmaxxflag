@@ -90,8 +90,61 @@
       <button type="button" class="btn btn-secondary" id="btnRepairSwap" style="margin-left:8px;">修复：对调金额/成本</button>
       <button type="button" class="btn btn-secondary" id="btnRepairUnit" style="margin-left:8px;">修复：按单价×数量重算</button>
     </form>
-    <p class="tip" style="margin-top:8px;">「从下载目录自动导入」：将销售日报/销售汇总/实时库存 Excel 放入服务器上的下载目录（默认项目/downloads 或环境变量 IMPORT_DOWNLOADS_DIR），点击后自动导入、去重并刷新毛利/品类/商品，确保数据完整可靠。</p>
+    <p class="tip" style="margin-top:8px;">「从下载目录自动导入」：将销售日报/销售汇总/实时库存/分店商品档案 Excel 放入服务器上的下载目录（默认项目/downloads 或环境变量 IMPORT_DOWNLOADS_DIR），点击后自动导入、去重并刷新毛利/品类/商品；商品档案按门店+货号去重覆盖，与销售/库存一致。</p>
     <div id="result" class="result" style="display:none;"></div>
+  </div>
+
+    <div class="section">
+    <h2>人力成本导入（组长表 + 全职表 + 兼职/小时工/保洁/管理岗）</h2>
+    <p class="tip" style="margin-bottom:12px;">Excel 支持单 sheet 或多 sheet，系统<strong>自动识别</strong>类目（组长/职能、全职、兼职、小时工、保洁、管理岗）并<strong>自动清洗</strong>岗位名、归类写入。表头含「岗位/职务/属性」「合计薪资/费用总额/费用合计」等即可；导入后在看板「人力成本」按全口径与类目拆分查看。与脚本 <code>scripts/import_labor_excel_and_analyze.py</code> 使用同一套导入逻辑。</p>
+    <form id="laborCostForm">
+      <div class="file-row">
+        <label>报表月份</label>
+        <input type="text" name="report_month" id="laborReportMonth" placeholder="2026-01" value="2026-01" style="width:100px;padding:8px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;" />
+        <span class="tip">格式 YYYY-MM；与 Excel 内容一致（12 月表→2025-12，1 月表→2026-01）</span>
+      </div>
+      <div class="file-row">
+        <label>人力成本 Excel</label>
+        <input type="file" name="file" accept=".xls,.xlsx" id="fileLaborCost" />
+      </div>
+      <button type="submit" class="btn" id="laborCostSubmitBtn">导入人力成本</button>
+      <a href="/labor" class="btn btn-secondary" id="btnLaborCostAnalysis" style="margin-left:8px;text-decoration:none;display:inline-block;">查看人力分析</a>
+    </form>
+    <p class="tip" style="margin-top:8px;">或按<strong>附图</strong>方式：组长表与组员表为<strong>两张表</strong>，请分别上传。上传附表截图/照片（含岗位、合计薪资、费用总额等表头），系统 OCR 识别后写入 MySQL。识别超时请缩小图片或仅裁剪表格区域。</p>
+    <form id="laborCostImageForm" style="margin-top:12px;">
+      <div class="file-row">
+        <label>报表月份</label>
+        <input type="text" id="laborImageReportMonth" placeholder="2026-01" value="2026-01" style="width:100px;padding:8px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;" />
+      </div>
+      <div class="file-row">
+        <label>表类型</label>
+        <select id="laborImagePositionType" style="padding:8px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;">
+          <option value="leader">组长表</option>
+          <option value="fulltime">组员表</option>
+        </select>
+        <span style="color:#64748b;font-size:0.85rem;">与附图一一对应，组长表/组员表各传一次</span>
+      </div>
+      <div class="file-row">
+        <label>附表截图/照片</label>
+        <input type="file" name="file" accept=".png,.jpg,.jpeg" id="fileLaborCostImage" />
+      </div>
+      <button type="submit" class="btn btn-secondary" id="laborCostImageSubmitBtn">附图转录导入</button>
+    </form>
+    <div id="laborCostResult" class="result" style="display:none;"></div>
+  </div>
+
+  <div class="section">
+    <h2>分店商品档案导入</h2>
+    <p class="tip" style="margin-bottom:12px;">上传「分店商品档案_YYYYMMDD_*.xlsx」全量 Excel，导入到 t_htma_product_master 表；同门店+货号会覆盖更新。导入后在「商品档案」页查看按状态/品类/品牌/经销方式/价格带的分析。</p>
+    <form id="productMasterForm">
+      <div class="file-row">
+        <label>分店商品档案 Excel</label>
+        <input type="file" name="file" accept=".xls,.xlsx" id="fileProductMaster" />
+      </div>
+      <button type="submit" class="btn" id="productMasterSubmitBtn">导入商品档案</button>
+      <a href="/product_master" class="btn btn-secondary" style="margin-left:8px;text-decoration:none;display:inline-block;">查看商品档案分析</a>
+    </form>
+    <div id="productMasterResult" class="result" style="display:none;"></div>
   </div>
 
   <script>
@@ -221,26 +274,31 @@
       resultEl.className = 'result';
       resultEl.textContent = '正在从下载目录导入（查找 Excel → 导入 → 去重 → 刷新），请稍候…';
       try {
-        const r = await fetch(apiBase() + '/api/import_from_downloads', { method: 'POST', headers: { 'Accept': 'application/json' } });
+        const r = await fetch(apiBase() + '/api/import_from_downloads', { method: 'POST', headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
         const text = await r.text();
         let d;
-        try { d = JSON.parse(text); } catch (_) { d = { success: false, message: text.slice(0, 200) }; }
+        try { d = JSON.parse(text); } catch (_) { d = { success: false, message: r.status === 401 ? '请先登录后再操作' : (r.status === 403 ? '无权限' : (text.slice(0, 300) || '请求异常')) }; }
         loadDataStatus();
         if (d.success) {
           let msg = '从下载目录导入完成\n';
           msg += `目录: ${d.directory || '-'}\n`;
-          msg += `销售日报: ${d.sale_daily || 0} 条  销售汇总: ${d.sale_summary || 0} 条  库存: ${d.stock || 0} 条\n`;
+          msg += `销售日报: ${d.sale_daily || 0} 条  销售汇总: ${d.sale_summary || 0} 条  库存: ${d.stock || 0} 条  分店商品档案: ${d.product_master || 0} 条\n`;
           msg += `去重: ${d.dedup_done ? '已执行' : '未执行/失败'}\n`;
           msg += `--- 当前数据 ---\n`;
           msg += `销售表: ${d.sale_total || 0} 条，销售金额合计: ${(d.sale_total_amount != null) ? Number(d.sale_total_amount).toLocaleString('zh-CN') : '-'}\n`;
           msg += `库存表: ${d.stock_total || 0} 条，库存金额合计: ${(d.stock_total_amount != null) ? Number(d.stock_total_amount).toLocaleString('zh-CN') : '-'}\n`;
           msg += `毛利表: ${d.profit_total || 0} 条  日期范围: ${d.date_range || '-'}`;
+          if (d.product_master_total != null && d.product_master_total > 0) msg += `\n商品档案表: ${d.product_master_total} 条`;
           if (d.errors && d.errors.length) msg += '\n警告: ' + d.errors.join('; ');
           if (d.diagnostics && d.diagnostics.length) msg += '\n' + d.diagnostics.join('; ');
           resultEl.textContent = msg;
           resultEl.className = 'result success';
         } else {
-          resultEl.textContent = (d.message || '导入失败') + (d.hint ? '\n' + d.hint : '') + (d.directory ? '\n目录: ' + d.directory : '');
+          let errMsg = d.message || '导入失败';
+          if (d.hint) errMsg += '\n' + d.hint;
+          if (d.directory) errMsg += '\n服务器目录: ' + d.directory;
+          if (!r.ok && r.status !== 200) errMsg = '[' + r.status + '] ' + errMsg;
+          resultEl.textContent = errMsg;
           resultEl.className = 'result error';
         }
       } catch (e) {
@@ -331,6 +389,160 @@
     }
     document.getElementById('btnPreviewDaily').onclick = () => doPreview('sale_daily');
     document.getElementById('btnPreviewSummary').onclick = () => doPreview('sale_summary');
+
+    document.getElementById('laborCostForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const month = document.getElementById('laborReportMonth').value.trim();
+      const fileInput = document.getElementById('fileLaborCost');
+      const btn = document.getElementById('laborCostSubmitBtn');
+      const resultEl = document.getElementById('laborCostResult');
+      if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+        resultEl.textContent = '请填写报表月份，格式 YYYY-MM（如 2026-01）';
+        resultEl.className = 'result error';
+        resultEl.style.display = 'block';
+        return;
+      }
+      if (!fileInput.files || !fileInput.files[0]) {
+        resultEl.textContent = '请选择人力成本 Excel 文件';
+        resultEl.className = 'result error';
+        resultEl.style.display = 'block';
+        return;
+      }
+      btn.disabled = true;
+      resultEl.style.display = 'block';
+      resultEl.className = 'result';
+      resultEl.textContent = '导入中…';
+      const fd = new FormData();
+      fd.append('report_month', month);
+      fd.append('file', fileInput.files[0]);
+      try {
+        const r = await fetch(apiBase() + '/api/import_labor_cost', { method: 'POST', body: fd });
+        const d = await r.json();
+        if (d.success) {
+          const reportMonth = (d.report_month || month);
+          resultEl.innerHTML = (d.message || '') +
+            '<br/><a href="/labor?month=' + encodeURIComponent(reportMonth) + '">→ 人力成本页（' + reportMonth + '）</a> &nbsp; <a href="/labor">→ 人力成本汇总</a>';
+          resultEl.className = 'result success';
+        } else {
+          resultEl.textContent = '导入失败: ' + (d.message || '');
+          resultEl.className = 'result error';
+        }
+      } catch (err) {
+        resultEl.textContent = '请求失败: ' + err.message;
+        resultEl.className = 'result error';
+      }
+      resultEl.style.display = 'block';
+      btn.disabled = false;
+    };
+
+    document.getElementById('laborCostImageForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const month = document.getElementById('laborImageReportMonth').value.trim();
+      const positionType = (document.getElementById('laborImagePositionType').value || '').trim();
+      const fileInput = document.getElementById('fileLaborCostImage');
+      const btn = document.getElementById('laborCostImageSubmitBtn');
+      const resultEl = document.getElementById('laborCostResult');
+      if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+        resultEl.textContent = '请填写报表月份，格式 YYYY-MM（如 2026-01）';
+        resultEl.className = 'result error';
+        resultEl.style.display = 'block';
+        return;
+      }
+      if (!positionType || !['leader', 'fulltime'].includes(positionType)) {
+        resultEl.textContent = '请选择表类型：组长表 或 组员表';
+        resultEl.className = 'result error';
+        resultEl.style.display = 'block';
+        return;
+      }
+      if (!fileInput.files || !fileInput.files[0]) {
+        resultEl.textContent = '请选择附表截图/照片（png/jpg/jpeg）';
+        resultEl.className = 'result error';
+        resultEl.style.display = 'block';
+        return;
+      }
+      btn.disabled = true;
+      resultEl.style.display = 'block';
+      resultEl.className = 'result';
+      resultEl.textContent = 'OCR 识别中…（约 1 分钟内，超时请缩小图片）';
+      const fd = new FormData();
+      fd.append('report_month', month);
+      fd.append('position_type', positionType);
+      fd.append('file', fileInput.files[0]);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 100000);
+      try {
+        const r = await fetch(apiBase() + '/api/import_labor_cost_image', { method: 'POST', body: fd, signal: controller.signal });
+        clearTimeout(timeoutId);
+        const contentType = r.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          const text = await r.text();
+          resultEl.textContent = '服务器返回非 JSON（' + r.status + '），请检查后端或缩小图片重试。';
+          resultEl.className = 'result error';
+          return;
+        }
+        const d = await r.json();
+        if (d.success) {
+          resultEl.textContent = (d.message || '') + (d.diagnostics && d.diagnostics.length ? '\n' + d.diagnostics.join('；') : '');
+          resultEl.className = 'result success';
+        } else {
+          resultEl.textContent = '导入失败: ' + (d.message || '') + (d.diagnostics && d.diagnostics.length ? '\n' + d.diagnostics.join('；') : '');
+          resultEl.className = 'result error';
+        }
+      } catch (err) {
+        clearTimeout(timeoutId);
+        if (err.name === 'AbortError') {
+          resultEl.textContent = '请求超时（约 100 秒），请缩小图片、仅裁剪表格区域，或改用 Excel 导入。';
+        } else {
+          resultEl.textContent = '请求失败: ' + (err.message || '');
+        }
+        resultEl.className = 'result error';
+      } finally {
+        resultEl.style.display = 'block';
+        btn.disabled = false;
+      }
+    };
+
+    document.getElementById('btnLaborCostAnalysis').onclick = function(e) {
+      e.preventDefault();
+      const month = document.getElementById('laborReportMonth').value.trim() || '2026-01';
+      if (!/^\d{4}-\d{2}$/.test(month)) return;
+      window.location.href = '/labor?month=' + encodeURIComponent(month);
+    };
+
+    document.getElementById('productMasterForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const fileInput = document.getElementById('fileProductMaster');
+      const btn = document.getElementById('productMasterSubmitBtn');
+      const resultEl = document.getElementById('productMasterResult');
+      if (!fileInput.files || !fileInput.files[0]) {
+        resultEl.textContent = '请选择分店商品档案 Excel 文件';
+        resultEl.className = 'result error';
+        resultEl.style.display = 'block';
+        return;
+      }
+      btn.disabled = true;
+      resultEl.style.display = 'block';
+      resultEl.className = 'result';
+      resultEl.textContent = '导入中…';
+      const fd = new FormData();
+      fd.append('file', fileInput.files[0]);
+      try {
+        const r = await fetch(apiBase() + '/api/import_product_master', { method: 'POST', body: fd });
+        const d = await r.json();
+        if (d.success) {
+          resultEl.innerHTML = (d.message || '') + '<br/><a href="/product_master">→ 商品档案分析</a>';
+          resultEl.className = 'result success';
+        } else {
+          resultEl.textContent = '导入失败: ' + (d.message || '');
+          resultEl.className = 'result error';
+        }
+      } catch (err) {
+        resultEl.textContent = '请求失败: ' + err.message;
+        resultEl.className = 'result error';
+      }
+      resultEl.style.display = 'block';
+      btn.disabled = false;
+    };
   </script>
 </body>
 </html>

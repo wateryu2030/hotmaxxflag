@@ -10,6 +10,7 @@
 set -e
 cd "$(dirname "$0")/.."
 PROJECT_ROOT="$(pwd)"
+[ -f "$PROJECT_ROOT/.env" ] && set -a && . "$PROJECT_ROOT/.env" 2>/dev/null && set +a
 MAX_TRY=3
 RETRY_DELAY=15
 

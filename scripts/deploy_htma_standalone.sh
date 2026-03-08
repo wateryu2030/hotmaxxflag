@@ -5,9 +5,10 @@
 set -e
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
+[ -f .env ] && set -a && . .env 2>/dev/null && set +a
 
 echo "=== 1. 检查 MySQL 与数据 ==="
-MYSQL_OPTS="-h 127.0.0.1 -u root -p62102218"
+MYSQL_OPTS="-h ${MYSQL_HOST:-127.0.0.1} -u ${MYSQL_USER:-root} -p${MYSQL_PASSWORD:-62102218}"
 mysql $MYSQL_OPTS -e "
   SELECT 'stock' AS tbl, COUNT(*) AS cnt FROM htma_dashboard.t_htma_stock
   UNION ALL SELECT 'sale', COUNT(*) FROM htma_dashboard.t_htma_sale

@@ -10,28 +10,24 @@ import os
 import sys
 from datetime import date, datetime
 
-# 添加 htma_dashboard 到路径
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "htma_dashboard"))
+# 项目根目录并加载 .env，数据库配置从 .env 的 MYSQL_* 读取
+_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(_root, ".env"))
+except ImportError:
+    pass
+sys.path.insert(0, _root)
 import pymysql
-
-from analytics import build_marketing_report
-from feishu_util import send_feishu, FEISHU_AT_USER_ID, FEISHU_AT_USER_NAME
+from htma_dashboard.db_config import get_conn
+from htma_dashboard.analytics import build_marketing_report
+from htma_dashboard.feishu_util import send_feishu, FEISHU_AT_USER_ID, FEISHU_AT_USER_NAME
 
 STORE_ID = "沈阳超级仓"
 DAYS = 30  # 分析近 N 天
 # 指定接收人：余为军 open_id 支持 8db735f2 或 ou_8db735f2
 AT_USER_ID = os.environ.get("FEISHU_AT_USER_ID", "ou_8db735f2")
 AT_USER_NAME = os.environ.get("FEISHU_AT_USER_NAME", "余为军")
-
-DB_CONFIG = {
-    "host": os.environ.get("MYSQL_HOST", "127.0.0.1"),
-    "port": int(os.environ.get("MYSQL_PORT", "3306")),
-    "user": os.environ.get("MYSQL_USER", "root"),
-    "password": os.environ.get("MYSQL_PASSWORD", "62102218"),
-    "database": "htma_dashboard",
-    "charset": "utf8mb4",
-    "cursorclass": pymysql.cursors.DictCursor,
-}
 
 
 def save_report_to_db(conn, report, send_ok, send_err=None):
@@ -66,7 +62,7 @@ def main():
     dry_run = "--dry-run" in sys.argv or "-n" in sys.argv
     conn = None
     try:
-        conn = pymysql.connect(**DB_CONFIG)
+        conn = get_conn()
         report = build_marketing_report(conn, STORE_ID, DAYS, mode="internal")
         print(report)
         send_ok = False

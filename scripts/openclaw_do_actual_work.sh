@@ -10,6 +10,7 @@
 set -e
 cd "$(dirname "$0")/.."
 PROJECT_ROOT="$(pwd)"
+[ -f "$PROJECT_ROOT/.env" ] && set -a && . "$PROJECT_ROOT/.env" 2>/dev/null && set +a
 
 echo "=========================================="
 echo "OpenClaw 自主完成实际改造工作"

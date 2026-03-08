@@ -1,6 +1,6 @@
 ---
 name: htma-openclaw-autonomous
-description: 利用 OpenClaw 自主完成编程工作；直接调用浏览器、终端、文件编辑等外设，由 AI 自主分析任务、决定步骤、迭代直至完成。触发词：利用 openclaw 自主完成编程工作、直接调用浏览器和外设自主执行、OpenClaw 自主编程。
+description: 利用 OpenClaw 自主完成编程工作；直接调用浏览器、终端、文件编辑等外设，由 AI 自主分析任务、决定步骤、迭代直至完成。触发词：利用 openclaw 自主完成编程工作、直接调用浏览器和外设自主执行、OpenClaw 自主编程；人力成本修改及检查、让 openclaw 自动完成人力成本修改及检查。
 metadata:
   openclaw:
     requires:
@@ -25,9 +25,7 @@ metadata:
 
 ## 工作目录
 
-```
-/Users/document/好特卖超级仓/数据分析
-```
+以 OpenClaw 当前工作区或 `skills.load.extraDirs` 所在项目根为准（例如 `/Volumes/ragflow/hotmaxx/hotmaxxflag` 或本机实际路径）。执行命令时请在项目根目录下运行。
 
 ## 你可用的能力（必须被配置允许）
 
@@ -46,6 +44,20 @@ metadata:
 4. **运行与调试**：`exec` 运行 `npm run htma:price_compare` 或 `htma:price_compare:auto`；若报错则 `read` 相关代码、`edit` 修复、再运行。
 5. **验证**：`exec` 启动 `npm run htma:run`，用 **browser** 打开 http://127.0.0.1:5002/ → 点击「AI 分析建议」→「比价」→ 执行比价 → 用 snapshot/截图确认页面上有「比价明细表」表格。
 6. **收尾**：若用户需要，可提交代码或给出简短完成报告。
+
+## 人力成本修改及检查（一键部署与校验）
+
+当用户说 **「让 openclaw 自动完成人力成本修改及检查」** 或 **「人力成本修改及检查」** 时：
+
+- **执行**：在项目根目录运行 `bash scripts/openclaw_labor_modify_and_check.sh`。
+- **可选**：若用户要求验证生产环境，或 `.env` 中已配置 `HTMA_PUBLIC_URL`，脚本会传入生产 base_url 做远程接口校验。
+- **说明**：该脚本会重启看板使人力成本 Tab 前端修改生效，并校验 `/api/labor_cost`、`/api/labor_cost_status`；详见 `docs/OpenClaw人力成本修改与检查.md`。
+
+当用户说 **「使用 openclaw 自动检查并修改完善」** 时：
+
+- **执行**：在项目根目录运行 `npm run htma:openclaw-check` 或 `bash scripts/openclaw_auto_check_and_fix.sh`。
+- **流程**：先运行人力成本+飞书检查 → 再部署并验证看板（重启 5002）→ 再次运行检查，确认本地接口 [2][3] 通过。
+- **可选**：可传入生产 base_url 作为参数，对生产做校验。
 
 ## 权限配置（用户需在 ~/.openclaw/openclaw.json 中开启）
 
