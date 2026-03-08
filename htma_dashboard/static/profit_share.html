@@ -61,6 +61,14 @@
     .ps-mid { background: rgba(34,211,238,0.06); border-left: 4px solid #22d3ee; }
     .ps-mid td:nth-child(3) { padding-left: 24px; }
     .expand-icon { display: inline-block; width: 14px; transition: transform 0.15s ease; }
+    .period-tabs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .period-tabs .tab-label { color: #94a3b8; font-size: 0.9rem; margin-right: 4px; }
+    .period-tabs .tab-btn { padding: 6px 14px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: #94a3b8; font-size: 0.9rem; cursor: pointer; }
+    .period-tabs .tab-btn:hover { background: #334155; color: #e2e8f0; }
+    .period-tabs .tab-btn.active { background: #38bdf8; color: #0f172a; border-color: #38bdf8; }
+    .date-range-inline { display: none; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+    .date-range-inline label { cursor: pointer; color: #94a3b8; font-size: 0.9rem; }
+    .date-range-inline input[type="date"] { padding: 8px 12px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; }
   </style>
 </head>
 <body>
@@ -80,22 +88,21 @@
     <!-- Tab1: 分账计算 -->
     <div id="panelCalc" class="tab-panel active section">
       <div class="rule-bar" id="currentRuleBar">当前规则：加载中…</div>
-      <div class="form-row">
-        <label>计算方式</label>
-        <label style="min-width:auto;"><input type="radio" name="calcMode" value="month" checked /> 按月份</label>
-        <label style="min-width:auto;"><input type="radio" name="calcMode" value="range" /> 自定义时间段</label>
+      <p class="tip" style="margin-bottom:10px;">计算周期：点击下方按钮选择预设周期，或选「自定义」后点击起止日期框选择时间范围。</p>
+      <div class="period-tabs">
+        <span class="tab-label">计算周期：</span>
+        <button type="button" class="tab-btn" data-period="custom" id="psTabCustom">自定义</button>
+        <button type="button" class="tab-btn active" data-period="recent30" id="psTabRecent30">近30天</button>
+        <button type="button" class="tab-btn" data-period="month" id="psTabMonth">本月</button>
+        <button type="button" class="tab-btn" data-period="week" id="psTabWeek">本周</button>
       </div>
-      <div id="calcMonthRow" class="form-row">
-        <label>计算月份</label>
-        <input type="month" id="calcMonth" />
+      <div class="date-range-inline" id="psDateRangeInline">
+        <label for="psStartDate">起止日期：</label>
+        <input type="date" id="psStartDate" aria-label="起始日期" title="点击选择或输入 YYYY-MM-DD" />
+        <span style="color:#64748b;">至</span>
+        <input type="date" id="psEndDate" aria-label="结束日期" title="点击选择或输入 YYYY-MM-DD" />
       </div>
-      <div id="calcRangeRow" class="form-row" style="display:none;">
-        <label>开始日期</label>
-        <input type="date" id="calcStartDate" />
-        <label style="min-width:auto;">结束日期</label>
-        <input type="date" id="calcEndDate" />
-      </div>
-      <div class="form-row">
+      <div class="form-row" style="margin-top:14px;">
         <button class="btn" id="btnCalc">开始计算</button>
       </div>
       <div id="calcErrorWrap" class="result error" style="display:none; margin-top:12px;"></div>
@@ -230,31 +237,102 @@
       }
     }
 
-    let defaultMonth = '';
-    function initMonth() {
-      const d = new Date();
-      defaultMonth = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
-      document.getElementById('calcMonth').value = defaultMonth;
-      const today = d.toISOString().slice(0, 10);
-      document.getElementById('calcEndDate').value = today;
-      const firstDay = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
-      document.getElementById('calcStartDate').value = firstDay;
-    }
+    var psPeriod = 'recent30';
+    var psStartDate = '';
+    var psEndDate = '';
+    var psDateRangeData = { data_min_date: '2010-01-01', data_max_date: '2030-12-31' };
+
     function clearCalcResult() {
       document.getElementById('calcResultWrap').style.display = 'none';
       document.getElementById('calcErrorWrap').style.display = 'none';
     }
-    document.querySelectorAll('input[name="calcMode"]').forEach(function(radio) {
-      radio.addEventListener('change', function() {
-        const isMonth = document.querySelector('input[name="calcMode"]:checked').value === 'month';
-        document.getElementById('calcMonthRow').style.display = isMonth ? '' : 'none';
-        document.getElementById('calcRangeRow').style.display = isMonth ? 'none' : '';
+
+    function psGetStartEnd() {
+      var startIn = document.getElementById('psStartDate');
+      var endIn = document.getElementById('psEndDate');
+      if (psPeriod === 'custom' && startIn && endIn) {
+        var s = (startIn.value || '').trim().replace(/\//g, '-');
+        var e = (endIn.value || '').trim().replace(/\//g, '-');
+        if (s && e) return { start: s, end: e };
+      }
+      var today = new Date();
+      var y = today.getFullYear(), m = today.getMonth(), d = today.getDate();
+      var todayStr = today.toISOString().slice(0, 10);
+      if (psPeriod === 'recent30') {
+        var from = new Date(today);
+        from.setDate(from.getDate() - 29);
+        return { start: from.toISOString().slice(0, 10), end: todayStr };
+      }
+      if (psPeriod === 'month') {
+        var first = new Date(y, m, 1).toISOString().slice(0, 10);
+        return { start: first, end: todayStr };
+      }
+      if (psPeriod === 'week') {
+        var day = today.getDay();
+        var diff = day === 0 ? 6 : day - 1;
+        var mon = new Date(today);
+        mon.setDate(mon.getDate() - diff);
+        return { start: mon.toISOString().slice(0, 10), end: todayStr };
+      }
+      return null;
+    }
+
+    function updatePsPeriodUI() {
+      document.querySelectorAll('.period-tabs .tab-btn').forEach(function(btn) {
+        btn.classList.toggle('active', btn.dataset.period === psPeriod);
+      });
+      var el = document.getElementById('psDateRangeInline');
+      if (el) el.style.display = psPeriod === 'custom' ? 'flex' : 'none';
+    }
+
+    async function loadPsDateRange() {
+      try {
+        var r = await fetch(API + '/api/date_range', { credentials: 'include' });
+        var d = await r.json();
+        if (d && (d.data_min_date || d.data_max_date)) {
+          psDateRangeData.data_min_date = d.data_min_date || psDateRangeData.data_min_date;
+          psDateRangeData.data_max_date = d.data_max_date || psDateRangeData.data_max_date;
+        }
+      } catch (e) {}
+    }
+
+    document.querySelectorAll('.period-tabs .tab-btn').forEach(function(btn) {
+      btn.addEventListener('click', async function() {
+        psPeriod = this.dataset.period || 'recent30';
+        if (psPeriod === 'custom') {
+          await loadPsDateRange();
+          var startIn = document.getElementById('psStartDate');
+          var endIn = document.getElementById('psEndDate');
+          var minD = psDateRangeData.data_min_date || '2010-01-01';
+          var maxD = psDateRangeData.data_max_date || new Date().toISOString().slice(0, 10);
+          if (startIn) {
+            startIn.min = minD;
+            startIn.max = maxD;
+            if (!startIn.value || startIn.value < minD || startIn.value > maxD) {
+              var defaultStart = maxD.slice(0, 4) + '-' + maxD.slice(5, 7) + '-01';
+              if (defaultStart > maxD) {
+                var dm = new Date(maxD);
+                dm.setMonth(dm.getMonth() - 1);
+                defaultStart = dm.toISOString().slice(0, 10);
+              }
+              startIn.value = defaultStart < minD ? minD : defaultStart;
+            }
+          }
+          if (endIn) {
+            endIn.min = minD;
+            endIn.max = maxD;
+            if (!endIn.value || endIn.value < minD || endIn.value > maxD) endIn.value = maxD;
+          }
+          updatePsPeriodUI();
+          setTimeout(function() { startIn && startIn.focus(); }, 100);
+        } else {
+          updatePsPeriodUI();
+        }
         clearCalcResult();
       });
     });
-    document.getElementById('calcMonth').addEventListener('change', clearCalcResult);
-    document.getElementById('calcStartDate').addEventListener('change', clearCalcResult);
-    document.getElementById('calcEndDate').addEventListener('change', clearCalcResult);
+    document.getElementById('psStartDate').addEventListener('change', clearCalcResult);
+    document.getElementById('psEndDate').addEventListener('change', clearCalcResult);
 
     function fmt(v) {
       return v != null && v !== '' ? Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2 }) : '—';
@@ -385,29 +463,17 @@
     }
 
     document.getElementById('btnCalc').addEventListener('click', async function() {
-      const isMonth = document.querySelector('input[name="calcMode"]:checked').value === 'month';
-      let payload = {};
-      if (isMonth) {
-        var monthEl = document.getElementById('calcMonth');
-        var month = (monthEl.value || '').trim();
-        if (!month && defaultMonth) {
-          monthEl.value = defaultMonth;
-          month = defaultMonth;
-        }
-        if (!month || month.length !== 7 || month.indexOf('-') !== 4) {
-          alert('请选择计算月份（格式 YYYY-MM）');
-          monthEl.focus();
-          return;
-        }
-        payload.month = month;
-      } else {
-        const startDate = (document.getElementById('calcStartDate').value || '').trim();
-        const endDate = (document.getElementById('calcEndDate').value || '').trim();
-        if (!startDate || !endDate) { alert('请选择开始日期和结束日期'); return; }
-        if (startDate > endDate) { alert('开始日期不能晚于结束日期'); return; }
-        payload.start_date = startDate;
-        payload.end_date = endDate;
+      var range = psGetStartEnd();
+      if (!range || !range.start || !range.end) {
+        alert('请先选择计算周期：点击「自定义」后选择起止日期，或使用近30天/本月/本周');
+        return;
       }
+      if (range.start > range.end) {
+        var t = range.start;
+        range.start = range.end;
+        range.end = t;
+      }
+      var payload = { start_date: range.start, end_date: range.end };
       const btn = this;
       btn.disabled = true;
       document.getElementById('calcErrorWrap').style.display = 'none';
@@ -582,7 +648,8 @@
       const largeCode = document.getElementById('excludeLarge').value;
       if (!largeCode) { alert('请先选择大类'); return; }
       const midCode = document.getElementById('excludeMid').value || '';
-      const month = document.getElementById('calcMonth').value || defaultMonth;
+      var range = psGetStartEnd();
+      var month = (range && range.start) ? range.start.slice(0, 7) : (new Date().toISOString().slice(0, 7));
       let q = '?month=' + encodeURIComponent(month) + '&category_large_code=' + encodeURIComponent(largeCode);
       if (midCode) q += '&category_mid_code=' + encodeURIComponent(midCode);
       const r = await fetch(API + '/api/profit_share/preview' + q);
@@ -596,7 +663,6 @@
 
     (async function init() {
       if (!await checkPerm()) return;
-      initMonth();
       loadCurrentRule();
       loadHistory();
     })();
