@@ -94,6 +94,7 @@ for _p in (_env_path, os.path.join(os.getcwd(), ".env"), os.path.abspath(os.path
 import subprocess
 import tempfile
 import threading
+import time
 import pymysql
 from db_config import DB_CONFIG, get_conn
 from flask import Flask, Response, jsonify, send_from_directory, request, session, redirect
@@ -101,6 +102,23 @@ from werkzeug.utils import secure_filename
 
 from import_logic import import_sale_daily, import_sale_summary, import_stock, import_category, import_profit, import_tax_burden, refresh_profit, refresh_category_from_sale, sync_products_table, sync_category_table, preview_sale_excel, import_labor_cost, import_labor_cost_from_image, refresh_labor_cost_analysis, import_product_master, _ensure_product_master_distribution_mode
 from analytics import build_insights, category_rank_data
+from query_layer import date_condition as _ql_date_condition, query_filters_from_request as _ql_query_filters
+
+# 简单内存缓存：key -> (value, expire_at)，用于 date_range / kpi 等只读接口
+_api_cache = {}
+_CACHE_TTL = 60  # 秒
+
+def _cache_get(key):
+    if key not in _api_cache:
+        return None
+    val, expire = _api_cache[key]
+    if time.time() > expire:
+        del _api_cache[key]
+        return None
+    return val
+
+def _cache_set(key, value, ttl=None):
+    _api_cache[key] = (value, time.time() + (ttl or _CACHE_TTL))
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024  # 200MB，避免大 Excel 413
@@ -162,7 +180,7 @@ def _has_module_access(module, user_id=None):
     - 超级管理员（HTMA_SUPER_ADMIN_OPEN_ID，默认余为军）拥有所有模块权限，便于通过飞书调试
     - HTMA_ADMIN_FEISHU_OPEN_IDS 中的用户也拥有所有模块权限
     - 各模块 env 为空时默认放行
-    - module: 'import' | 'labor' | 'profit' | 'product_master'"""
+    - module: 'import' | 'labor' | 'profit' | 'product_master' | 'profit_share'"""
     uid = (user_id or session.get("open_id") or session.get("user_id") or "").strip()
     if not uid:
         return False
@@ -186,6 +204,7 @@ def _has_module_access(module, user_id=None):
         "labor": "HTMA_LABOR_ALLOWED_FEISHU_OPEN_IDS",
         "profit": "HTMA_PROFIT_ALLOWED_FEISHU_OPEN_IDS",
         "product_master": "HTMA_PRODUCT_MASTER_ALLOWED_FEISHU_OPEN_IDS",
+        "profit_share": "HTMA_PROFIT_SHARE_ALLOWED_FEISHU_OPEN_IDS",
     }
     env_name = env_map.get(module)
     if not env_name:
@@ -238,7 +257,7 @@ def _require_auth():
     if _is_logged_in():
         return None
     # 未登录：页面请求重定向到登录页，API 返回 401
-    if path in ("/import", "/product_master") or path.startswith("/api/"):
+    if path in ("/import", "/product_master", "/profit_share") or path.startswith("/api/"):
         if request.path.startswith("/api/"):
             return jsonify({"success": False, "message": "请先登录", "login_required": True}), 401
         return redirect("/login?next=" + (urllib.parse.quote(request.url) if request.url else "/"))
@@ -334,6 +353,110 @@ def api_category_rank_small():
                 "rank": i,
                 "category_small": r.get("category_small") or r.get("category") or "未分类",
                 "category_small_code": r.get("category_small_code") or "",
+                "sale_amount": round(sale, 2),
+                "profit_amount": round(profit, 2),
+                "margin_pct": round(margin, 2),
+            })
+        return jsonify(out)
+    finally:
+        conn.close()
+
+
+@app.route("/api/category_rank_brands", methods=["GET", "HEAD"])
+def api_category_rank_brands():
+    """品类排行-品牌列表：按大类+中类+小类返回品牌汇总。用于小类下钻到品牌。"""
+    category_large_code = request.args.get("category_large_code", "").strip() or request.args.get("category_large", "").strip()
+    category_mid_code = request.args.get("category_mid_code", "").strip() or request.args.get("category_mid", "").strip()
+    category_small_code = request.args.get("category_small_code", "").strip() or request.args.get("category_small", "").strip() or request.args.get("category", "").strip()
+    if not category_large_code:
+        return jsonify([])
+    date_cond, date_params, _, category_cond, _ = _query_filters()
+    params = list((STORE_ID,) + date_params)
+    conds = [f" store_id = %s AND {date_cond} "]
+    conds.append(" AND (COALESCE(TRIM(category_large_code), '') = %s OR COALESCE(TRIM(category_large), '') = %s)")
+    params.extend([category_large_code, category_large_code])
+    if category_mid_code:
+        conds.append(" AND (COALESCE(TRIM(category_mid_code), '') = %s OR COALESCE(TRIM(category_mid), '') = %s)")
+        params.extend([category_mid_code, category_mid_code])
+    if category_small_code:
+        conds.append(" AND (COALESCE(TRIM(category_small_code), '') = %s OR COALESCE(TRIM(category_small), '') = %s OR COALESCE(TRIM(category), '') = %s)")
+        params.extend([category_small_code, category_small_code, category_small_code])
+    cat_cond = "".join(conds)
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(f"""
+                SELECT COALESCE(NULLIF(TRIM(brand_name), ''), '未分类') AS brand,
+                       SUM(sale_amount) AS total_sale, SUM(COALESCE(gross_profit, sale_amount - sale_cost, 0)) AS total_profit
+                FROM t_htma_sale
+                WHERE {cat_cond}
+                GROUP BY brand
+                ORDER BY total_sale DESC
+                LIMIT 200
+            """, tuple(params))
+            rows = cur.fetchall()
+        out = []
+        for i, r in enumerate(rows, 1):
+            sale = float(r["total_sale"] or 0)
+            profit = float(r["total_profit"] or 0)
+            margin = (profit / sale * 100) if sale > 0 else 0
+            out.append({
+                "rank": i,
+                "brand": r.get("brand") or "未分类",
+                "sale_amount": round(sale, 2),
+                "profit_amount": round(profit, 2),
+                "margin_pct": round(margin, 2),
+            })
+        return jsonify(out)
+    finally:
+        conn.close()
+
+
+@app.route("/api/category_rank_products", methods=["GET", "HEAD"])
+def api_category_rank_products():
+    """品类排行-商品列表：按大类+中类+小类+品牌返回 SKU 汇总。用于品牌下钻到商品。"""
+    category_large_code = request.args.get("category_large_code", "").strip() or request.args.get("category_large", "").strip()
+    category_mid_code = request.args.get("category_mid_code", "").strip() or request.args.get("category_mid", "").strip()
+    category_small_code = request.args.get("category_small_code", "").strip() or request.args.get("category_small", "").strip() or request.args.get("category", "").strip()
+    brand = (request.args.get("brand") or "").strip()
+    if not category_large_code or not brand:
+        return jsonify([])
+    date_cond, date_params, _, _, _ = _query_filters()
+    params = list((STORE_ID,) + date_params)
+    conds = [f" store_id = %s AND {date_cond} "]
+    conds.append(" AND (COALESCE(TRIM(category_large_code), '') = %s OR COALESCE(TRIM(category_large), '') = %s)")
+    params.extend([category_large_code, category_large_code])
+    if category_mid_code:
+        conds.append(" AND (COALESCE(TRIM(category_mid_code), '') = %s OR COALESCE(TRIM(category_mid), '') = %s)")
+        params.extend([category_mid_code, category_mid_code])
+    if category_small_code:
+        conds.append(" AND (COALESCE(TRIM(category_small_code), '') = %s OR COALESCE(TRIM(category_small), '') = %s OR COALESCE(TRIM(category), '') = %s)")
+        params.extend([category_small_code, category_small_code, category_small_code])
+    conds.append(" AND COALESCE(TRIM(brand_name), '') = %s")
+    params.append(brand)
+    cat_cond = "".join(conds)
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(f"""
+                SELECT sku_code, COALESCE(MAX(product_name), '') AS product_name,
+                       SUM(sale_amount) AS total_sale, SUM(COALESCE(gross_profit, sale_amount - sale_cost, 0)) AS total_profit
+                FROM t_htma_sale
+                WHERE {cat_cond}
+                GROUP BY sku_code
+                ORDER BY total_sale DESC
+                LIMIT 200
+            """, tuple(params))
+            rows = cur.fetchall()
+        out = []
+        for i, r in enumerate(rows, 1):
+            sale = float(r["total_sale"] or 0)
+            profit = float(r["total_profit"] or 0)
+            margin = (profit / sale * 100) if sale > 0 else 0
+            out.append({
+                "rank": i,
+                "sku_code": r.get("sku_code") or "",
+                "product_name": (r.get("product_name") or "")[:64],
                 "sale_amount": round(sale, 2),
                 "profit_amount": round(profit, 2),
                 "margin_pct": round(margin, 2),
@@ -530,56 +653,55 @@ def api_consumer_insight_trend():
                 return_rate.append(round(ret / net * 100, 2) if net > 0 else 0)
         by_category = {}
         by_distribution = {}
-        # by_category：品类 Top5 走势，仅用 t_htma_sale，不依赖 product_master；放宽到 120 以便更长周期有数据
+        # by_category：品类 Top5 走势，单条 SQL 按 (时间维度, 品类) 聚合，减少往返
         if rows and len(rows) <= 120:
             try:
-                cat_list = []
                 cur.execute("""
                     SELECT COALESCE(NULLIF(TRIM(category_large), ''), NULLIF(TRIM(category_mid), ''), NULLIF(TRIM(category), ''), '未分类') AS cat
                     FROM t_htma_sale WHERE """ + cond + """
                     GROUP BY cat ORDER BY SUM(sale_amount) DESC LIMIT 5
                 """, tuple(params))
-                for r in cur.fetchall():
-                    cat_list.append((r.get("cat") or "未分类").strip())
-                cat_cond = " AND COALESCE(NULLIF(TRIM(category_large), ''), NULLIF(TRIM(category_mid), ''), NULLIF(TRIM(category), ''), '未分类') = %s "
-                for cat in cat_list:
-                    p = tuple(params) + (cat,)
+                cat_list = [(r.get("cat") or "未分类").strip() for r in cur.fetchall()]
+                if cat_list:
+                    cat_placeholders = ",".join(["%s"] * len(cat_list))
+                    cat_cond = " AND COALESCE(NULLIF(TRIM(category_large), ''), NULLIF(TRIM(category_mid), ''), NULLIF(TRIM(category), ''), '未分类') IN (" + cat_placeholders + ")"
+                    p = tuple(params) + tuple(cat_list)
                     if granularity == "day":
                         cur.execute("""
-                            SELECT data_date AS dt, COALESCE(SUM(sale_amount), 0) AS v
-                            FROM t_htma_sale
-                            WHERE """ + cond + cat_cond + """
-                            GROUP BY data_date ORDER BY data_date
+                            SELECT data_date AS dt, COALESCE(NULLIF(TRIM(category_large), ''), NULLIF(TRIM(category_mid), ''), NULLIF(TRIM(category), ''), '未分类') AS cat, COALESCE(SUM(sale_amount), 0) AS v
+                            FROM t_htma_sale WHERE """ + cond + cat_cond + """
+                            GROUP BY data_date, cat ORDER BY data_date
                         """, p)
                     elif granularity == "week":
                         cur.execute("""
-                            SELECT YEAR(data_date) AS y, WEEK(data_date, 3) AS w, MIN(data_date) AS week_start, COALESCE(SUM(sale_amount), 0) AS v
-                            FROM t_htma_sale
-                            WHERE """ + cond + cat_cond + """
-                            GROUP BY YEAR(data_date), WEEK(data_date, 3) ORDER BY week_start
+                            SELECT YEAR(data_date) AS y, WEEK(data_date, 3) AS w, MIN(data_date) AS week_start,
+                                COALESCE(NULLIF(TRIM(category_large), ''), NULLIF(TRIM(category_mid), ''), NULLIF(TRIM(category), ''), '未分类') AS cat, COALESCE(SUM(sale_amount), 0) AS v
+                            FROM t_htma_sale WHERE """ + cond + cat_cond + """
+                            GROUP BY YEAR(data_date), WEEK(data_date, 3), cat ORDER BY week_start
                         """, p)
                     else:
                         cur.execute("""
-                            SELECT DATE_FORMAT(MIN(data_date), '%%Y-%%m') AS month_key, COALESCE(SUM(sale_amount), 0) AS v
-                            FROM t_htma_sale
-                            WHERE """ + cond + cat_cond + """
-                            GROUP BY YEAR(data_date), MONTH(data_date) ORDER BY MIN(data_date)
+                            SELECT DATE_FORMAT(MIN(data_date), '%%Y-%%m') AS month_key,
+                                COALESCE(NULLIF(TRIM(category_large), ''), NULLIF(TRIM(category_mid), ''), NULLIF(TRIM(category), ''), '未分类') AS cat, COALESCE(SUM(sale_amount), 0) AS v
+                            FROM t_htma_sale WHERE """ + cond + cat_cond + """
+                            GROUP BY YEAR(data_date), MONTH(data_date), cat ORDER BY MIN(data_date)
                         """, p)
                     cat_rows = cur.fetchall()
-                    if granularity == "day":
-                        cat_map = {}
-                        for x in cat_rows:
+                    from collections import defaultdict
+                    cat_to_map = defaultdict(dict)
+                    for x in cat_rows:
+                        cat = (x.get("cat") or "未分类").strip()
+                        v = round(float(x.get("v") or 0), 2)
+                        if granularity == "day":
                             k = x.get("dt")
                             k = k.strftime("%Y-%m-%d") if hasattr(k, "strftime") else str(k)
-                            cat_map[k] = round(float(x.get("v") or 0), 2)
-                    elif granularity == "week":
-                        cat_map = {}
-                        for x in cat_rows:
+                        elif granularity == "week":
                             k = "%s-W%02d" % (x.get("y"), x.get("w") or 0)
-                            cat_map[k] = round(float(x.get("v") or 0), 2)
-                    else:
-                        cat_map = {x.get("month_key") or "": round(float(x.get("v") or 0), 2) for x in cat_rows}
-                    by_category[cat[:16]] = [cat_map.get(lb, 0) for lb in labels]
+                        else:
+                            k = x.get("month_key") or ""
+                        cat_to_map[cat][k] = v
+                    for cat in cat_list:
+                        by_category[cat[:16]] = [cat_to_map[cat].get(lb, 0) for lb in labels]
             except Exception:
                 by_category = {}
             # 经销方式走势已移除：依赖 distribution_mode，生产库缺列易导致 500；主走势与品类 Top5 不依赖
@@ -1280,71 +1402,107 @@ def _get_consumer_insight_data():
         period = request.args.get("period", "recent30")
         date_range = f"{start_d} ~ {end_d}" if (start_d and end_d) else {"day": "今日", "week": "本周", "month": "本月", "recent30": "近30天"}.get(period, "近30天")
         bi_insight = _build_bi_insight(overview, period_over_period, category_matrix, return_rate_pct, distribution, date_range)
-        # 二级/三级下钻：当筛选了品类时返回子品类贡献；当同时筛选品类+品牌时返回单品排行
+        # 下钻层级：品类 → 品牌 → 款式(品名) → 货号明细
+        drill_brands = []
+        drill_styles = []
         drill_subcategory = []
         drill_sku_rank = []
         category_name = (request.args.get("category") or "").strip()
         brand_name = (request.args.get("brand") or "").strip()
-        if category_name:
-            cur.execute(f"""
-                SELECT COALESCE(NULLIF(TRIM(category_mid), ''), NULLIF(TRIM(category), ''), '未分类') AS subcat,
-                       COUNT(DISTINCT sku_code) AS sku_sold, COALESCE(SUM(sale_qty), 0) AS qty,
-                       SUM(sale_amount) AS sale_amount, SUM(gross_profit) AS profit,
-                       CASE WHEN SUM(sale_amount) > 0 THEN SUM(gross_profit)/SUM(sale_amount)*100 ELSE 0 END AS margin_pct
-                FROM t_htma_sale
-                WHERE store_id = %s AND {date_cond}{category_cond}
-                GROUP BY subcat
-                HAVING SUM(sale_amount) > 0
-                ORDER BY SUM(sale_amount) DESC
-                LIMIT 50
-            """, params)
-            for r in cur.fetchall():
-                drill_subcategory.append({
-                    "subcategory": r.get("subcat") or "未分类",
-                    "sale_amount": round(float(r.get("sale_amount") or 0), 2),
-                    "profit": round(float(r.get("profit") or 0), 2),
-                    "qty": round(float(r.get("qty") or 0), 2),
-                    "margin_pct": round(float(r.get("margin_pct") or 0), 2),
-                    "sku_sold": int(r.get("sku_sold") or 0),
-                })
-        if category_name and brand_name:
-            cur.execute(f"""
-                SELECT sku_code, COALESCE(MAX(product_name), '') AS product_name,
-                       SUM(sale_amount) AS sale_amount, SUM(gross_profit) AS profit, SUM(sale_qty) AS qty,
-                       CASE WHEN SUM(sale_amount) > 0 THEN SUM(gross_profit)/SUM(sale_amount)*100 ELSE 0 END AS margin_pct
-                FROM t_htma_sale
-                WHERE store_id = %s AND {date_cond}{category_cond}
-                GROUP BY sku_code
-                HAVING SUM(sale_amount) > 0
-                ORDER BY SUM(sale_amount) DESC
-                LIMIT 100
-            """, params)
-            for r in cur.fetchall():
-                drill_sku_rank.append({
-                    "sku_code": r.get("sku_code") or "",
-                    "product_name": (r.get("product_name") or "").strip() or "-",
-                    "sale_amount": round(float(r.get("sale_amount") or 0), 2),
-                    "profit": round(float(r.get("profit") or 0), 2),
-                    "qty": round(float(r.get("qty") or 0), 2),
-                    "margin_pct": round(float(r.get("margin_pct") or 0), 2),
-                    "avg_discount_pct": None,
-                })
-            try:
-                sku_list = [row["sku_code"] for row in drill_sku_rank]
-                if sku_list:
-                    placeholders = ",".join(["%s"] * len(sku_list))
-                    cur.execute("""
-                        SELECT s.sku_code, AVG(1 - s.sale_price / NULLIF(p.list_price, 0)) * 100 AS avg_discount_pct
-                        FROM t_htma_sale s
-                        INNER JOIN t_htma_product_master p ON p.sku_code = s.sku_code AND p.store_id = s.store_id AND COALESCE(p.list_price, 0) > 0
-                        WHERE s.store_id = %s AND s.sku_code IN (""" + placeholders + """)
-                        GROUP BY s.sku_code
-                    """, (STORE_ID,) + tuple(sku_list))
-                    discount_map = {r.get("sku_code"): round(float(r.get("avg_discount_pct") or 0), 2) for r in cur.fetchall()}
-                    for row in drill_sku_rank:
-                        row["avg_discount_pct"] = discount_map.get(row["sku_code"])
-            except Exception:
-                pass
+        product_name = (request.args.get("product_name") or "").strip()
+        try:
+            if category_name:
+                # 二级：该品类下品牌列表（点击品牌进入三级）
+                cur.execute(f"""
+                    SELECT COALESCE(NULLIF(TRIM(brand_name), ''), '未填') AS brand,
+                           COUNT(DISTINCT sku_code) AS sku_sold, COALESCE(SUM(sale_qty), 0) AS qty,
+                           SUM(sale_amount) AS sale_amount, SUM(gross_profit) AS profit,
+                           CASE WHEN SUM(sale_amount) > 0 THEN SUM(gross_profit)/SUM(sale_amount)*100 ELSE 0 END AS margin_pct
+                    FROM t_htma_sale
+                    WHERE store_id = %s AND {date_cond}{category_cond}
+                    GROUP BY COALESCE(NULLIF(TRIM(brand_name), ''), '未填')
+                    HAVING SUM(sale_amount) > 0
+                    ORDER BY SUM(sale_amount) DESC
+                    LIMIT 50
+                """, params)
+                for r in cur.fetchall():
+                    drill_brands.append({
+                        "brand": r.get("brand") or "未填",
+                        "sale_amount": round(float(r.get("sale_amount") or 0), 2),
+                        "profit": round(float(r.get("profit") or 0), 2),
+                        "qty": round(float(r.get("qty") or 0), 2),
+                        "margin_pct": round(float(r.get("margin_pct") or 0), 2),
+                        "sku_sold": int(r.get("sku_sold") or 0),
+                    })
+            if category_name and brand_name and not product_name:
+                # 三级：该品类+品牌下款式(品名)列表（点击款式进入四级）
+                cur.execute(f"""
+                    SELECT COALESCE(NULLIF(TRIM(product_name), ''), '未填') AS style_name,
+                           COUNT(DISTINCT sku_code) AS sku_sold, COALESCE(SUM(sale_qty), 0) AS qty,
+                           SUM(sale_amount) AS sale_amount, SUM(gross_profit) AS profit,
+                           CASE WHEN SUM(sale_amount) > 0 THEN SUM(gross_profit)/SUM(sale_amount)*100 ELSE 0 END AS margin_pct
+                    FROM t_htma_sale
+                    WHERE store_id = %s AND {date_cond}{category_cond}
+                    GROUP BY COALESCE(NULLIF(TRIM(product_name), ''), '未填')
+                    HAVING SUM(sale_amount) > 0
+                    ORDER BY SUM(sale_amount) DESC
+                    LIMIT 100
+                """, params)
+                for r in cur.fetchall():
+                    drill_styles.append({
+                        "product_name": r.get("style_name") or "未填",
+                        "sale_amount": round(float(r.get("sale_amount") or 0), 2),
+                        "profit": round(float(r.get("profit") or 0), 2),
+                        "qty": round(float(r.get("qty") or 0), 2),
+                        "margin_pct": round(float(r.get("margin_pct") or 0), 2),
+                        "sku_sold": int(r.get("sku_sold") or 0),
+                    })
+            if category_name and brand_name and product_name:
+                # 四级：该品类+品牌+款式下货号明细（表头可展示品牌、款式）
+                product_cond = " AND TRIM(COALESCE(product_name, '')) = %s"
+                params_sku = params + (product_name,)
+                cur.execute(f"""
+                    SELECT sku_code, COALESCE(MAX(product_name), '') AS product_name, COALESCE(MAX(brand_name), '') AS brand_name,
+                           SUM(sale_amount) AS sale_amount, SUM(gross_profit) AS profit, SUM(sale_qty) AS qty,
+                           CASE WHEN SUM(sale_amount) > 0 THEN SUM(gross_profit)/SUM(sale_amount)*100 ELSE 0 END AS margin_pct
+                    FROM t_htma_sale
+                    WHERE store_id = %s AND {date_cond}{category_cond}{product_cond}
+                    GROUP BY sku_code
+                    HAVING SUM(sale_amount) > 0
+                    ORDER BY SUM(sale_amount) DESC
+                    LIMIT 100
+                """, params_sku)
+                for r in cur.fetchall():
+                    drill_sku_rank.append({
+                        "sku_code": r.get("sku_code") or "",
+                        "product_name": (r.get("product_name") or "").strip() or "-",
+                        "brand_name": (r.get("brand_name") or "").strip() or "-",
+                        "sale_amount": round(float(r.get("sale_amount") or 0), 2),
+                        "profit": round(float(r.get("profit") or 0), 2),
+                        "qty": round(float(r.get("qty") or 0), 2),
+                        "margin_pct": round(float(r.get("margin_pct") or 0), 2),
+                        "avg_discount_pct": None,
+                    })
+                try:
+                    sku_list = [row["sku_code"] for row in drill_sku_rank]
+                    if sku_list:
+                        placeholders = ",".join(["%s"] * len(sku_list))
+                        cur.execute("""
+                            SELECT s.sku_code, AVG(1 - s.sale_price / NULLIF(p.list_price, 0)) * 100 AS avg_discount_pct
+                            FROM t_htma_sale s
+                            INNER JOIN t_htma_product_master p ON p.sku_code = s.sku_code AND p.store_id = s.store_id AND COALESCE(p.list_price, 0) > 0
+                            WHERE s.store_id = %s AND s.sku_code IN (""" + placeholders + """)
+                            GROUP BY s.sku_code
+                        """, (STORE_ID,) + tuple(sku_list))
+                        discount_map = {r.get("sku_code"): round(float(r.get("avg_discount_pct") or 0), 2) for r in cur.fetchall()}
+                        for row in drill_sku_rank:
+                            row["avg_discount_pct"] = discount_map.get(row["sku_code"])
+                except Exception:
+                    pass
+        except Exception:
+            drill_brands = []
+            drill_styles = []
+            drill_sku_rank = []
         return {
             "overview": overview,
             "bi_insight": bi_insight,
@@ -1366,6 +1524,8 @@ def _get_consumer_insight_data():
             "discount_band": discount_band,
             "zero_sale_skus": zero_sale_skus,
             "high_discount_low_margin": high_discount_low_margin,
+            "drill_brands": drill_brands,
+            "drill_styles": drill_styles,
             "drill_subcategory": drill_subcategory,
             "drill_sku_rank": drill_sku_rank,
         }
@@ -1451,6 +1611,7 @@ def api_auth_me():
         "can_labor": _has_module_access("labor", user_id),
         "can_profit": _has_module_access("profit", user_id),
         "can_product_master": _has_module_access("product_master", user_id),
+        "can_profit_share": _has_module_access("profit_share", user_id),
     }
     return jsonify({
         "success": True,
@@ -1733,6 +1894,16 @@ def import_page():
     return send_from_directory("static", "import.html")
 
 
+@app.route("/profit_share")
+def profit_share_page():
+    """收益评估（加盟商分账）页面，仅财务权限可访问"""
+    if _auth_enabled() and not _is_logged_in():
+        return redirect("/login?next=" + (urllib.parse.quote(request.url) if request.url else "/"))
+    if _auth_enabled() and not _has_module_access("profit_share"):
+        return Response("您无权访问收益评估模块，请联系管理员。", status=403)
+    return send_from_directory("static", "profit_share.html")
+
+
 @app.route("/api/import", methods=["POST"])
 def api_import():
     """上传 Excel，覆盖式导入 MySQL。preview_only=1 时仅预览销售表结构，不导入"""
@@ -1933,6 +2104,606 @@ def api_import():
             "data_import_target": "server",
             "traceback": tb[-2000:] if len(tb) > 2000 else tb  # 限制长度，避免响应过大导致前端超时
         }), 500
+
+
+# ---------- 收益评估（加盟商分账）API ----------
+def _profit_share_forbidden():
+    return jsonify({"error": "无权限"}), 403
+
+
+@app.route("/api/profit_share/rule", methods=["GET"])
+def api_profit_share_rule_get():
+    """获取分账规则：当前启用规则 + 全部规则列表"""
+    if _auth_enabled() and not _has_module_access("profit_share"):
+        return _profit_share_forbidden()
+    try:
+        conn = get_conn()
+        cur = conn.cursor(pymysql.cursors.DictCursor)
+        cur.execute("SELECT * FROM t_profit_share_rule ORDER BY effective_start DESC")
+        all_rules = cur.fetchall()
+        for r in all_rules:
+            if r.get("effective_end"):
+                r["effective_end"] = r["effective_end"].strftime("%Y-%m-%d") if hasattr(r["effective_end"], "strftime") else str(r["effective_end"])
+            if r.get("effective_start"):
+                r["effective_start"] = r["effective_start"].strftime("%Y-%m-%d") if hasattr(r["effective_start"], "strftime") else str(r["effective_start"])
+        active = next((r for r in all_rules if r.get("is_active")), None)
+        conn.close()
+        return jsonify({"active_rule": active, "all_rules": all_rules})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/profit_share/rule", methods=["POST"])
+def api_profit_share_rule_post():
+    """新增或更新分账规则；若 is_active=1 则将其它规则设为禁用"""
+    if _auth_enabled() and not _has_module_access("profit_share"):
+        return _profit_share_forbidden()
+    try:
+        j = request.get_json(silent=True) or {}
+        rid = j.get("id")
+        stage_name = (j.get("stage_name") or "").strip()
+        share_rate_merchant = j.get("share_rate_merchant")
+        share_rate_platform = j.get("share_rate_platform")
+        effective_start = (j.get("effective_start") or "").strip()[:10]
+        effective_end = (j.get("effective_end") or "").strip()[:10] or None
+        is_active = 1 if j.get("is_active") in (True, 1, "1") else 0
+        if not stage_name or share_rate_merchant is None or share_rate_platform is None or not effective_start:
+            return jsonify({"error": "缺少必填：stage_name, share_rate_merchant, share_rate_platform, effective_start"}), 400
+        conn = get_conn()
+        cur = conn.cursor()
+        if is_active:
+            cur.execute("UPDATE t_profit_share_rule SET is_active = 0")
+        if rid:
+            cur.execute("""
+                UPDATE t_profit_share_rule SET stage_name=%s, share_rate_merchant=%s, share_rate_platform=%s,
+                effective_start=%s, effective_end=%s, is_active=%s WHERE id=%s
+            """, (stage_name, share_rate_merchant, share_rate_platform, effective_start, effective_end, is_active, rid))
+        else:
+            cur.execute("""
+                INSERT INTO t_profit_share_rule (stage_name, share_rate_merchant, share_rate_platform, effective_start, effective_end, is_active)
+                VALUES (%s,%s,%s,%s,%s,%s)
+            """, (stage_name, share_rate_merchant, share_rate_platform, effective_start, effective_end, is_active))
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/profit_share/rule/<int:rule_id>", methods=["DELETE"])
+def api_profit_share_rule_delete(rule_id):
+    if _auth_enabled() and not _has_module_access("profit_share"):
+        return _profit_share_forbidden()
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM t_profit_share_rule WHERE id = %s", (rule_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/profit_share/exclude_categories", methods=["GET"])
+def api_profit_share_exclude_get():
+    if _auth_enabled() and not _has_module_access("profit_share"):
+        return _profit_share_forbidden()
+    try:
+        conn = get_conn()
+        cur = conn.cursor(pymysql.cursors.DictCursor)
+        cur.execute("SELECT * FROM t_profit_share_exclude_category ORDER BY id")
+        rows = cur.fetchall()
+        conn.close()
+        return jsonify(rows)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/profit_share/exclude_categories", methods=["POST"])
+def api_profit_share_exclude_post():
+    if _auth_enabled() and not _has_module_access("profit_share"):
+        return _profit_share_forbidden()
+    try:
+        j = request.get_json(silent=True) or {}
+        large_code = (j.get("category_large_code") or "").strip() or None
+        large_name = (j.get("category_large_name") or "").strip() or None
+        mid_code = (j.get("category_mid_code") or "").strip() or None
+        mid_name = (j.get("category_mid_name") or "").strip() or None
+        if not large_code:
+            return jsonify({"error": "请提供 category_large_code"}), 400
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO t_profit_share_exclude_category (category_large_code, category_large_name, category_mid_code, category_mid_name)
+            VALUES (%s,%s,%s,%s)
+            ON DUPLICATE KEY UPDATE category_large_name=VALUES(category_large_name), category_mid_name=VALUES(category_mid_name)
+        """, (large_code, large_name, mid_code, mid_name))
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/profit_share/exclude_categories/<int:exclude_id>", methods=["DELETE"])
+def api_profit_share_exclude_delete(exclude_id):
+    if _auth_enabled() and not _has_module_access("profit_share"):
+        return _profit_share_forbidden()
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM t_profit_share_exclude_category WHERE id = %s", (exclude_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+def _profit_share_parse_period(j):
+    """从请求体解析计算周期。支持 month (YYYY-MM) 或 start_date + end_date。返回 (start_d, end_d, period_label) 或 (None, None, None) 与 error。"""
+    month = (j.get("month") or "").strip()
+    start_s = (j.get("start_date") or "").strip()[:10]
+    end_s = (j.get("end_date") or "").strip()[:10]
+    if month and len(month) == 7 and month[4] == "-":
+        try:
+            year, mon = int(month[:4]), int(month[5:7])
+            start_d = date(year, mon, 1)
+            end_d = (start_d + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+            return start_d, end_d, month, None
+        except Exception as e:
+            return None, None, None, "月份格式错误: " + str(e)
+    if start_s and end_s:
+        try:
+            start_d = date(int(start_s[:4]), int(start_s[5:7]), int(start_s[8:10]))
+            end_d = date(int(end_s[:4]), int(end_s[5:7]), int(end_s[8:10]))
+            if start_d > end_d:
+                return None, None, None, "开始日期不能晚于结束日期"
+            return start_d, end_d, start_s + " ~ " + end_s, None
+        except Exception as e:
+            return None, None, None, "日期格式错误(需 YYYY-MM-DD): " + str(e)
+    return None, None, None, "请提供 month(YYYY-MM) 或 start_date、end_date(YYYY-MM-DD)"
+
+
+@app.route("/api/profit_share/calculate", methods=["POST"])
+def api_profit_share_calculate():
+    """分账计算：支持按月份或自定义时间段。取启用规则，从 t_htma_profit 聚合（排除配置的品类），写入结果表并返回汇总与明细（含全口径/排除/参与、分账表）。"""
+    if _auth_enabled() and not _has_module_access("profit_share"):
+        return _profit_share_forbidden()
+    try:
+        j = request.get_json(silent=True) or {}
+        if not j and request.form:
+            j = {k: v for k, v in request.form.items()}
+        if not j and request.args:
+            j = {k: v for k, v in request.args.items()}
+        start_d, end_d, period_label, err = _profit_share_parse_period(j)
+        if err:
+            return jsonify({"error": err}), 400
+        conn = get_conn()
+        cur = conn.cursor(pymysql.cursors.DictCursor)
+        # 规则：时间段内至少有一天被规则覆盖即可（effective_start <= end_d AND (effective_end IS NULL OR effective_end >= start_d)）
+        cur.execute("""
+            SELECT * FROM t_profit_share_rule WHERE is_active = 1
+            AND effective_start <= %s AND (effective_end IS NULL OR effective_end >= %s)
+            ORDER BY effective_start DESC LIMIT 1
+        """, (end_d, start_d))
+        rule = cur.fetchone()
+        if not rule:
+            conn.close()
+            return jsonify({
+                "error": "所选时间段暂无生效的分账规则。请到「规则配置」中新增或编辑一条规则：生效开始日期不晚于 %s，生效结束日期不早于 %s（或留空表示长期有效），并启用该规则。" % (end_d, start_d),
+                "detail": None,
+            }), 400
+        def _to_float(x):
+            if x is None: return 0.0
+            try:
+                return float(x)
+            except (TypeError, ValueError):
+                return 0.0
+        rate_merchant = _to_float(rule.get("share_rate_merchant"))
+        rate_platform = _to_float(rule.get("share_rate_platform"))
+        rule_id = rule["id"]
+        rule_name = (rule.get("stage_name") or "").strip() or ("规则#%s" % rule_id)
+        cur.execute("SELECT category_large_code, category_large_name, category_mid_code, category_mid_name FROM t_profit_share_exclude_category")
+        excludes = cur.fetchall()
+        exclusion_parts = []
+        for e in excludes:
+            lname = e.get("category_large_name") or e.get("category_large_code") or ""
+            mname = e.get("category_mid_name") or e.get("category_mid_code")
+            if mname:
+                exclusion_parts.append("中类「%s」（%s）" % (mname, lname))
+            else:
+                exclusion_parts.append("大类「%s」" % lname)
+        exclusion_summary = "；".join(exclusion_parts) if exclusion_parts else "无"
+        exclude_cond = ""
+        if excludes:
+            parts = []
+            for e in excludes:
+                lc = e.get("category_large_code") or ""
+                mc = e.get("category_mid_code")
+                if mc is None or (isinstance(mc, str) and not mc.strip()):
+                    parts.append("(COALESCE(p.category_large_code,'') = %s)")
+                else:
+                    parts.append("(COALESCE(p.category_large_code,'') = %s AND COALESCE(p.category_mid_code,'') = %s)")
+            if parts:
+                exclude_cond = " AND NOT (" + " OR ".join(parts) + ")"
+        params = [STORE_ID, start_d, end_d]
+        cur.execute("""
+            SELECT COALESCE(SUM(total_sale),0) AS sales_all, COALESCE(SUM(total_profit),0) AS profit_all
+            FROM t_htma_profit WHERE store_id = %s AND data_date >= %s AND data_date <= %s
+        """, (STORE_ID, start_d, end_d))
+        row_all = cur.fetchone()
+        total_sales_all = _to_float(row_all.get("sales_all") if row_all else 0)
+        total_profit_all = _to_float(row_all.get("profit_all") if row_all else 0)
+        for e in excludes:
+            lc = e.get("category_large_code") or ""
+            mc = e.get("category_mid_code")
+            if mc is None or (isinstance(mc, str) and not mc.strip()):
+                params.append(lc)
+            else:
+                params.append(lc)
+                params.append(mc)
+        try:
+            sel = """
+                SELECT COALESCE(p.category_large_code,'') AS category_large_code, COALESCE(p.category_large,'') AS category_large_name,
+                       COALESCE(p.category_mid_code,'') AS category_mid_code, COALESCE(p.category_mid,'') AS category_mid_name,
+                       SUM(p.total_sale) AS sales, SUM(p.total_profit) AS profit
+                FROM t_htma_profit p
+                WHERE p.store_id = %s AND p.data_date >= %s AND p.data_date <= %s
+            """ + exclude_cond + """
+                GROUP BY COALESCE(p.category_large_code,''), COALESCE(p.category_large,''), COALESCE(p.category_mid_code,''), COALESCE(p.category_mid,'')
+            """
+            cur.execute(sel, params)
+        except Exception as col_err:
+            if "Unknown column" in str(col_err) and "category_large" in str(col_err):
+                sel = """
+                    SELECT COALESCE(p.category,'') AS category_large_code, COALESCE(p.category,'') AS category_large_name,
+                           '' AS category_mid_code, '' AS category_mid_name,
+                           SUM(p.total_sale) AS sales, SUM(p.total_profit) AS profit
+                    FROM t_htma_profit p
+                    WHERE p.store_id = %s AND p.data_date >= %s AND p.data_date <= %s
+                """ + (exclude_cond.replace("p.category_large_code", "p.category").replace("p.category_mid_code", "p.category") if exclude_cond else "") + """
+                    GROUP BY COALESCE(p.category,'')
+                """
+                cur.execute(sel, params)
+            else:
+                conn.close()
+                return jsonify({"error": "查询利润表失败", "detail": str(col_err)}), 500
+        rows = cur.fetchall()
+        total_sales = _to_float(sum((r.get("sales") or 0) for r in rows))
+        total_profit = _to_float(sum((r.get("profit") or 0) for r in rows))
+        excluded_sales = total_sales_all - total_sales
+        excluded_profit = total_profit_all - total_profit
+        total_cost = total_sales - total_profit
+        # 分账仅按总毛利计算：加盟商=总毛利×加盟商%，平台=总毛利×平台%（严禁用销售额）
+        tp = round(float(total_profit), 2)
+        merchant_settle = round(tp * (rate_merchant / 100.0), 2)
+        platform_amt = round(tp * (rate_platform / 100.0), 2)
+        if merchant_settle + platform_amt > tp:
+            platform_amt = round(tp - merchant_settle, 2)
+        merchant_settle = min(merchant_settle, tp)
+        platform_amt = min(platform_amt, tp)
+        created_by = (session.get("user_name") or session.get("open_id") or session.get("user_id") or "")[:50]
+        calc_month_col = period_label if len(period_label) <= 7 else period_label[:7]
+        try:
+            cur.execute("""
+                INSERT INTO t_profit_share_result (calc_month, period_start, period_end, total_sales, total_cost, total_profit, share_rate_used, merchant_settle_amount, platform_amount, rule_id, created_by)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """, (calc_month_col, start_d, end_d, total_sales, total_cost, total_profit, rate_merchant, merchant_settle, platform_amt, rule_id, created_by))
+        except Exception as ins_err:
+            if "Unknown column" in str(ins_err) and "period_start" in str(ins_err):
+                cur.execute("""
+                    INSERT INTO t_profit_share_result (calc_month, total_sales, total_cost, total_profit, share_rate_used, merchant_settle_amount, platform_amount, rule_id, created_by)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """, (calc_month_col, total_sales, total_cost, total_profit, rate_merchant, merchant_settle, platform_amt, rule_id, created_by))
+            else:
+                raise
+        conn.commit()
+        result_id = cur.lastrowid
+        details = []
+        for r in rows:
+            profit_val = float(r.get("profit") or 0)
+            details.append({
+                "category_large_name": r.get("category_large_name") or "",
+                "category_mid_name": r.get("category_mid_name") or "",
+                "sales": float(r.get("sales") or 0),
+                "profit": profit_val,
+                "merchant_share": round(profit_val * (rate_merchant / 100.0), 2),
+                "excluded": False,
+            })
+        formula_note = "总销售额扣除销售成本后为总毛利，加盟商=总毛利×%s%%=%s元，平台=总毛利×%s%%=%s元" % (
+            rate_merchant, merchant_settle, rate_platform, platform_amt,
+        )
+        conn.close()
+        # 返回结构与前端 renderCalcResult 一致：total_sales/cost/profit, merchant_settle_amount, platform_amount, share_rate_*
+        return jsonify({
+            "result_id": result_id,
+            "period_label": period_label,
+            "period_start": start_d.isoformat(),
+            "period_end": end_d.isoformat(),
+            "calc_month": calc_month_col,
+            "total_sales_all": round(total_sales_all, 2),
+            "total_profit_all": round(total_profit_all, 2),
+            "excluded_sales": round(excluded_sales, 2),
+            "excluded_profit": round(excluded_profit, 2),
+            "total_sales": round(total_sales, 2),
+            "total_cost": round(total_cost, 2),
+            "total_profit": round(total_profit, 2),
+            "exclusion_summary": exclusion_summary,
+            "share_rate_merchant": rate_merchant,
+            "share_rate_platform": rate_platform,
+            "share_rate_used": rate_merchant,
+            "rule_name": rule_name,
+            "rule_id": rule_id,
+            "merchant_settle_amount": merchant_settle,
+            "platform_amount": platform_amt,
+            "formula_note": formula_note,
+            "details": details,
+        })
+    except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        return jsonify({"error": str(e), "detail": tb[-2000:] if len(tb) > 2000 else tb}), 500
+
+
+@app.route("/api/profit_share/results", methods=["GET"])
+def api_profit_share_results():
+    """分页查询历史计算结果；支持 month 筛选"""
+    if _auth_enabled() and not _has_module_access("profit_share"):
+        return _profit_share_forbidden()
+    try:
+        month = (request.args.get("month") or "").strip()[:7]
+        page = max(1, int(request.args.get("page", 1)))
+        page_size = min(50, max(10, int(request.args.get("page_size", 20))))
+        conn = get_conn()
+        cur = conn.cursor(pymysql.cursors.DictCursor)
+        where = "WHERE calc_month = %s" if month else ""
+        params = [month] if month else []
+        cur.execute("SELECT COUNT(*) AS total FROM t_profit_share_result " + where, params)
+        total = cur.fetchone()["total"]
+        cur.execute("""
+            SELECT * FROM t_profit_share_result """ + where + """ ORDER BY id DESC LIMIT %s OFFSET %s
+        """, params + [page_size, (page - 1) * page_size])
+        rows = cur.fetchall()
+        for r in rows:
+            for k in ("total_sales", "total_cost", "total_profit", "merchant_settle_amount", "platform_amount", "share_rate_used"):
+                if r.get(k) is not None and hasattr(r[k], "__float__"):
+                    r[k] = float(r[k])
+            if r.get("created_at") and hasattr(r["created_at"], "strftime"):
+                r["created_at"] = r["created_at"].strftime("%Y-%m-%d %H:%M:%S")
+            if r.get("period_start") and hasattr(r["period_start"], "isoformat"):
+                r["period_start"] = r["period_start"].isoformat()
+            if r.get("period_end") and hasattr(r["period_end"], "isoformat"):
+                r["period_end"] = r["period_end"].isoformat()
+            r["period_label"] = r.get("period_start") and r.get("period_end") and (r["period_start"] + " ~ " + r["period_end"]) or r.get("calc_month") or ""
+        conn.close()
+        return jsonify({"total": total, "page": page, "page_size": page_size, "items": rows})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+def _profit_share_result_period(row):
+    """从结果行得到 start_d, end_d 用于明细查询。支持 period_start/period_end 或 calc_month。"""
+    if row.get("period_start") and row.get("period_end"):
+        s, e = row["period_start"], row["period_end"]
+        if hasattr(s, "year"):
+            return s, e
+        try:
+            return date(int(s[:4]), int(s[5:7]), int(s[8:10])), date(int(e[:4]), int(e[5:7]), int(e[8:10]))
+        except Exception:
+            pass
+    calc_month = row.get("calc_month") or ""
+    if len(calc_month) >= 7 and calc_month[4] == "-":
+        year, mon = int(calc_month[:4]), int(calc_month[5:7])
+        start_d = date(year, mon, 1)
+        end_d = (start_d + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+        return start_d, end_d
+    return None, None
+
+
+@app.route("/api/profit_share/result/<int:result_id>", methods=["GET"])
+def api_profit_share_result_detail(result_id):
+    """某次计算详情；返回完整数据（含剔除因素、分成比例、计算说明）及按品类明细"""
+    if _auth_enabled() and not _has_module_access("profit_share"):
+        return _profit_share_forbidden()
+    try:
+        conn = get_conn()
+        cur = conn.cursor(pymysql.cursors.DictCursor)
+        cur.execute("SELECT * FROM t_profit_share_result WHERE id = %s", (result_id,))
+        row = cur.fetchone()
+        if not row:
+            conn.close()
+            return jsonify({"error": "记录不存在"}), 404
+        start_d, end_d = _profit_share_result_period(row)
+        if start_d is None or end_d is None:
+            conn.close()
+            return jsonify({"error": "无法解析计算周期", "result": row}), 400
+        cur.execute("""
+            SELECT COALESCE(SUM(total_sale),0) AS sales_all, COALESCE(SUM(total_profit),0) AS profit_all
+            FROM t_htma_profit WHERE store_id = %s AND data_date >= %s AND data_date <= %s
+        """, (STORE_ID, start_d, end_d))
+        row_all = cur.fetchone()
+        total_sales_all = float(row_all.get("sales_all") or 0)
+        total_profit_all = float(row_all.get("profit_all") or 0)
+        ts_included = float(row.get("total_sales") or 0)
+        tp_included = float(row.get("total_profit") or 0)
+        row["total_sales_all"] = round(total_sales_all, 2)
+        row["total_profit_all"] = round(total_profit_all, 2)
+        row["excluded_sales"] = round(total_sales_all - ts_included, 2)
+        row["excluded_profit"] = round(total_profit_all - tp_included, 2)
+        cur.execute("SELECT category_large_code, category_mid_code FROM t_profit_share_exclude_category")
+        excludes = cur.fetchall()
+        exclude_cond = ""
+        params = [STORE_ID, start_d, end_d]
+        if excludes:
+            parts = []
+            for e in excludes:
+                lc = e.get("category_large_code") or ""
+                mc = e.get("category_mid_code")
+                if mc is None or (isinstance(mc, str) and not mc.strip()):
+                    parts.append("(COALESCE(p.category_large_code,'') = %s)")
+                    params.append(lc)
+                else:
+                    parts.append("(COALESCE(p.category_large_code,'') = %s AND COALESCE(p.category_mid_code,'') = %s)")
+                    params.append(lc)
+                    params.append(mc)
+            if parts:
+                exclude_cond = " AND NOT (" + " OR ".join(parts) + ")"
+        try:
+            cur.execute("""
+                SELECT COALESCE(p.category_large,'') AS category_large_name, COALESCE(p.category_mid,'') AS category_mid_name,
+                       SUM(p.total_sale) AS sales, SUM(p.total_profit) AS profit
+                FROM t_htma_profit p
+                WHERE p.store_id = %s AND p.data_date >= %s AND p.data_date <= %s
+            """ + exclude_cond + """
+                GROUP BY COALESCE(p.category_large,''), COALESCE(p.category_mid,'')
+            """, params)
+        except Exception:
+            cur.execute("""
+                SELECT COALESCE(p.category,'') AS category_large_name, '' AS category_mid_name,
+                       SUM(p.total_sale) AS sales, SUM(p.total_profit) AS profit
+                FROM t_htma_profit p
+                WHERE p.store_id = %s AND p.data_date >= %s AND p.data_date <= %s
+                GROUP BY COALESCE(p.category,'')
+            """, (STORE_ID, start_d, end_d))
+        details = cur.fetchall()
+        rate_m = float(row.get("share_rate_used") or 0)
+        for d in details:
+            d["sales"] = float(d.get("sales") or 0)
+            d["profit"] = float(d.get("profit") or 0)
+            d["merchant_share"] = round(d["profit"] * (rate_m / 100.0), 2)
+            d["excluded"] = False
+        for k in ("total_sales", "total_cost", "total_profit", "merchant_settle_amount", "platform_amount", "share_rate_used"):
+            if row.get(k) is not None: row[k] = float(row[k])
+        if row.get("created_at") and hasattr(row["created_at"], "strftime"):
+            row["created_at"] = row["created_at"].strftime("%Y-%m-%d %H:%M:%S")
+        cur.execute("SELECT category_large_name, category_mid_name FROM t_profit_share_exclude_category")
+        ex_list = cur.fetchall()
+        exclusion_parts = []
+        for e in ex_list:
+            lname = e.get("category_large_name") or ""
+            mname = e.get("category_mid_name") or ""
+            if mname:
+                exclusion_parts.append("中类「%s」（%s）" % (mname, lname))
+            else:
+                exclusion_parts.append("大类「%s」" % lname)
+        row["exclusion_summary"] = "；".join(exclusion_parts) if exclusion_parts else "无"
+        row["period_label"] = (row.get("period_start") and row.get("period_end")) and (str(row["period_start"]) + " ~ " + str(row["period_end"])) or (row.get("calc_month") or "")
+        if row.get("period_start") and hasattr(row["period_start"], "isoformat"):
+            row["period_start"] = row["period_start"].isoformat()
+        if row.get("period_end") and hasattr(row["period_end"], "isoformat"):
+            row["period_end"] = row["period_end"].isoformat()
+        ts, tc, tp = float(row.get("total_sales") or 0), float(row.get("total_cost") or 0), float(row.get("total_profit") or 0)
+        rate_p = 100.0 - rate_m
+        row["share_rate_merchant"] = rate_m
+        row["share_rate_platform"] = rate_p
+        # 展示时一律按总毛利重新计算加盟商/平台金额，避免历史错误数据（如曾按销售额算）导致显示错误
+        recalc_merchant = round(min(tp * (rate_m / 100.0), tp), 2)
+        recalc_platform = round(min(tp * (rate_p / 100.0), tp), 2)
+        row["merchant_settle_amount"] = recalc_merchant
+        row["platform_amount"] = recalc_platform
+        row["formula_note"] = "总销售额扣除销售成本后为总毛利，加盟商=总毛利×%s%%=%s元，平台=总毛利×%s%%=%s元" % (
+            rate_m, recalc_merchant, rate_p, recalc_platform,
+        )
+        conn.close()
+        return jsonify({"result": row, "details": details})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/profit_share/category_options", methods=["GET"])
+def api_profit_share_category_options():
+    """获取大类/中类列表，供排除配置下拉使用（来自 t_htma_profit 或 t_htma_sale）"""
+    if _auth_enabled() and not _has_module_access("profit_share"):
+        return _profit_share_forbidden()
+    try:
+        conn = get_conn()
+        cur = conn.cursor(pymysql.cursors.DictCursor)
+        try:
+            cur.execute("""
+                SELECT DISTINCT COALESCE(category_large_code,'') AS code, COALESCE(category_large,'') AS name
+                FROM t_htma_profit WHERE store_id = %s AND COALESCE(category_large_code,'') != ''
+                ORDER BY name
+            """, (STORE_ID,))
+            large = cur.fetchall()
+            cur.execute("""
+                SELECT COALESCE(category_large_code,'') AS large_code, COALESCE(category_mid_code,'') AS code, COALESCE(category_mid,'') AS name
+                FROM t_htma_profit WHERE store_id = %s AND COALESCE(category_large_code,'') != ''
+                GROUP BY category_large_code, category_mid_code, category_mid ORDER BY large_code, name
+            """, (STORE_ID,))
+            mid_rows = cur.fetchall()
+        except Exception:
+            cur.execute("SELECT DISTINCT COALESCE(category,'') AS code FROM t_htma_sale WHERE store_id = %s AND COALESCE(category,'') != '' ORDER BY code", (STORE_ID,))
+            large = [{"code": r["code"], "name": r["code"]} for r in cur.fetchall()]
+            mid_rows = []
+        mid_by_large = {}
+        for r in mid_rows:
+            lc = r.get("large_code") or ""
+            if lc not in mid_by_large:
+                mid_by_large[lc] = []
+            if r.get("code"):
+                mid_by_large[lc].append({"code": r.get("code") or "", "name": r.get("name") or r.get("code") or ""})
+        conn.close()
+        return jsonify({"large": large, "midByLarge": mid_by_large})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/profit_share/preview", methods=["GET"])
+def api_profit_share_preview():
+    """按月份+品类预览销售汇总（用于配置排除前查看影响）"""
+    if _auth_enabled() and not _has_module_access("profit_share"):
+        return _profit_share_forbidden()
+    month = (request.args.get("month") or "").strip()[:7]
+    large_code = (request.args.get("category_large_code") or "").strip()
+    mid_code = (request.args.get("category_mid_code") or "").strip()
+    if not month or len(month) != 7:
+        return jsonify({"error": "请提供 month (YYYY-MM)"}), 400
+    if not large_code:
+        return jsonify({"error": "请提供 category_large_code"}), 400
+    try:
+        year, mon = month[:4], month[5:7]
+        start_d = date(int(year), int(mon), 1)
+        end_d = (start_d + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+        conn = get_conn()
+        cur = conn.cursor(pymysql.cursors.DictCursor)
+        if mid_code:
+            cur.execute("""
+                SELECT COALESCE(SUM(total_sale),0) AS sales, COALESCE(SUM(total_profit),0) AS profit
+                FROM t_htma_profit WHERE store_id = %s AND data_date >= %s AND data_date <= %s
+                AND COALESCE(category_large_code,'') = %s AND COALESCE(category_mid_code,'') = %s
+            """, (STORE_ID, start_d, end_d, large_code, mid_code))
+        else:
+            cur.execute("""
+                SELECT COALESCE(SUM(total_sale),0) AS sales, COALESCE(SUM(total_profit),0) AS profit
+                FROM t_htma_profit WHERE store_id = %s AND data_date >= %s AND data_date <= %s
+                AND COALESCE(category_large_code,'') = %s
+            """, (STORE_ID, start_d, end_d, large_code))
+        row = cur.fetchone()
+        conn.close()
+        return jsonify({
+            "category_large_code": large_code,
+            "category_mid_code": mid_code or None,
+            "sales": float(row.get("sales") or 0),
+            "profit": float(row.get("profit") or 0),
+        })
+    except Exception as col_err:
+        if "Unknown column" in str(col_err):
+            try:
+                conn = get_conn()
+                cur = conn.cursor(pymysql.cursors.DictCursor)
+                cur.execute("""
+                    SELECT COALESCE(SUM(total_sale),0) AS sales, COALESCE(SUM(total_profit),0) AS profit
+                    FROM t_htma_profit WHERE store_id = %s AND data_date >= %s AND data_date <= %s
+                    AND COALESCE(category,'') = %s
+                """, (STORE_ID, start_d, end_d, large_code))
+                row = cur.fetchone()
+                conn.close()
+                return jsonify({"category_large_code": large_code, "category_mid_code": mid_code or None, "sales": float(row.get("sales") or 0), "profit": float(row.get("profit") or 0)})
+            except Exception:
+                pass
+        return jsonify({"error": str(col_err)}), 500
 
 
 @app.route("/api/import_labor_cost", methods=["POST", "OPTIONS"])
@@ -4822,7 +5593,11 @@ def api_export():
 
 @app.route("/api/date_range")
 def api_date_range():
-    """返回自定义日期选择器的可选范围；起止默认值为库中有数据的最早/最晚日期（销售表）。"""
+    """返回自定义日期选择器的可选范围；起止默认值为库中有数据的最早/最晚日期（销售表）。缓存 60 秒。"""
+    cache_key = "date_range:" + (STORE_ID or "")
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return jsonify(cached)
     out = {"min_date": "2010-01-01", "max_date": "2030-12-31", "data_min_date": None, "data_max_date": None}
     try:
         conn = get_conn()
@@ -4838,12 +5613,22 @@ def api_date_range():
             out["data_max_date"] = row["max_d"].strftime("%Y-%m-%d") if hasattr(row["max_d"], "strftime") else str(row["max_d"])[:10]
     except Exception:
         pass
+    _cache_set(cache_key, out)
     return jsonify(out)
 
 
 @app.route("/api/kpi")
 def api_kpi():
-    """4 个 KPI：总销售额、总毛利、平均毛利率、库存总额。支持 period、start_date、end_date、category 及 hierarchy"""
+    """4 个 KPI：总销售额、总毛利、平均毛利率、库存总额。支持 period、start_date、end_date、category 及 hierarchy。非自定义周期时缓存 60 秒。"""
+    period = request.args.get("period", "recent30")
+    start_d = request.args.get("start_date", "").strip()
+    end_d = request.args.get("end_date", "").strip()
+    use_cache = (period != "custom" and not (start_d and end_d))
+    if use_cache:
+        cache_key = "kpi:%s:%s:%s:%s" % (STORE_ID or "", period, request.args.get("category_large_code", ""), request.args.get("category_mid_code", ""))
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            return jsonify(cached)
     date_cond, date_params, _, sale_cat_cond, _ = _query_filters()
     profit_cat_cond, profit_cat_params = _profit_category_cond_and_params(date_cond, date_params)
     params = (STORE_ID,) + date_params + profit_cat_params
@@ -4871,11 +5656,8 @@ def api_kpi():
             stock_row = cur.fetchone()
             total_stock = float(stock_row["total_stock_amount"] or 0)
 
-        period = request.args.get("period", "recent30")
-        start_d = request.args.get("start_date", "").strip()
-        end_d = request.args.get("end_date", "").strip()
         period_label = f"{start_d} ~ {end_d}" if (start_d and end_d) else {"day": "今日", "week": "本周", "month": "本月", "recent30": "近30天"}.get(period, "近30天")
-        return jsonify({
+        out = {
             "total_sale_amount": round(total_sale, 2),
             "total_gross_profit": round(total_profit, 2),
             "avg_profit_rate_pct": round(avg_rate, 2),
@@ -4884,35 +5666,17 @@ def api_kpi():
             "period_label": period_label,
             "start_date": start_d or None,
             "end_date": end_d or None,
-        })
+        }
+        if use_cache:
+            _cache_set(cache_key, out)
+        return jsonify(out)
     finally:
         conn.close()
 
 
 def _date_condition(period, start_date=None, end_date=None):
-    """返回 (date_cond, params) 用于 SQL。若 start_date/end_date 均提供则用自定义区间；period=custom 时仅用起止日期，忽略本周/本月等。"""
-    if start_date and end_date:
-        try:
-            s = datetime.strptime(start_date, "%Y-%m-%d").date() if isinstance(start_date, str) else start_date
-            e = datetime.strptime(end_date, "%Y-%m-%d").date() if isinstance(end_date, str) else end_date
-            if s > e:
-                start_date, end_date = end_date, start_date
-            return "data_date BETWEEN %s AND %s", (start_date, end_date)
-        except (ValueError, TypeError):
-            pass
-        return "data_date BETWEEN %s AND %s", (start_date, end_date)
-    if period == "custom":
-        days = int(os.environ.get("HTMA_DAYS", DEFAULT_DAYS))
-        return "data_date BETWEEN DATE_SUB(CURDATE(), INTERVAL %s DAY) AND CURDATE()", (days,)
-    if period == "day":
-        return "data_date = CURDATE()", ()
-    if period == "week":
-        # 本周 = 过去7天（含今天），避免「周一至今」在周初或时区差异下区间过小或为空
-        return "data_date BETWEEN DATE_SUB(CURDATE(), INTERVAL 6 DAY) AND CURDATE()", ()
-    if period == "month":
-        return "data_date >= DATE_FORMAT(CURDATE(), '%%Y-%%m-01') AND data_date <= CURDATE()", ()
-    days = int(os.environ.get("HTMA_DAYS", DEFAULT_DAYS))
-    return "data_date BETWEEN DATE_SUB(CURDATE(), INTERVAL %s DAY) AND CURDATE()", (days,)
+    """返回 (date_cond, params) 用于 SQL。委托 query_layer 实现，保持兼容。"""
+    return _ql_date_condition(period, start_date, end_date)
 
 
 def _period_over_period_ranges(period, start_date_str=None, end_date_str=None):
@@ -4954,47 +5718,12 @@ def _period_over_period_ranges(period, start_date_str=None, end_date_str=None):
 
 
 def _query_filters(include_sku=False):
-    """从 request 解析筛选条件。返回 (date_cond, params, category_cond, sku_cond)。
-    支持 category_large/category_mid/category_small/category 级联筛选。
-    KPI 周期：以用户选择为准，不写死。period/start_date/end_date 仅来自 request.args；
-    当 start_date 与 end_date 同时传入时，一律按自定义区间筛选，忽略 period。"""
-    period = request.args.get("period", "recent30")
-    start_date = request.args.get("start_date", "").strip()
-    end_date = request.args.get("end_date", "").strip()
-    category_large_code = request.args.get("category_large_code", "").strip()
-    category_mid_code = request.args.get("category_mid_code", "").strip()
-    category_small_code = request.args.get("category_small_code", "").strip()
-    category_name = request.args.get("category", "").strip()  # 一级下钻：按品类名称筛选（如 服装）
-    brand_name = request.args.get("brand", "").strip()  # 二级下钻：按品牌筛选（如 FILA）
-    sku_code = request.args.get("sku_code", "").strip() if include_sku else ""
-
-    date_cond, date_params = _date_condition(period, start_date or None, end_date or None)
-    base_params = list(date_params)
-    sale_conds = []
-    sale_params = []
-    if category_name:
-        sale_conds.append(" AND (COALESCE(TRIM(category_large), '') = %s OR COALESCE(TRIM(category_mid), '') = %s OR COALESCE(TRIM(category), '') = %s)")
-        sale_params.extend([category_name, category_name, category_name])
-    if brand_name:
-        sale_conds.append(" AND COALESCE(TRIM(brand_name), '') = %s")
-        sale_params.append(brand_name)
-    # 支持编码或名称匹配（级联选择器可能传名称）
-    if category_large_code:
-        sale_conds.append(" AND (COALESCE(TRIM(category_large_code), '') = %s OR COALESCE(TRIM(category_large), '') = %s)")
-        sale_params.extend([category_large_code, category_large_code])
-    if category_mid_code:
-        sale_conds.append(" AND (COALESCE(TRIM(category_mid_code), '') = %s OR COALESCE(TRIM(category_mid), '') = %s)")
-        sale_params.extend([category_mid_code, category_mid_code])
-    if category_small_code:
-        sale_conds.append(" AND (COALESCE(TRIM(category_small_code), '') = %s OR COALESCE(TRIM(category_small), '') = %s OR COALESCE(TRIM(category), '') = %s)")
-        sale_params.extend([category_small_code, category_small_code, category_small_code])
-    sale_category_cond = "".join(sale_conds)
-    sku_cond = ""
-    if sku_code:
-        sku_cond = " AND sku_code = %s"
-        sale_params.append(sku_code)
-    params = (STORE_ID,) + tuple(base_params) + tuple(sale_params)
-    return date_cond, tuple(base_params), params, sale_category_cond, sku_cond
+    """从 request 解析筛选条件。返回 (date_cond, date_params, params, sale_category_cond, sku_cond)。委托 query_layer 实现，保持兼容。"""
+    date_cond, date_params, params, sale_category_cond, sku_cond = _ql_query_filters(include_sku=include_sku)
+    # query_layer 返回的 params 首项为占位 None，替换为 STORE_ID
+    if params and params[0] is None:
+        params = (STORE_ID,) + tuple(params[1:])
+    return date_cond, date_params, params, sale_category_cond, sku_cond
 
 
 def _profit_category_cond_and_params(date_cond, date_params_tuple):
@@ -5137,41 +5866,6 @@ def api_sales_trend(granularity):
                 data_source = "sale"
             else:
                 data_source = "profit"
-            if not out:
-                # 降级：从销售表聚合
-                if granularity == "day":
-                    cur.execute(f"""
-                        SELECT data_date AS x_date,
-                               COALESCE(SUM(sale_amount), 0) AS sale_amount,
-                               COALESCE(SUM(gross_profit), SUM(sale_amount) - SUM(sale_cost), 0) AS profit_amount
-                        FROM t_htma_sale
-                        WHERE store_id = %s AND {date_cond}{category_cond}
-                        GROUP BY data_date ORDER BY data_date
-                    """, params_sale)
-                elif granularity == "week":
-                    cur.execute(f"""
-                        SELECT MIN(data_date) AS week_start,
-                               CONCAT(YEAR(MIN(data_date)), '-W', LPAD(WEEK(MIN(data_date), 3), 2, '0')) AS x_date,
-                               COALESCE(SUM(sale_amount), 0) AS sale_amount,
-                               COALESCE(SUM(gross_profit), SUM(sale_amount) - SUM(sale_cost), 0) AS profit_amount
-                        FROM t_htma_sale
-                        WHERE store_id = %s AND {date_cond}{category_cond}
-                        GROUP BY YEAR(data_date), WEEK(data_date, 3)
-                        ORDER BY MIN(data_date)
-                    """, params_sale)
-                else:
-                    cur.execute(f"""
-                        SELECT DATE_FORMAT(MIN(data_date), '%%Y-%%m') AS x_date,
-                               COALESCE(SUM(sale_amount), 0) AS sale_amount,
-                               COALESCE(SUM(gross_profit), SUM(sale_amount) - SUM(sale_cost), 0) AS profit_amount
-                        FROM t_htma_sale
-                        WHERE store_id = %s AND {date_cond}{category_cond}
-                        GROUP BY YEAR(data_date), MONTH(data_date)
-                        ORDER BY MIN(data_date)
-                    """, params_sale)
-                rows = cur.fetchall()
-                out = [_format_trend_row(r, granularity) for r in rows]
-                data_source = "sale"
         if not out:
             return jsonify({
                 "data": [],
@@ -5768,7 +6462,7 @@ def api_inv_alert_list():
                     ) s ON st.sku_code = s.sku_code
                     WHERE st.store_id = %s AND st.data_date = (
                         SELECT MAX(data_date) FROM t_htma_stock WHERE store_id = %s
-                    ) AND st.stock_qty < 50 AND st.stock_qty >= 0 {inv_cond}
+                    ) AND st.stock_qty < 50 AND st.stock_qty >= 0 AND (st.stock_qty != 0 OR st.stock_amount != 0) {inv_cond}
                 """, (STORE_ID, STORE_ID, STORE_ID) + inv_params)
                 total = cur.fetchone()["total"] or 0
                 cur.execute(f"""
@@ -5784,7 +6478,7 @@ def api_inv_alert_list():
                     ) s ON st.sku_code = s.sku_code
                     WHERE st.store_id = %s AND st.data_date = (
                         SELECT MAX(data_date) FROM t_htma_stock WHERE store_id = %s
-                    ) AND st.stock_qty < 50 AND st.stock_qty >= 0 {inv_cond}
+                    ) AND st.stock_qty < 50 AND st.stock_qty >= 0 AND (st.stock_qty != 0 OR st.stock_amount != 0) {inv_cond}
                     ORDER BY st.stock_qty ASC
                     LIMIT %s OFFSET %s
                 """, (STORE_ID, STORE_ID, STORE_ID) + inv_params + (page_size, offset))
@@ -5793,7 +6487,7 @@ def api_inv_alert_list():
                     SELECT COUNT(*) AS total FROM t_htma_stock
                     WHERE store_id = %s AND data_date = (
                         SELECT MAX(data_date) FROM t_htma_stock WHERE store_id = %s
-                    ) AND stock_qty < 50 AND stock_qty >= 0
+                    ) AND stock_qty < 50 AND stock_qty >= 0 AND (stock_qty != 0 OR stock_amount != 0)
                 """, (STORE_ID, STORE_ID))
                 total = cur.fetchone()["total"] or 0
                 cur.execute("""
@@ -5801,20 +6495,20 @@ def api_inv_alert_list():
                     FROM t_htma_stock
                     WHERE store_id = %s AND data_date = (
                         SELECT MAX(data_date) FROM t_htma_stock WHERE store_id = %s
-                    ) AND stock_qty < 50 AND stock_qty >= 0
+                    ) AND stock_qty < 50 AND stock_qty >= 0 AND (stock_qty != 0 OR stock_amount != 0)
                     ORDER BY stock_qty ASC
                     LIMIT %s OFFSET %s
                 """, (STORE_ID, STORE_ID, page_size, offset))
             rows = cur.fetchall()
         return jsonify({
             "items": [{
-            "sku_code": r["sku_code"],
-            "category": r["category"] or "未分类",
-            "product_name": r.get("product_name") or "",
-            "stock_qty": float(r["stock_qty"] or 0),
-            "stock_amount": float(r["stock_amount"] or 0),
-            "data_date": r["data_date"].strftime("%Y-%m-%d") if hasattr(r["data_date"], "strftime") else str(r["data_date"]),
-        } for r in rows],
+                "sku_code": r["sku_code"],
+                "category": r["category"] or "未分类",
+                "product_name": r.get("product_name") or "",
+                "stock_qty": float(r["stock_qty"] or 0),
+                "stock_amount": float(r["stock_amount"] or 0),
+                "data_date": r["data_date"].strftime("%Y-%m-%d") if hasattr(r["data_date"], "strftime") else str(r["data_date"]),
+            } for r in rows],
             "total": total,
             "page": page,
             "page_size": page_size,
@@ -5936,6 +6630,61 @@ def api_brand_summary():
         conn.close()
 
 
+@app.route("/api/brand_categories", methods=["GET", "HEAD"])
+def api_brand_categories():
+    """经营分析-品牌下钻：按品牌返回涉及的大类/中类/小类及销售额、毛利。用于品牌行展开后展示品类明细。"""
+    brand = (request.args.get("brand") or request.args.get("brand_name") or "").strip()
+    if not brand:
+        return jsonify([])
+    try:
+        date_cond, _, params, category_cond, _ = _query_filters()
+        params = list(params)
+        brand_cond = " AND TRIM(COALESCE(brand_name, '')) = %s"
+        params.append(brand)
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f"""
+                    SELECT
+                        COALESCE(NULLIF(TRIM(category_large), ''), '未分类') AS category_large,
+                        COALESCE(NULLIF(TRIM(category_large_code), ''), NULLIF(TRIM(category_large), ''), '') AS category_large_code,
+                        COALESCE(NULLIF(TRIM(category_mid), ''), '未分类') AS category_mid,
+                        COALESCE(NULLIF(TRIM(category_mid_code), ''), NULLIF(TRIM(category_mid), ''), '') AS category_mid_code,
+                        COALESCE(NULLIF(TRIM(category_small), ''), NULLIF(TRIM(category), ''), '未分类') AS category_small,
+                        COALESCE(NULLIF(TRIM(category_small_code), ''), NULLIF(TRIM(category_small), ''), NULLIF(TRIM(category), ''), '') AS category_small_code,
+                        SUM(sale_amount) AS sale_amount,
+                        SUM(COALESCE(gross_profit, sale_amount - sale_cost, 0)) AS profit_amount
+                    FROM t_htma_sale
+                    WHERE store_id = %s AND {date_cond}{category_cond}{brand_cond}
+                    GROUP BY category_large, category_large_code, category_mid, category_mid_code, category_small, category_small_code
+                    ORDER BY sale_amount DESC
+                    LIMIT 200
+                """, tuple(params))
+                rows = cur.fetchall()
+            out = []
+            for i, r in enumerate(rows, 1):
+                sale = float(r["sale_amount"] or 0)
+                profit = float(r["profit_amount"] or 0)
+                margin = (profit / sale * 100) if sale > 0 else 0
+                out.append({
+                    "rank": i,
+                    "category_large": r.get("category_large") or "未分类",
+                    "category_large_code": r.get("category_large_code") or "",
+                    "category_mid": r.get("category_mid") or "未分类",
+                    "category_mid_code": r.get("category_mid_code") or "",
+                    "category_small": r.get("category_small") or "未分类",
+                    "category_small_code": r.get("category_small_code") or "",
+                    "sale_amount": round(sale, 2),
+                    "profit_amount": round(profit, 2),
+                    "margin_pct": round(margin, 2),
+                })
+            return jsonify(out)
+        finally:
+            conn.close()
+    except Exception:
+        return jsonify([])
+
+
 @app.route("/api/supplier_summary")
 def api_supplier_summary():
     """供应商贡献：按供应商汇总销售额、毛利、销量、毛利率、贡献占比"""
@@ -5973,6 +6722,116 @@ def api_supplier_summary():
                 "qty": round(float(r["qty"] or 0), 2),
                 "margin_pct": round(margin, 2),
                 "contrib_pct": round(contrib, 2),
+            })
+        return jsonify(out)
+    finally:
+        conn.close()
+
+
+@app.route("/api/supplier_categories", methods=["GET", "HEAD"])
+def api_supplier_categories():
+    """经营分析-供应商下钻：按供应商返回供应的品类（大类/中类/小类）及销售额、毛利。"""
+    supplier = (request.args.get("supplier") or request.args.get("supplier_name") or "").strip()
+    if not supplier:
+        return jsonify([])
+    try:
+        date_cond, _, params, category_cond, _ = _query_filters()
+        params = list(params)
+        supplier_cond = " AND TRIM(COALESCE(supplier_name, '')) = %s"
+        params.append(supplier)
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f"""
+                    SELECT
+                        COALESCE(NULLIF(TRIM(category_large), ''), '未分类') AS category_large,
+                        COALESCE(NULLIF(TRIM(category_large_code), ''), NULLIF(TRIM(category_large), ''), '') AS category_large_code,
+                        COALESCE(NULLIF(TRIM(category_mid), ''), '未分类') AS category_mid,
+                        COALESCE(NULLIF(TRIM(category_mid_code), ''), NULLIF(TRIM(category_mid), ''), '') AS category_mid_code,
+                        COALESCE(NULLIF(TRIM(category_small), ''), NULLIF(TRIM(category), ''), '未分类') AS category_small,
+                        COALESCE(NULLIF(TRIM(category_small_code), ''), NULLIF(TRIM(category_small), ''), NULLIF(TRIM(category), ''), '') AS category_small_code,
+                        SUM(sale_amount) AS sale_amount,
+                        SUM(COALESCE(gross_profit, sale_amount - sale_cost, 0)) AS profit_amount
+                    FROM t_htma_sale
+                    WHERE store_id = %s AND {date_cond}{category_cond}{supplier_cond}
+                    GROUP BY category_large, category_large_code, category_mid, category_mid_code, category_small, category_small_code
+                    ORDER BY sale_amount DESC
+                    LIMIT 200
+                """, tuple(params))
+                rows = cur.fetchall()
+            out = []
+            for i, r in enumerate(rows, 1):
+                sale = float(r["sale_amount"] or 0)
+                profit = float(r["profit_amount"] or 0)
+                margin = (profit / sale * 100) if sale > 0 else 0
+                out.append({
+                    "rank": i,
+                    "category_large": r.get("category_large") or "未分类",
+                    "category_large_code": r.get("category_large_code") or "",
+                    "category_mid": r.get("category_mid") or "未分类",
+                    "category_mid_code": r.get("category_mid_code") or "",
+                    "category_small": r.get("category_small") or "未分类",
+                    "category_small_code": r.get("category_small_code") or "",
+                    "sale_amount": round(sale, 2),
+                    "profit_amount": round(profit, 2),
+                    "margin_pct": round(margin, 2),
+                })
+            return jsonify(out)
+        finally:
+            conn.close()
+    except Exception:
+        return jsonify([])
+
+
+@app.route("/api/supplier_products", methods=["GET", "HEAD"])
+def api_supplier_products():
+    """经营分析-供应商下钻：按供应商+品类（大类/中类/小类）返回商品汇总。用于品类行展开后展示商品。"""
+    supplier = (request.args.get("supplier") or request.args.get("supplier_name") or "").strip()
+    category_large_code = request.args.get("category_large_code", "").strip() or request.args.get("category_large", "").strip()
+    category_mid_code = request.args.get("category_mid_code", "").strip() or request.args.get("category_mid", "").strip()
+    category_small_code = request.args.get("category_small_code", "").strip() or request.args.get("category_small", "").strip() or request.args.get("category", "").strip()
+    if not supplier:
+        return jsonify([])
+    date_cond, date_params, _, _, _ = _query_filters()
+    params = list((STORE_ID,) + date_params)
+    supplier_cond = " AND TRIM(COALESCE(supplier_name, '')) = %s"
+    params.append(supplier)
+    conds = [f" store_id = %s AND {date_cond}{supplier_cond} "]
+    if category_large_code:
+        conds.append(" AND (COALESCE(TRIM(category_large_code), '') = %s OR COALESCE(TRIM(category_large), '') = %s)")
+        params.extend([category_large_code, category_large_code])
+    if category_mid_code:
+        conds.append(" AND (COALESCE(TRIM(category_mid_code), '') = %s OR COALESCE(TRIM(category_mid), '') = %s)")
+        params.extend([category_mid_code, category_mid_code])
+    if category_small_code:
+        conds.append(" AND (COALESCE(TRIM(category_small_code), '') = %s OR COALESCE(TRIM(category_small), '') = %s OR COALESCE(TRIM(category), '') = %s)")
+        params.extend([category_small_code, category_small_code, category_small_code])
+    cat_cond = "".join(conds)
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(f"""
+                SELECT sku_code, COALESCE(MAX(product_name), '') AS product_name,
+                       SUM(sale_amount) AS total_sale, SUM(COALESCE(gross_profit, sale_amount - sale_cost, 0)) AS total_profit
+                FROM t_htma_sale
+                WHERE {cat_cond}
+                GROUP BY sku_code
+                ORDER BY total_sale DESC
+                LIMIT 200
+            """, tuple(params))
+            rows = cur.fetchall()
+        out = []
+        for i, r in enumerate(rows, 1):
+            sale = float(r["total_sale"] or 0)
+            profit = float(r["total_profit"] or 0)
+            margin = (profit / sale * 100) if sale > 0 else 0
+            out.append({
+                "rank": i,
+                "sku_code": r.get("sku_code") or "",
+                "product_name": (r.get("product_name") or "")[:64],
+                "sale_amount": round(sale, 2),
+                "profit_amount": round(profit, 2),
+                "margin_pct": round(margin, 2),
             })
         return jsonify(out)
     finally:
@@ -6031,6 +6890,130 @@ def api_price_band_summary():
                 "record_contrib_pct": round((record_count / total_records * 100), 2) if total_records > 0 else 0,
             })
         out.sort(key=lambda x: (band_order.index(x["band"]) if x["band"] in band_order else 99, x["band"]))
+        return jsonify(out)
+    finally:
+        conn.close()
+
+
+def _price_band_unit_cond(band):
+    """根据价格带返回 SQL 条件：件单价 (sale_amount/sale_qty) 落在该区间。返回 (cond_sql,)."""
+    band = (band or "").strip()
+    if band == "0":
+        return (" AND COALESCE(sale_qty, 0) <= 0 ",)
+    if band == "0-10":
+        return (" AND sale_qty > 0 AND sale_amount > 0 AND (sale_amount / sale_qty) < 10 ",)
+    if band == "10-30":
+        return (" AND sale_qty > 0 AND sale_amount > 0 AND (sale_amount / sale_qty) >= 10 AND (sale_amount / sale_qty) < 30 ",)
+    if band == "30-50":
+        return (" AND sale_qty > 0 AND sale_amount > 0 AND (sale_amount / sale_qty) >= 30 AND (sale_amount / sale_qty) < 50 ",)
+    if band == "50-100":
+        return (" AND sale_qty > 0 AND sale_amount > 0 AND (sale_amount / sale_qty) >= 50 AND (sale_amount / sale_qty) < 100 ",)
+    if band == "100+":
+        return (" AND sale_qty > 0 AND sale_amount > 0 AND (sale_amount / sale_qty) >= 100 ",)
+    return (" AND 1=0 ",)
+
+
+@app.route("/api/price_band_categories", methods=["GET", "HEAD"])
+def api_price_band_categories():
+    """经营分析-价格带下钻：按价格带返回涉及的品类（大类/中类/小类）及销售额、毛利。"""
+    band = (request.args.get("band") or "").strip()
+    if not band:
+        return jsonify([])
+    try:
+        unit_cond = _price_band_unit_cond(band)
+        date_cond, _, params, category_cond, _ = _query_filters()
+        params = tuple(params)
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f"""
+                    SELECT
+                        COALESCE(NULLIF(TRIM(category_large), ''), '未分类') AS category_large,
+                        COALESCE(NULLIF(TRIM(category_large_code), ''), NULLIF(TRIM(category_large), ''), '') AS category_large_code,
+                        COALESCE(NULLIF(TRIM(category_mid), ''), '未分类') AS category_mid,
+                        COALESCE(NULLIF(TRIM(category_mid_code), ''), NULLIF(TRIM(category_mid), ''), '') AS category_mid_code,
+                        COALESCE(NULLIF(TRIM(category_small), ''), NULLIF(TRIM(category), ''), '未分类') AS category_small,
+                        COALESCE(NULLIF(TRIM(category_small_code), ''), NULLIF(TRIM(category_small), ''), NULLIF(TRIM(category), ''), '') AS category_small_code,
+                        SUM(sale_amount) AS sale_amount,
+                        SUM(COALESCE(gross_profit, sale_amount - sale_cost, 0)) AS profit_amount
+                    FROM t_htma_sale
+                    WHERE store_id = %s AND {date_cond}{category_cond}{unit_cond[0]}
+                    GROUP BY category_large, category_large_code, category_mid, category_mid_code, category_small, category_small_code
+                    ORDER BY sale_amount DESC
+                    LIMIT 200
+                """, params)
+                rows = cur.fetchall()
+            out = []
+            for i, r in enumerate(rows, 1):
+                sale = float(r["sale_amount"] or 0)
+                profit = float(r["profit_amount"] or 0)
+                margin = (profit / sale * 100) if sale > 0 else 0
+                out.append({
+                    "rank": i,
+                    "category_large": r.get("category_large") or "未分类",
+                    "category_large_code": r.get("category_large_code") or "",
+                    "category_mid": r.get("category_mid") or "未分类",
+                    "category_mid_code": r.get("category_mid_code") or "",
+                    "category_small": r.get("category_small") or "未分类",
+                    "category_small_code": r.get("category_small_code") or "",
+                    "sale_amount": round(sale, 2),
+                    "profit_amount": round(profit, 2),
+                    "margin_pct": round(margin, 2),
+                })
+            return jsonify(out)
+        finally:
+            conn.close()
+    except Exception:
+        return jsonify([])
+
+
+@app.route("/api/price_band_products", methods=["GET", "HEAD"])
+def api_price_band_products():
+    """经营分析-价格带下钻：按价格带+品类返回商品汇总。用于品类行展开后展示商品。"""
+    band = (request.args.get("band") or "").strip()
+    category_large_code = request.args.get("category_large_code", "").strip() or request.args.get("category_large", "").strip()
+    category_mid_code = request.args.get("category_mid_code", "").strip() or request.args.get("category_mid", "").strip()
+    category_small_code = request.args.get("category_small_code", "").strip() or request.args.get("category_small", "").strip() or request.args.get("category", "").strip()
+    unit_cond = _price_band_unit_cond(band)
+    date_cond, date_params, _, _, _ = _query_filters()
+    params = list((STORE_ID,) + date_params)
+    conds = [f" store_id = %s AND {date_cond}{unit_cond[0]} "]
+    if category_large_code:
+        conds.append(" AND (COALESCE(TRIM(category_large_code), '') = %s OR COALESCE(TRIM(category_large), '') = %s)")
+        params.extend([category_large_code, category_large_code])
+    if category_mid_code:
+        conds.append(" AND (COALESCE(TRIM(category_mid_code), '') = %s OR COALESCE(TRIM(category_mid), '') = %s)")
+        params.extend([category_mid_code, category_mid_code])
+    if category_small_code:
+        conds.append(" AND (COALESCE(TRIM(category_small_code), '') = %s OR COALESCE(TRIM(category_small), '') = %s OR COALESCE(TRIM(category), '') = %s)")
+        params.extend([category_small_code, category_small_code, category_small_code])
+    cat_cond = "".join(conds)
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(f"""
+                SELECT sku_code, COALESCE(MAX(product_name), '') AS product_name,
+                       SUM(sale_amount) AS total_sale, SUM(COALESCE(gross_profit, sale_amount - sale_cost, 0)) AS total_profit
+                FROM t_htma_sale
+                WHERE {cat_cond}
+                GROUP BY sku_code
+                ORDER BY total_sale DESC
+                LIMIT 200
+            """, tuple(params))
+            rows = cur.fetchall()
+        out = []
+        for i, r in enumerate(rows, 1):
+            sale = float(r["total_sale"] or 0)
+            profit = float(r["total_profit"] or 0)
+            margin = (profit / sale * 100) if sale > 0 else 0
+            out.append({
+                "rank": i,
+                "sku_code": r.get("sku_code") or "",
+                "product_name": (r.get("product_name") or "")[:64],
+                "sale_amount": round(sale, 2),
+                "profit_amount": round(profit, 2),
+                "margin_pct": round(margin, 2),
+            })
         return jsonify(out)
     finally:
         conn.close()
@@ -6220,7 +7203,7 @@ def api_negative_margin_detail():
 
 @app.route("/api/category_structure_trend")
 def api_category_structure_trend():
-    """品类结构趋势：按周或月汇总各品类销售额占比。granularity=week|month，默认 week"""
+    """品类结构趋势：按周或月汇总各品类销售额、毛利及占比。granularity=week|month，默认 week"""
     granularity = request.args.get("granularity", "week")
     date_cond, _, params, category_cond, _ = _query_filters()
     conn = get_conn()
@@ -6230,7 +7213,8 @@ def api_category_structure_trend():
                 cur.execute(f"""
                     SELECT DATE_FORMAT(data_date, '%%Y-%%m') AS period,
                            COALESCE(category, '未分类') AS category,
-                           SUM(sale_amount) AS sale_amount
+                           SUM(sale_amount) AS sale_amount,
+                           SUM(COALESCE(gross_profit, sale_amount - sale_cost, 0)) AS profit_amount
                     FROM t_htma_sale
                     WHERE store_id = %s AND {date_cond}{category_cond}
                     GROUP BY DATE_FORMAT(data_date, '%%Y-%%m'), COALESCE(category, '未分类')
@@ -6240,7 +7224,8 @@ def api_category_structure_trend():
                 cur.execute(f"""
                     SELECT CONCAT(YEAR(data_date), '-W', LPAD(WEEK(data_date, 3), 2, '0')) AS period,
                            COALESCE(category, '未分类') AS category,
-                           SUM(sale_amount) AS sale_amount
+                           SUM(sale_amount) AS sale_amount,
+                           SUM(COALESCE(gross_profit, sale_amount - sale_cost, 0)) AS profit_amount
                     FROM t_htma_sale
                     WHERE store_id = %s AND {date_cond}{category_cond}
                     GROUP BY CONCAT(YEAR(data_date), '-W', LPAD(WEEK(data_date, 3), 2, '0')), COALESCE(category, '未分类')
@@ -6249,21 +7234,31 @@ def api_category_structure_trend():
             rows = cur.fetchall()
         from collections import defaultdict
         period_totals = defaultdict(float)
+        period_profit_totals = defaultdict(float)
         period_cats = defaultdict(list)
         for r in rows:
             period = r["period"] or ""
             cat = r["category"] or "未分类"
             amt = float(r["sale_amount"] or 0)
+            profit = float(r["profit_amount"] or 0)
             period_totals[period] += amt
-            period_cats[period].append({"category": cat, "sale_amount": round(amt, 2)})
+            period_profit_totals[period] += profit
+            period_cats[period].append({
+                "category": cat,
+                "sale_amount": round(amt, 2),
+                "profit_amount": round(profit, 2),
+            })
         out = []
         for period in sorted(period_totals.keys()):
             total = period_totals[period]
+            total_profit = period_profit_totals[period]
             cats = period_cats[period]
             for c in cats:
                 pct = (c["sale_amount"] / total * 100) if total > 0 else 0
+                profit_pct = (c["profit_amount"] / total_profit * 100) if total_profit > 0 else 0
                 c["share_pct"] = round(pct, 2)
-            out.append({"period": period, "total_sale": round(total, 2), "by_category": cats})
+                c["profit_share_pct"] = round(profit_pct, 2)
+            out.append({"period": period, "total_sale": round(total, 2), "total_profit": round(total_profit, 2), "by_category": cats})
         return jsonify(out)
     finally:
         conn.close()
@@ -6307,6 +7302,60 @@ def api_inventory_turnover_summary():
             "turnover_days": round(turnover_days, 1) if turnover_days is not None else None,
             "days": days,
         })
+    finally:
+        conn.close()
+
+
+@app.route("/api/inventory_turnover_by_category")
+def api_inventory_turnover_by_category():
+    """库存周转按品类：按大类汇总期末库存金额、周期销售成本、周转天数，与 summary 口径一致"""
+    date_cond, _, params, category_cond, _ = _query_filters()
+    days = 30
+    if request.args.get("start_date") and request.args.get("end_date"):
+        try:
+            e = datetime.strptime(request.args.get("end_date"), "%Y-%m-%d").date()
+            s = datetime.strptime(request.args.get("start_date"), "%Y-%m-%d").date()
+            days = max(1, (e - s).days + 1)
+        except Exception:
+            pass
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT COALESCE(NULLIF(TRIM(st.category_large), ''), NULLIF(TRIM(st.category), ''), '未分类') AS category_large,
+                       COALESCE(SUM(st.stock_amount), 0) AS stock_amount
+                FROM t_htma_stock st
+                WHERE st.store_id = %s AND st.data_date = (SELECT MAX(data_date) FROM t_htma_stock WHERE store_id = %s)
+                GROUP BY category_large
+                HAVING stock_amount > 0
+            """, (STORE_ID, STORE_ID))
+            stock_rows = cur.fetchall()
+            cur.execute(f"""
+                SELECT COALESCE(NULLIF(TRIM(category_large), ''), NULLIF(TRIM(category), ''), '未分类') AS category_large,
+                       COALESCE(SUM(sale_cost), 0) AS cost_amount
+                FROM t_htma_sale
+                WHERE store_id = %s AND {date_cond}{category_cond}
+                GROUP BY category_large
+            """, params)
+            cost_rows = cur.fetchall()
+        stock_by_cat = {r["category_large"] or "未分类": float(r["stock_amount"] or 0) for r in stock_rows}
+        cost_by_cat = {r["category_large"] or "未分类": float(r["cost_amount"] or 0) for r in cost_rows}
+        all_cats = sorted(set(stock_by_cat.keys()) | set(cost_by_cat.keys()))
+        out = []
+        for cat in all_cats:
+            stock_amt = stock_by_cat.get(cat, 0)
+            cost_amt = cost_by_cat.get(cat, 0)
+            daily_cost = cost_amt / days if days > 0 else 0
+            turnover_days = (stock_amt / daily_cost) if daily_cost > 0 else None
+            out.append({
+                "category_large": cat,
+                "stock_amount": round(stock_amt, 2),
+                "period_cost_amount": round(cost_amt, 2),
+                "turnover_days": round(turnover_days, 1) if turnover_days is not None else None,
+                "days": days,
+            })
+        out.sort(key=lambda x: (-(x["stock_amount"] or 0), x["category_large"]))
+        return jsonify(out)
     finally:
         conn.close()
 

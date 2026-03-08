@@ -1,7 +1,30 @@
-# 外网访问 Error 1033（Cloudflare Tunnel 无法解析）排查
+# 外网访问错误排查（1033 / 502）
 
-当访问 https://htma.greatagain.com.cn 出现 **Error 1033**：  
+## Error 502 Bad Gateway
+
+当访问 https://htma.greatagain.com.cn 出现 **502 Bad Gateway**：  
+表示 **Cloudflare 能连上隧道，但源站（本机看板）无响应**。通常是看板进程未运行或未监听 5002。
+
+**处理步骤（在跑看板的那台机器上）：**
+
+1. 检查 5002 是否在监听：`lsof -i :5002`
+2. 若无输出，先启动看板：
+   ```bash
+   cd /Volumes/ragflow/hotmaxx/hotmaxxflag
+   bash scripts/start_htma.sh
+   ```
+   或通过 launchd：`launchctl load ~/Library/LaunchAgents/com.htma.dashboard.plist`
+3. 确认本机可访问：`curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:5002/api/health` 应返回 200
+4. 若隧道由 launchd 管理，确认隧道在跑：`launchctl list | grep com.htma.tunnel` 且 `pgrep -fl cloudflared`
+
+---
+
+## Error 1033（Cloudflare Tunnel 无法解析）
+
+当出现 **Error 1033**：  
 「Cloudflare is currently unable to resolve it」→ 说明 **cloudflared 未在跑或未连上 Cloudflare**。
+
+**若遇到新 API 外网 404**（如 `/api/brand_categories`、`/api/supplier_categories`）：是看板进程未重启，新路由未加载。详见 [新增API后需重启看板.md](./新增API后需重启看板.md)，或直接执行 `bash scripts/restart_dashboard_for_new_apis.sh`。
 
 ## 1. 本机先做这两步
 

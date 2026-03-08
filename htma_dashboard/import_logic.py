@@ -473,6 +473,7 @@ STOCK_NEW_COLS = {
 
 def import_sale_daily(excel_path, conn, overwrite_on_duplicate=False):
     """销售日报表：支持表头检测。overwrite_on_duplicate=True 时同(日期,货号)覆盖不累加（与汇总同传时防翻倍）。"""
+    ensure_sale_table_columns(conn)
     df = _read_excel_safe(excel_path)
     df = _trim_leading_junk_rows(df, ("货号", "销售金额", "商品编码", "销售日期", "销售数量", "品号", "商品号", "商品名称", "订单日期", "销售汇总"))
     if df.shape[0] <= 1:
@@ -572,6 +573,7 @@ def import_sale_daily(excel_path, conn, overwrite_on_duplicate=False):
                 first_err = str(e)
     flush_sale_batch()
     conn.commit()
+    backfill_sale_category_and_supplier(conn, STORE_ID)
     diag = None
     if inserted == 0 or skipped_summary > 0:
         parts = [f"总行{len(data_rows)}", f"去重后{len(agg_sale)}条", f"导入{inserted}条"]
@@ -682,6 +684,7 @@ def _import_sale_full(row, dt, sku, sale_amount, cost, gross, cur, cols, full_ma
 
 def import_sale_summary(excel_path, conn, overwrite_on_duplicate=False):
     """销售汇总表：支持表头检测。overwrite_on_duplicate=True 时同(日期,货号)覆盖不累加（与日报同传时防销售额翻倍）。"""
+    ensure_sale_table_columns(conn)
     df = _read_excel_safe(excel_path)
     df = _trim_leading_junk_rows(df, ("货号", "销售金额", "商品编码", "销售日期", "销售数量", "品号", "商品号", "商品名称", "订单日期", "销售汇总"))
     if df.shape[0] <= 1:
@@ -784,6 +787,7 @@ def import_sale_summary(excel_path, conn, overwrite_on_duplicate=False):
                 first_err = str(e)
     flush_sale_batch()
     conn.commit()
+    backfill_sale_category_and_supplier(conn, STORE_ID)
     parts = [f"总行{len(data_rows)}", f"去重后{len(agg_sale)}条", f"导入{inserted}条"]
     if skipped_summary:
         parts.append(f"跳过汇总行{skipped_summary}条")
@@ -1409,6 +1413,82 @@ def refresh_category_from_sale(conn):
     """)
     conn.commit()
     return cur.rowcount
+
+
+# t_htma_sale 表需有的大类/中类/小类/供应商/品牌等列（与 run_add_columns 一致，用于导入前确保列存在）
+SALE_TABLE_EXTRA_COLUMNS = [
+    ("category_large_code", "VARCHAR(32) DEFAULT NULL COMMENT '大类编码'"),
+    ("category_large", "VARCHAR(64) DEFAULT NULL COMMENT '大类名称'"),
+    ("category_mid_code", "VARCHAR(32) DEFAULT NULL COMMENT '中类编码'"),
+    ("category_mid", "VARCHAR(64) DEFAULT NULL COMMENT '中类名称'"),
+    ("category_small_code", "VARCHAR(32) DEFAULT NULL COMMENT '小类编码'"),
+    ("category_small", "VARCHAR(64) DEFAULT NULL COMMENT '小类名称'"),
+    ("supplier_code", "VARCHAR(64) DEFAULT NULL COMMENT '供应商编码'"),
+    ("supplier_name", "VARCHAR(128) DEFAULT NULL COMMENT '供应商名称'"),
+    ("supplier_main_code", "VARCHAR(64) DEFAULT NULL COMMENT '主供应商编码'"),
+    ("supplier_main_name", "VARCHAR(128) DEFAULT NULL COMMENT '主供应商名称'"),
+    ("brand_code", "VARCHAR(32) DEFAULT NULL COMMENT '品牌编码'"),
+    ("brand_name", "VARCHAR(64) DEFAULT NULL COMMENT '品牌名称'"),
+]
+
+
+def ensure_sale_table_columns(conn):
+    """确保 t_htma_sale 存在大类/中类/小类/供应商/品牌等列；缺则 ADD COLUMN，已存在则跳过（便于未跑过 run_add_columns 的环境）。"""
+    cur = conn.cursor()
+    for col, defn in SALE_TABLE_EXTRA_COLUMNS:
+        try:
+            cur.execute(f"ALTER TABLE t_htma_sale ADD COLUMN {col} {defn}")
+            conn.commit()
+        except pymysql.err.OperationalError as e:
+            if "Duplicate column" in str(e):
+                pass
+            else:
+                raise
+    cur.close()
+
+
+def backfill_sale_category_and_supplier(conn, store_id: str = None):
+    """
+    透视回填：对 t_htma_sale 中大类/中类/小类/供应商/品牌为空的记录，
+    1) 从 t_htma_product_master 按 sku_code+store_id 回填 brand_name、supplier_name；
+    2) 若有 category（类别名称）但无大类/中类/小类，则用 category 回填 category_small/category_mid/category_large；
+    3) 再调用 refresh_category_from_sale 更新 t_htma_category。
+    """
+    store_id = store_id or STORE_ID
+    cur = conn.cursor()
+    try:
+        # 1) 从商品档案回填品牌、供应商（仅当 sale 中为空时）
+        cur.execute("""
+            UPDATE t_htma_sale s
+            INNER JOIN t_htma_product_master p ON p.sku_code = s.sku_code AND p.store_id = s.store_id
+            SET
+                s.brand_name = COALESCE(NULLIF(TRIM(s.brand_name), ''), p.brand_name),
+                s.supplier_name = COALESCE(NULLIF(TRIM(s.supplier_name), ''), p.supplier_name)
+            WHERE s.store_id = %s
+              AND (COALESCE(TRIM(s.brand_name), '') = '' OR COALESCE(TRIM(s.supplier_name), '') = '')
+        """, (store_id,))
+        conn.commit()
+        # 2) 用 category 回填大类/中类/小类（仅当三者均为空且 category 有值时）
+        cur.execute("""
+            UPDATE t_htma_sale
+            SET
+                category_large = COALESCE(NULLIF(TRIM(category_large), ''), category),
+                category_mid = COALESCE(NULLIF(TRIM(category_mid), ''), category),
+                category_small = COALESCE(NULLIF(TRIM(category_small), ''), category)
+            WHERE store_id = %s
+              AND COALESCE(TRIM(category_large), '') = ''
+              AND COALESCE(TRIM(category_mid), '') = ''
+              AND COALESCE(TRIM(category_small), '') = ''
+              AND COALESCE(TRIM(category), '') != ''
+        """, (store_id,))
+        conn.commit()
+        # 3) 刷新品类主数据表
+        refresh_category_from_sale(conn)
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
 
 
 def sync_products_table(conn, store_id: str = "沈阳超级仓", days: int = 90) -> int:

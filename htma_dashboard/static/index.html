@@ -104,13 +104,31 @@
     .sortable-th:hover { color: #38bdf8; }
     .sortable-th .sort-arrow { font-size: 0.7rem; margin-left: 2px; opacity: 0.6; }
     .summary-row:hover { background: #334155; }
-    .insight-category-row, .insight-brand-row, .insight-subcategory-row { cursor: pointer; }
+    .insight-category-row, .insight-brand-row, .insight-subcategory-row, .insight-drill-brand-row, .insight-drill-style-row { cursor: pointer; }
     .insight-brand-row:hover, .insight-subcategory-row:hover { background: #334155; }
     .margin-low { color: #f87171; }
     .margin-mid { color: #fbbf24; }
     .margin-high { color: #34d399; }
     .expand-icon { display: inline-block; width: 18px; color: #38bdf8; font-size: 0.75rem; transition: transform 0.2s; }
     .summary-row.expanded .expand-icon { transform: rotate(90deg); }
+    /* 下钻层级颜色规范：L0 大类→L1 中类→L2 小类→L3 品牌→L4 商品→L5 最细明细，便于区分层级 */
+    .drill-l0, #categoryRankBody .cat-rank-row { background: rgba(56,189,248,0.08); border-left: 4px solid #38bdf8; }
+    .drill-l1, .cat-mid-row { background: rgba(34,211,238,0.08); border-left: 4px solid #22d3ee; }
+    .drill-l2, .cat-small-row { background: rgba(52,211,153,0.08); border-left: 4px solid #34d399; }
+    .drill-l3, .cat-brand-row { background: rgba(251,191,36,0.08); border-left: 4px solid #fbbf24; }
+    .drill-l4, .cat-product-row { background: rgba(248,113,113,0.06); border-left: 4px solid #f87171; }
+    .drill-l5, .category-sale-detail tbody tr, .detail-row { background: #0f172a !important; font-size: 0.85em; color: #94a3b8; }
+    .drill-l5 td { padding: 4px 8px; }
+    .category-sale-detail tbody tr td { padding: 4px 8px; }
+    #profitTableBody .summary-row, #productTableBody .summary-row { background: rgba(56,189,248,0.08); border-left: 4px solid #38bdf8; }
+    #invCategoryBody .inv-summary { background: rgba(56,189,248,0.08); border-left: 4px solid #38bdf8; }
+    #invDetailWrap tbody tr { background: #0f172a; font-size: 0.85em; color: #94a3b8; }
+    .insight-category-row { background: rgba(56,189,248,0.08); border-left: 4px solid #38bdf8; }
+    .insight-brand-row { background: rgba(34,211,238,0.08); border-left: 4px solid #22d3ee; }
+    .insight-subcategory-row { background: rgba(52,211,153,0.08); border-left: 4px solid #34d399; }
+    .cat-rank-mid-wrap td { background: rgba(15,23,42,0.6); }
+    .cat-mid-small-wrap td { background: rgba(15,23,42,0.5); }
+    .cat-brands-wrap td, .cat-products-wrap td, .cat-sale-detail-wrap td { background: rgba(15,23,42,0.5); }
     .detail-row td { padding-left: 24px; background: #0f172a; font-size: 0.75rem; color: #94a3b8; }
     .detail-row td:first-child { padding-left: 10px; }
     .btn-ai { display: flex; align-items: center; gap: 4px; padding: 6px 12px; border-radius: 6px; border: 1px solid #38bdf8; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #38bdf8; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
@@ -214,20 +232,82 @@
       .page-panel .detail-tabs .tab-btn { flex: 1; min-width: 80px; padding: 8px 12px; }
       .page-panel .pagination { flex-wrap: wrap; gap: 6px; }
       .page-panel .pagination button { padding: 8px 12px; }
-      #categoryRankDetailWrap table, #invDetailWrap table { min-width: 480px; }
+      #categoryRankDetailWrap table, #invDetailWrap table, .inv-detail-wrap table { min-width: 480px; }
       #categoryRankDetailWrap th:first-child, #categoryRankDetailWrap td:first-child { position: sticky; left: 0; background: #0f172a; z-index: 1; }
       #invDetailWrap th:first-child, #invDetailWrap td:first-child { position: sticky; left: 0; background: #0f172a; z-index: 1; }
+      .inv-detail-wrap td { padding: 0; vertical-align: top; background: #1e293b; }
+      .inv-detail-wrap .inv-detail-inner { padding: 8px 12px 12px 32px; }
+      .inv-detail-wrap table.inv-detail-table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+      .inv-detail-wrap table.inv-detail-table th { text-align: left; padding: 6px 8px; color: #94a3b8; }
+      .inv-detail-wrap table.inv-detail-table td { padding: 6px 8px; }
       .cat-rank-mid-wrap td { padding: 0; vertical-align: top; background: #1e293b; }
       .cat-rank-mid-wrap .category-mid-detail { padding: 8px 12px 12px 32px; }
       .cat-rank-mid-wrap table.cat-mid-table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
       .cat-rank-mid-wrap table.cat-mid-table th { text-align: left; padding: 6px 8px; color: #94a3b8; }
       .cat-rank-mid-wrap table.cat-mid-table td { padding: 6px 8px; }
-      .cat-rank-mid-wrap .cat-mid-row { cursor: pointer; }
+      .cat-rank-mid-wrap .cat-mid-row { cursor: pointer; background: rgba(34,211,238,0.08); border-left: 4px solid #22d3ee; }
       .cat-rank-mid-wrap .cat-mid-row:hover { background: #334155; }
       .cat-rank-mid-wrap .cat-mid-row.expanded .expand-icon { transform: rotate(90deg); }
       .cat-rank-mid-wrap .cat-mid-small-wrap td { padding: 0; background: #0f172a; }
       .cat-rank-mid-wrap .cat-mid-small-wrap .category-small-detail { padding: 6px 8px 8px 24px; font-size: 0.85em; }
       .cat-rank-mid-wrap .cat-mid-small-wrap table { width: 100%; border-collapse: collapse; }
+      .cat-small-row, .cat-brand-row, .cat-product-row { cursor: pointer; }
+      .cat-small-row:hover, .cat-brand-row:hover, .cat-product-row:hover { background: #334155 !important; }
+      .cat-small-row.expanded .expand-icon, .cat-brand-row.expanded .expand-icon, .cat-product-row.expanded .expand-icon { transform: rotate(90deg); }
+      .cat-brands-wrap .category-brands-detail, .cat-products-wrap .category-products-detail, .cat-sale-detail-wrap .category-sale-detail { padding: 6px 8px 8px 20px; font-size: 0.85em; }
+      .cat-brands-wrap table, .cat-products-wrap table, .cat-sale-detail-wrap table { width: 100%; border-collapse: collapse; }
+      .biz-brand-detail-wrap td { padding: 0; vertical-align: top; background: #1e293b; }
+      .biz-brand-detail-wrap .biz-brand-detail-inner { padding: 8px 12px 12px 32px; }
+      .biz-brand-detail-wrap table.biz-brand-cat-table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+      .biz-brand-detail-wrap table.biz-brand-cat-table th { text-align: left; padding: 6px 8px; color: #94a3b8; }
+      .biz-brand-detail-wrap table.biz-brand-cat-table td { padding: 6px 8px; }
+      .biz-brand-row { cursor: pointer; }
+      .biz-brand-row:hover { background: #334155; }
+      .biz-brand-row.expanded .expand-icon { transform: rotate(90deg); }
+      .biz-brand-cat-row { cursor: pointer; background: rgba(52,211,153,0.08); border-left: 4px solid #34d399; }
+      .biz-brand-cat-row:hover { background: #334155; }
+      .biz-brand-cat-row.expanded .expand-icon { transform: rotate(90deg); }
+      .biz-supplier-detail-wrap td { padding: 0; vertical-align: top; background: #1e293b; }
+      .biz-supplier-detail-wrap .biz-supplier-detail-inner { padding: 8px 12px 12px 32px; }
+      .biz-supplier-detail-wrap table.biz-supplier-cat-table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+      .biz-supplier-detail-wrap table.biz-supplier-cat-table th { text-align: left; padding: 6px 8px; color: #94a3b8; }
+      .biz-supplier-detail-wrap table.biz-supplier-cat-table td { padding: 6px 8px; }
+      .biz-supplier-row { cursor: pointer; }
+      .biz-supplier-row:hover { background: #334155; }
+      .biz-supplier-row.expanded .expand-icon { transform: rotate(90deg); }
+      .biz-supplier-cat-row { cursor: pointer; background: rgba(168,85,247,0.08); border-left: 4px solid #a855f7; }
+      .biz-supplier-cat-row:hover { background: #334155; }
+      .biz-supplier-cat-row.expanded .expand-icon { transform: rotate(90deg); }
+      .biz-price-band-detail-wrap td { padding: 0; vertical-align: top; background: #1e293b; }
+      .biz-price-band-detail-wrap .biz-price-band-detail-inner { padding: 8px 12px 12px 32px; }
+      .biz-price-band-detail-wrap table.biz-price-band-cat-table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+      .biz-price-band-detail-wrap table.biz-price-band-cat-table th { text-align: left; padding: 6px 8px; color: #94a3b8; }
+      .biz-price-band-detail-wrap table.biz-price-band-cat-table td { padding: 6px 8px; }
+      .biz-price-band-row { cursor: pointer; }
+      .biz-price-band-row:hover { background: #334155; }
+      .biz-price-band-row.expanded .expand-icon { transform: rotate(90deg); }
+      .biz-price-band-cat-row { cursor: pointer; background: rgba(236,72,153,0.08); border-left: 4px solid #ec4899; }
+      .biz-price-band-cat-row:hover { background: #334155; }
+      .biz-price-band-cat-row.expanded .expand-icon { transform: rotate(90deg); }
+      .turnover-legend { margin-left: 12px; font-size: 0.8em; color: #64748b; }
+      .turnover-legend .turnover-days-fast { color: #34d399; margin-right: 8px; }
+      .turnover-legend .turnover-days-mid { color: #fbbf24; margin-right: 8px; }
+      .turnover-legend .turnover-days-slow { color: #f87171; }
+      .turnover-cell.turnover-days-fast { color: #34d399; font-weight: 600; }
+      .turnover-cell.turnover-days-mid { color: #fbbf24; }
+      .turnover-cell.turnover-days-slow { color: #f87171; font-weight: 500; }
+      .turnover-cell.turnover-days-na { color: #64748b; }
+      .abc-summary-row { cursor: pointer; }
+      .abc-summary-row:hover { background: #334155; }
+      .abc-summary-row.expanded .expand-icon { transform: rotate(90deg); }
+      .abc-summary-row[data-class="A"] { background: rgba(52,211,153,0.08); border-left: 4px solid #34d399; }
+      .abc-summary-row[data-class="B"] { background: rgba(251,191,36,0.08); border-left: 4px solid #fbbf24; }
+      .abc-summary-row[data-class="C"] { background: rgba(148,163,184,0.08); border-left: 4px solid #94a3b8; }
+      .abc-detail-wrap td { padding: 0; vertical-align: top; background: #1e293b; }
+      .abc-detail-wrap .abc-detail-inner { padding: 8px 12px 12px 32px; }
+      .abc-detail-wrap table.abc-detail-table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+      .abc-detail-wrap table.abc-detail-table th { text-align: left; padding: 6px 8px; color: #94a3b8; }
+      .abc-detail-wrap table.abc-detail-table td { padding: 6px 8px; }
       .page-panel .table-wrap::before { content: '← 左右滑动查看更多'; display: block; font-size: 0.7rem; color: #64748b; margin-bottom: 4px; }
     }
   </style>
@@ -237,7 +317,7 @@
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
     <div>
       <h1>好特卖沈阳超级仓运营看板</h1>
-      <p class="subtitle" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">临期折扣零售 · 数据来自 MySQL htma_dashboard · <a href="/import" id="linkImport" style="color:#38bdf8;">数据导入</a> · <a href="/labor" id="linkLabor" style="color:#38bdf8;">人力成本</a> · <a href="/labor_analysis" id="linkLaborAnalysis" style="color:#38bdf8;">人力分析</a> · <a href="/product_master" id="linkProductMaster" style="color:#38bdf8;">商品档案</a>（与 KPI 周期无关） · <a href="/login" style="color:#38bdf8;">登录</a> <span id="authUserBar"></span></p>
+      <p class="subtitle" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">临期折扣零售 · 数据来自 MySQL htma_dashboard · <a href="/import" id="linkImport" style="color:#38bdf8;">数据导入</a> · <a href="/labor" id="linkLabor" style="color:#38bdf8;">人力成本</a> · <a href="/labor_analysis" id="linkLaborAnalysis" style="color:#38bdf8;">人力分析</a> · <a href="/product_master" id="linkProductMaster" style="color:#38bdf8;">商品档案</a> · <a href="/profit_share" id="linkProfitShare" style="color:#38bdf8;">收益评估</a>（与 KPI 周期无关） · <a href="/login" style="color:#38bdf8;">登录</a> <span id="authUserBar"></span></p>
     </div>
     <div style="display:flex;gap:8px;">
       <button id="btnAiInsight" class="btn-ai" title="基于当前数据生成智能分析建议">
@@ -411,7 +491,7 @@
 
   <div class="page-panel" id="pageCategory" data-page="category">
   <div class="section scroll-table">
-    <h2>品类排行（按大类展示，点击行展开中类/小类；点击列标题可重排）</h2>
+    <h2>品类排行（统一下钻：大类 → 中类 → 小类 → 品牌 → 商品，点击行逐级展开；点击列标题可重排）</h2>
     <div class="table-wrap">
     <table id="categoryRankTable">
       <thead><tr>
@@ -425,7 +505,7 @@
       <tbody id="categoryRankBody"></tbody>
     </table>
     <div id="categoryRankDetailWrap" style="display:none; margin-top:8px;">
-      <h3 style="font-size:0.85rem;color:#94a3b8;margin-bottom:4px;" id="categoryRankDetailTitle">— 中类/小类明细</h3>
+      <h3 style="font-size:0.85rem;color:#94a3b8;margin-bottom:4px;" id="categoryRankDetailTitle">— 中类/小类（点击小类可展开该小类下品牌 → 品牌下为商品销售与库存）</h3>
       <table><thead><tr><th>排名</th><th>中类</th><th>小类/品类</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">毛利率</th></tr></thead>
       <tbody id="categoryRankDetailBody"></tbody></table>
     </div>
@@ -436,6 +516,7 @@
   <div class="page-panel" id="pageDetail" data-page="detail">
   <div class="section scroll-table">
     <h2>销售与毛利明细</h2>
+    <p style="font-size:0.8rem;color:#94a3b8;margin-bottom:8px;">按品类时为 大类/中类/小类；下钻逻辑与消费洞察一致：品类 → 品牌 → 商品 → 销售与库存。</p>
     <div class="detail-tabs" style="margin-bottom:6px;">
       <button class="tab-btn active" data-detail="category">按品类</button>
       <button class="tab-btn" data-detail="product">按商品</button>
@@ -483,14 +564,8 @@
       <thead><tr><th style="width:28px;"></th><th>大类名称</th><th class="num">低库存SKU数</th><th class="num">库存金额</th></tr></thead>
       <tbody id="invCategoryBody"></tbody>
     </table>
-    <div id="invDetailWrap" style="display:none; margin-top:8px;">
-      <h3 style="font-size:0.85rem;color:#94a3b8;margin-bottom:4px;" id="invDetailTitle">— 明细</h3>
-      <table>
-        <thead><tr><th>商品编码</th><th>品名</th><th>品类</th><th class="num">库存数量</th><th class="num">库存金额</th><th>库存日期</th></tr></thead>
-        <tbody id="invTableBody"></tbody>
-      </table>
-      <div id="invPagination" class="pagination" style="display:none;"></div>
-    </div>
+    <!-- 库存明细改为在点击行下方内联展开，此处仅作占位保留 -->
+    <div id="invDetailWrap" style="display:none;"></div>
     </div>
   </div>
   </div>
@@ -581,15 +656,19 @@
     </div>
     </div>
     <div id="insightTabCategory" class="insight-tab-panel" data-insight-tab="category">
-    <h3 class="label" style="margin-top:0;">品类贡献明细（点击品类/品牌/子品类在新标签页打开详情）</h3>
+    <h3 class="label" style="margin-top:0;">品类贡献明细（点击品类 → 品牌 → 款式 → 货号明细）</h3>
     <div class="table-wrap"><table data-insight-table="categoryMatrix"><thead><tr><th class="insight-no">序号</th><th class="sortable" data-sort-key="category">品类</th><th class="num sortable" data-sort-key="sku_sold">动销SKU</th><th class="num sortable" data-sort-key="sale_amount">销售额</th><th class="num sortable" data-sort-key="sale_contrib_pct">销售占比%</th><th class="num sortable" data-sort-key="profit">毛利</th><th class="num sortable" data-sort-key="margin_pct">毛利率%</th><th class="num sortable" data-sort-key="avg_sale_price">平均售价</th><th class="num sortable" data-sort-key="avg_discount_pct">平均折扣%</th><th class="num sortable" data-sort-key="qty">销量</th></tr></thead><tbody id="insightCategoryMatrixBody"></tbody></table></div>
-    <div id="insightDrillSubcategoryWrap" style="display:none; margin-top:12px;">
-      <h3 class="label">二级看板 · 子品类贡献（点击子品类在新标签页打开）</h3>
-      <div class="table-wrap"><table><thead><tr><th class="insight-no">序号</th><th>子品类</th><th class="num">动销SKU</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">销量</th><th class="num">毛利率%</th></tr></thead><tbody id="insightDrillSubcategoryBody"></tbody></table></div>
+    <div id="insightDrillBrandWrap" style="display:none; margin-top:12px;">
+      <h3 class="label">二级看板 · 该品类下品牌（点击品牌查看款式）</h3>
+      <div class="table-wrap"><table><thead><tr><th class="insight-no">序号</th><th>品牌</th><th class="num">动销SKU</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">销量</th><th class="num">毛利率%</th></tr></thead><tbody id="insightDrillBrandBody"></tbody></table></div>
+    </div>
+    <div id="insightDrillStyleWrap" style="display:none; margin-top:12px;">
+      <h3 class="label">三级看板 · 该品牌下款式（点击款式查看货号明细）</h3>
+      <div class="table-wrap"><table><thead><tr><th class="insight-no">序号</th><th>款式（品名）</th><th class="num">动销SKU</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">销量</th><th class="num">毛利率%</th></tr></thead><tbody id="insightDrillStyleBody"></tbody></table></div>
     </div>
     <div id="insightDrillSkuRankWrap" style="display:none; margin-top:12px;">
-      <h3 class="label">三级看板 · 单品销售排行（该品类+品牌下各货号）</h3>
-      <div class="table-wrap"><table><thead><tr><th class="insight-no">序号</th><th>货号</th><th>品名</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">销量</th><th class="num">毛利率%</th><th class="num">折扣%</th></tr></thead><tbody id="insightDrillSkuRankBody"></tbody></table></div>
+      <h3 class="label" id="insightDrillSkuRankTitle">四级看板 · 该款式下货号销售明细</h3>
+      <div class="table-wrap"><table><thead><tr><th class="insight-no">序号</th><th>货号</th><th>品牌</th><th>品名</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">销量</th><th class="num">毛利率%</th><th class="num">折扣%</th></tr></thead><tbody id="insightDrillSkuRankBody"></tbody></table></div>
     </div>
     </div>
     <div id="insightTabBrand" class="insight-tab-panel" data-insight-tab="brand">
@@ -657,21 +736,23 @@
       <p id="returnGiftMsg" class="section-desc"></p>
     </div>
     <div id="bizBrand" class="biz-block" style="display:none;">
-      <div class="table-wrap"><table><thead><tr><th>品牌</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">销量</th><th class="num">毛利率%</th><th class="num">贡献%</th></tr></thead><tbody id="brandSummaryBody"></tbody></table></div>
+      <div class="table-wrap"><table id="brandSummaryTable"><thead><tr><th style="width:28px;"></th><th>品牌</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">销量</th><th class="num">毛利率%</th><th class="num">贡献%</th></tr></thead><tbody id="brandSummaryBody"></tbody></table></div>
     </div>
     <div id="bizSupplier" class="biz-block" style="display:none;">
-      <div class="table-wrap"><table><thead><tr><th>供应商</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">销量</th><th class="num">毛利率%</th><th class="num">贡献%</th></tr></thead><tbody id="supplierSummaryBody"></tbody></table></div>
+      <div class="table-wrap"><table id="supplierSummaryTable"><thead><tr><th style="width:28px;"></th><th>供应商</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">销量</th><th class="num">毛利率%</th><th class="num">贡献%</th></tr></thead><tbody id="supplierSummaryBody"></tbody></table></div>
     </div>
     <div id="bizPriceBand" class="biz-block" style="display:none;">
       <div id="priceBandChart" class="chart" style="height:260px;"></div>
-      <div class="table-wrap"><table><thead><tr><th>价格带</th><th class="num">销售额</th><th class="num">销量</th><th class="num">消费笔数</th><th class="num">销售贡献%</th><th class="num">销量贡献%</th><th class="num">消费笔数贡献%</th></tr></thead><tbody id="priceBandBody"></tbody></table></div>
+      <div class="table-wrap"><table id="priceBandSummaryTable"><thead><tr><th style="width:28px;"></th><th>价格带</th><th class="num">销售额</th><th class="num">销量</th><th class="num">消费笔数</th><th class="num">销售贡献%</th><th class="num">销量贡献%</th><th class="num">消费笔数贡献%</th></tr></thead><tbody id="priceBandBody"></tbody></table></div>
     </div>
     <div id="bizTurnover" class="biz-block" style="display:none;">
+      <p class="section-desc" style="margin-bottom:6px;">周转天数 = 库存 ÷ 日均销量，数值越低周转越快。<span class="turnover-legend"><span class="turnover-days-fast">≤30天</span> <span class="turnover-days-mid">31–90天</span> <span class="turnover-days-slow">&gt;90天</span></span></p>
       <div class="table-wrap"><table><thead><tr><th>商品编码</th><th>品名</th><th>品类</th><th class="num">销量</th><th class="num">销售额</th><th class="num">库存</th><th class="num">周转天数</th></tr></thead><tbody id="skuTurnoverBody"></tbody></table></div>
     </div>
     <div id="bizAbc" class="biz-block" style="display:none;">
+      <p class="section-desc" style="margin-bottom:6px;">A 类：前 80% 销售额；B 类：80–95% 累计；C 类：其余。点击分类行展开查看该类 SKU 明细（本页为销售额前 200 条）。</p>
       <div class="kpi-row" style="margin-bottom:8px;" id="abcSummaryKpi"></div>
-      <div class="table-wrap"><table><thead><tr><th>分类</th><th>商品编码</th><th>品名</th><th>品类</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">累计贡献%</th></tr></thead><tbody id="skuAbcBody"></tbody></table></div>
+      <div class="table-wrap"><table id="abcSummaryTable"><thead><tr><th style="width:28px;"></th><th>分类</th><th class="num">该类 SKU 数</th><th class="num">本批销售额</th><th class="num">本批毛利</th><th class="num">累计贡献%</th></tr></thead><tbody id="skuAbcBody"></tbody></table></div>
     </div>
     <div id="bizNegativeMargin" class="biz-block" style="display:none;">
       <p style="margin-bottom:6px;"><a id="negativeMarginExport" class="btn-export" href="#">导出 CSV</a></p>
@@ -680,11 +761,15 @@
     <div id="bizCategoryTrend" class="biz-block" style="display:none;">
       <div class="chart-tabs" style="margin-bottom:6px;"><button class="tab-btn cat-trend-gran active" data-gran="week">按周</button><button class="tab-btn cat-trend-gran" data-gran="month">按月</button></div>
       <div id="categoryTrendChart" class="chart" style="height:280px;"></div>
-      <div class="table-wrap" style="max-height:200px;overflow-y:auto;"><table><thead><tr><th>周期</th><th>品类</th><th class="num">销售额</th><th class="num">占比%</th></tr></thead><tbody id="categoryTrendBody"></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>周期</th><th>品类</th><th class="num">销售额</th><th class="num">销售占比%</th><th class="num">毛利额</th><th class="num">毛利占比%</th></tr></thead><tbody id="categoryTrendBody"></tbody></table></div>
+      <div id="categoryTrendPagination" class="pagination" style="margin-top:6px;"></div>
     </div>
     <div id="bizInvTurnover" class="biz-block" style="display:none;">
       <div class="kpi-row" id="invTurnoverKpi"></div>
       <p class="section-desc">周转天数 = 期末库存金额 ÷ (周期内销售成本 ÷ 天数)。</p>
+      <h4 class="label" style="margin-top:12px;margin-bottom:6px;">按大类分品类</h4>
+      <div class="table-wrap"><table><thead><tr><th>大类</th><th class="num">期末库存金额</th><th class="num">周期销售成本</th><th class="num">周转天数</th><th class="num">统计天数</th></tr></thead><tbody id="invTurnoverByCategoryBody"></tbody></table></div>
+      <div id="invTurnoverByCategoryPagination" class="pagination" style="margin-top:6px;"></div>
     </div>
     <div id="bizDataQuality" class="biz-block" style="display:none;">
       <div class="kpi-row" id="dataQualityKpi"></div>
@@ -714,6 +799,7 @@
     let currentSkuCode = '';
     let currentInsightCategory = '';
     let currentInsightBrand = '';
+    let currentInsightProductName = '';
     let currentDetailPage = { category: 1, product: 1 };
     let currentInvPage = 1;
     const PAGE_SIZE = 50;
@@ -771,6 +857,7 @@
       var onInsight = document.querySelector('.page-panel.active[data-page="insight"]');
       if (onInsight && currentInsightCategory) p.set('category', currentInsightCategory);
       if (onInsight && currentInsightBrand) p.set('brand', currentInsightBrand);
+      if (onInsight && currentInsightProductName) p.set('product_name', currentInsightProductName);
       if (overrides) { for (const [k, v] of Object.entries(overrides)) { if (v != null) p.set(k, String(v)); } }
       return p.toString();
     }
@@ -1167,12 +1254,15 @@
           const canLabor = perms.can_labor !== false;
           const canProductMaster = perms.can_product_master !== false;
           const canProfit = perms.can_profit !== false;
+          const canProfitShare = perms.can_profit_share !== false;
           const linkImport = document.getElementById('linkImport');
           const linkLabor = document.getElementById('linkLabor');
           const linkProductMaster = document.getElementById('linkProductMaster');
+          const linkProfitShare = document.getElementById('linkProfitShare');
           if (linkImport && !canImport) linkImport.style.display = 'none';
           if (linkLabor && !canLabor) linkLabor.style.display = 'none';
           if (linkProductMaster && !canProductMaster) linkProductMaster.style.display = 'none';
+          if (linkProfitShare && !canProfitShare) linkProfitShare.style.display = 'none';
           // 预留：后续可根据 canProfit 控制经营分析/AI 报告等入口
         }
       } catch (e) {}
@@ -1271,6 +1361,128 @@
         e.stopPropagation();
         const largeRow = e.target.closest('.cat-rank-row');
         const midRow = e.target.closest('.cat-mid-row');
+        const smallRow = e.target.closest('.cat-small-row');
+        const brandRow = e.target.closest('.cat-brand-row');
+        const productRow = e.target.closest('.cat-product-row');
+        if (productRow) {
+          const expanded = productRow.dataset.expanded === '1';
+          const skuCode = (productRow.dataset.skuCode || '').trim();
+          const productName = (productRow.dataset.productName || '').trim();
+          const nextWrap = productRow.nextElementSibling;
+          if (expanded && nextWrap && nextWrap.classList.contains('cat-sale-detail-wrap')) {
+            productRow.classList.remove('expanded');
+            productRow.dataset.expanded = '0';
+            nextWrap.remove();
+            return;
+          }
+          if (expanded) return;
+          productRow.querySelectorAll('.cat-product-row').forEach(r => { r.classList.remove('expanded'); r.dataset.expanded = '0'; });
+          const wraps = productRow.parentElement.querySelectorAll('.cat-sale-detail-wrap');
+          wraps.forEach(w => w.remove());
+          productRow.classList.add('expanded');
+          productRow.dataset.expanded = '1';
+          const loadTr = document.createElement('tr');
+          loadTr.className = 'cat-sale-detail-wrap';
+          loadTr.innerHTML = '<td colspan="7"><div class="category-sale-detail"><table><thead><tr><th>日期</th><th class="num">销量</th><th class="num">销售额</th><th class="num">成本</th><th class="num">毛利</th><th class="num">毛利率</th></tr></thead><tbody><tr><td colspan="6" class="loading">加载销售明细...</td></tr></tbody></table></div></td>';
+          productRow.after(loadTr);
+          try {
+            const base = queryParams();
+            const q = (base ? base + '&' : '') + 'sku_code=' + encodeURIComponent(skuCode) + '&page=1&page_size=100';
+            const r = await fetch(API + '/api/sale_detail?' + q);
+            if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+            const d = await r.json();
+            const items = d.items || [];
+            const tbody = loadTr.querySelector('tbody');
+            tbody.innerHTML = items.length === 0
+              ? '<tr><td colspan="6" class="loading">该商品暂无销售记录</td></tr>'
+              : items.map(x => '<tr><td>' + (x.data_date || '') + '</td><td class="num">' + (x.sale_qty != null ? Number(x.sale_qty).toLocaleString() : '-') + '</td><td class="num">' + fmtMoney(x.sale_amount) + '</td><td class="num">' + fmtMoney(x.sale_cost) + '</td><td class="num">' + fmtMoney(x.gross_profit) + '</td><td class="num">' + (x.profit_rate_pct != null ? x.profit_rate_pct.toFixed(2) : 0) + '%</td></tr>').join('');
+          } catch (err) {
+            loadTr.querySelector('tbody').innerHTML = '<tr><td colspan="6" class="error">加载失败: ' + (err.message || err) + '</td></tr>';
+          }
+          return;
+        }
+        if (brandRow) {
+          const expanded = brandRow.dataset.expanded === '1';
+          const largeCode = (brandRow.dataset.largeCode || '').trim();
+          const midCode = (brandRow.dataset.midCode || '').trim();
+          const smallCode = (brandRow.dataset.smallCode || '').trim();
+          const smallName = (brandRow.dataset.smallName || '').trim();
+          const brand = (brandRow.dataset.brand || '').trim();
+          const nextWrap = brandRow.nextElementSibling;
+          if (expanded && nextWrap && nextWrap.classList.contains('cat-products-wrap')) {
+            brandRow.classList.remove('expanded');
+            brandRow.dataset.expanded = '0';
+            nextWrap.remove();
+            return;
+          }
+          if (expanded) return;
+          brandRow.parentElement.querySelectorAll('.cat-brand-row').forEach(r => { r.classList.remove('expanded'); r.dataset.expanded = '0'; });
+          brandRow.parentElement.querySelectorAll('.cat-products-wrap').forEach(w => w.remove());
+          brandRow.classList.add('expanded');
+          brandRow.dataset.expanded = '1';
+          const loadTr = document.createElement('tr');
+          loadTr.className = 'cat-products-wrap';
+          loadTr.innerHTML = '<td colspan="6"><div class="category-products-detail"><table><thead><tr><th style="width:28px;"></th><th>排名</th><th>SKU</th><th>商品名称</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">毛利率</th></tr></thead><tbody><tr><td colspan="7" class="loading">加载商品...</td></tr></tbody></table></div></td>';
+          brandRow.after(loadTr);
+          try {
+            const base = queryParams();
+            const q = (base ? base + '&' : '') + 'category_large_code=' + encodeURIComponent(largeCode) + '&category_mid_code=' + encodeURIComponent(midCode) + '&category_small_code=' + encodeURIComponent(smallCode || smallName) + '&brand=' + encodeURIComponent(brand);
+            const r = await fetch(API + '/api/category_rank_products?' + q);
+            if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+            const rows = safeArray(await r.json());
+            const tbody = loadTr.querySelector('tbody');
+            tbody.innerHTML = rows.length === 0
+              ? '<tr><td colspan="7" class="loading">该品牌下暂无商品</td></tr>'
+              : rows.map((row, i) => {
+                  const sku = (row.sku_code || '').replace(/"/g, '&quot;');
+                  const pn = (row.product_name || '').replace(/</g,'&lt;').replace(/"/g,'&quot;').substring(0, 48);
+                  return '<tr class="cat-product-row summary-row" data-expanded="0" data-sku-code="' + sku + '" data-product-name="' + pn + '" title="点击查看销售明细"><td><span class="expand-icon">▶</span></td><td>' + (i + 1) + '</td><td>' + (row.sku_code || '').replace(/</g,'&lt;') + '</td><td>' + (row.product_name || '').replace(/</g,'&lt;').substring(0, 48) + '</td><td class="num">' + fmtMoney(row.sale_amount) + '</td><td class="num">' + fmtMoney(row.profit_amount) + '</td><td class="num">' + (row.margin_pct != null ? row.margin_pct : 0).toFixed(2) + '%</td></tr>';
+                }).join('');
+          } catch (err) {
+            loadTr.querySelector('tbody').innerHTML = '<tr><td colspan="7" class="error">加载失败: ' + (err.message || err) + '</td></tr>';
+          }
+          return;
+        }
+        if (smallRow) {
+          const expanded = smallRow.dataset.expanded === '1';
+          const largeCode = (smallRow.dataset.largeCode || '').trim();
+          const midCode = (smallRow.dataset.midCode || '').trim();
+          const smallCode = (smallRow.dataset.smallCode || '').trim();
+          const smallName = (smallRow.dataset.smallName || '').trim();
+          const nextWrap = smallRow.nextElementSibling;
+          if (expanded && nextWrap && nextWrap.classList.contains('cat-brands-wrap')) {
+            smallRow.classList.remove('expanded');
+            smallRow.dataset.expanded = '0';
+            nextWrap.remove();
+            return;
+          }
+          if (expanded) return;
+          smallRow.parentElement.querySelectorAll('.cat-small-row').forEach(r => { r.classList.remove('expanded'); r.dataset.expanded = '0'; });
+          smallRow.parentElement.querySelectorAll('.cat-brands-wrap').forEach(w => w.remove());
+          smallRow.classList.add('expanded');
+          smallRow.dataset.expanded = '1';
+          const loadTr = document.createElement('tr');
+          loadTr.className = 'cat-brands-wrap';
+          loadTr.innerHTML = '<td colspan="6"><div class="category-brands-detail"><table><thead><tr><th style="width:28px;"></th><th>排名</th><th>品牌</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">毛利率</th></tr></thead><tbody><tr><td colspan="6" class="loading">加载品牌...</td></tr></tbody></table></div></td>';
+          smallRow.after(loadTr);
+          try {
+            const base = queryParams();
+            const q = (base ? base + '&' : '') + 'category_large_code=' + encodeURIComponent(largeCode) + '&category_mid_code=' + encodeURIComponent(midCode) + '&category_small_code=' + encodeURIComponent(smallCode || smallName);
+            const r = await fetch(API + '/api/category_rank_brands?' + q);
+            if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+            const rows = safeArray(await r.json());
+            const tbody = loadTr.querySelector('tbody');
+            tbody.innerHTML = rows.length === 0
+              ? '<tr><td colspan="6" class="loading">该小类下暂无品牌</td></tr>'
+              : rows.map((row, i) => {
+                  const br = (row.brand || '未分类').replace(/"/g, '&quot;').replace(/</g,'&lt;');
+                  return '<tr class="cat-brand-row summary-row" data-expanded="0" data-large-code="' + (largeCode||'').replace(/"/g,'&quot;') + '" data-mid-code="' + (midCode||'').replace(/"/g,'&quot;') + '" data-small-code="' + (smallCode||'').replace(/"/g,'&quot;') + '" data-small-name="' + (smallName||'').replace(/"/g,'&quot;') + '" data-brand="' + br + '" title="点击展开商品"><td><span class="expand-icon">▶</span></td><td>' + (i + 1) + '</td><td>' + (row.brand || '未分类').replace(/</g,'&lt;') + '</td><td class="num">' + fmtMoney(row.sale_amount) + '</td><td class="num">' + fmtMoney(row.profit_amount) + '</td><td class="num">' + (row.margin_pct != null ? row.margin_pct : 0).toFixed(2) + '%</td></tr>';
+                }).join('');
+          } catch (err) {
+            loadTr.querySelector('tbody').innerHTML = '<tr><td colspan="6" class="error">加载失败: ' + (err.message || err) + '</td></tr>';
+          }
+          return;
+        }
         if (midRow) {
           const expanded = midRow.dataset.expanded === '1';
           const largeCode = (midRow.dataset.largeCode || '').trim();
@@ -1293,7 +1505,7 @@
           if (!key) return;
           const loadRow = document.createElement('tr');
           loadRow.className = 'cat-mid-small-wrap';
-          loadRow.innerHTML = '<td colspan="6"><div class="category-small-detail"><table><thead><tr><th>排名</th><th>小类/品类</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">毛利率</th></tr></thead><tbody><tr><td colspan="5" class="loading">加载小类...</td></tr></tbody></table></div></td>';
+          loadRow.innerHTML = '<td colspan="6"><div class="category-small-detail"><table class="cat-small-table"><thead><tr><th style="width:28px;"></th><th>排名</th><th>小类/品类</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">毛利率</th></tr></thead><tbody><tr><td colspan="6" class="loading">加载小类...</td></tr></tbody></table></div></td>';
           midRow.after(loadRow);
           try {
             const base = queryParams();
@@ -1302,11 +1514,17 @@
             if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
             const rows = safeArray(await r.json());
             const smallTbody = loadRow.querySelector('tbody');
+            const lc = (largeCode || '').replace(/"/g, '&quot;');
+            const mc = (midCode || midName || '').replace(/"/g, '&quot;');
             smallTbody.innerHTML = rows.length === 0
-              ? '<tr><td colspan="5" class="loading">暂无小类明细</td></tr>'
-              : rows.map(row => `<tr><td>${row.rank}</td><td>${(row.category_small || '未分类').replace(/</g,'&lt;')}</td><td class="num">${fmtMoney(row.sale_amount)}</td><td class="num">${fmtMoney(row.profit_amount)}</td><td class="num">${(row.margin_pct != null ? row.margin_pct : 0).toFixed(2)}%</td></tr>`).join('');
+              ? '<tr><td colspan="6" class="loading">暂无小类明细</td></tr>'
+              : rows.map(row => {
+                  const sc = (row.category_small_code || row.category_small || '').replace(/"/g, '&quot;');
+                  const sn = (row.category_small || '未分类').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+                  return `<tr class="cat-small-row summary-row" data-expanded="0" data-large-code="${lc}" data-mid-code="${mc}" data-small-code="${sc}" data-small-name="${sn}" title="点击展开品牌"><td><span class="expand-icon">▶</span></td><td>${row.rank}</td><td>${(row.category_small || '未分类').replace(/</g,'&lt;')}</td><td class="num">${fmtMoney(row.sale_amount)}</td><td class="num">${fmtMoney(row.profit_amount)}</td><td class="num">${(row.margin_pct != null ? row.margin_pct : 0).toFixed(2)}%</td></tr>`;
+                }).join('');
           } catch (err) {
-            loadRow.querySelector('tbody').innerHTML = '<tr><td colspan="5" class="error">加载失败: ' + (err.message || err) + '</td></tr>';
+            loadRow.querySelector('tbody').innerHTML = '<tr><td colspan="6" class="error">加载失败: ' + (err.message || err) + '</td></tr>';
           }
           return;
         }
@@ -1392,75 +1610,101 @@
     }
 
     function bindInvExpand() {
-      document.querySelectorAll('#invCategoryBody .inv-summary').forEach(tr => {
-        tr.onclick = async () => {
-          const expanded = tr.dataset.expanded === '1';
-          const largeCode = tr.dataset.large;
-          const largeName = tr.dataset.largeName;
-          const wrap = document.getElementById('invDetailWrap');
-          const titleEl = document.getElementById('invDetailTitle');
-          const tbody = document.getElementById('invTableBody');
-          const pagEl = document.getElementById('invPagination');
-          if (expanded) {
-            tr.classList.remove('expanded');
-            tr.dataset.expanded = '0';
-            wrap.style.display = 'none';
-            return;
+      const tbody = document.getElementById('invCategoryBody');
+      if (!tbody) return;
+      tbody.onclick = async (e) => {
+        const tr = e.target.closest('.inv-summary');
+        if (!tr) return;
+        const expanded = tr.dataset.expanded === '1';
+        const largeCode = (tr.dataset.large || '').trim();
+        const largeName = (tr.dataset.largeName || '未分类').trim();
+        if (expanded) {
+          tr.classList.remove('expanded');
+          tr.dataset.expanded = '0';
+          let next = tr.nextElementSibling;
+          while (next && next.classList.contains('inv-detail-wrap')) {
+            const n = next.nextElementSibling;
+            next.remove();
+            next = n;
           }
-          document.querySelectorAll('#invCategoryBody .inv-summary').forEach(r => { r.classList.remove('expanded'); r.dataset.expanded = '0'; });
-          tr.classList.add('expanded');
-          tr.dataset.expanded = '1';
-          wrap.style.display = 'block';
-          titleEl.textContent = (largeName || '未分类') + ' — 低库存 SKU 明细';
-          tbody.innerHTML = '<tr><td colspan="6" class="loading">加载中...</td></tr>';
-          try {
-            const q = queryParams({ category_large_code: largeCode, page: 1, page_size: PAGE_SIZE });
-            const [r1, r2] = await Promise.all([
-              fetch(API + '/api/inv_alert?' + q),
-              fetch(API + '/api/inv_alert_list?' + q)
-            ]);
-            const d = await r2.json();
-            const rows = d.items || [];
-            const total = d.total != null ? d.total : rows.length;
-            currentInvPage = 1;
-            tbody.innerHTML = rows.length === 0
-              ? '<tr><td colspan="6" class="loading">该大类下暂无低库存 SKU</td></tr>'
-              : rows.map(row => `<tr>
-                <td>${(row.sku_code || '').replace(/</g,'&lt;')}</td>
-                <td>${(row.product_name || '').replace(/</g,'&lt;').slice(0,20)}</td>
-                <td>${(row.category || '').replace(/</g,'&lt;')}</td>
-                <td class="num">${row.stock_qty}</td>
-                <td class="num">${fmtMoney(row.stock_amount)}</td>
-                <td>${row.data_date}</td>
-              </tr>`).join('');
-            renderPagination(pagEl, total, 1, PAGE_SIZE, (p) => loadInvDetailPage(largeCode, p));
-          } catch (err) { tbody.innerHTML = '<tr><td colspan="6" class="error">加载失败</td></tr>'; }
-        };
-      });
+          return;
+        }
+        document.querySelectorAll('#invCategoryBody .inv-summary').forEach(r => { r.classList.remove('expanded'); r.dataset.expanded = '0'; });
+        tbody.querySelectorAll('tr.inv-detail-wrap').forEach(el => el.remove());
+        tr.classList.add('expanded');
+        tr.dataset.expanded = '1';
+        const wrapTr = document.createElement('tr');
+        wrapTr.className = 'inv-detail-wrap';
+        wrapTr.dataset.largeCode = largeCode;
+        wrapTr.innerHTML = '<td colspan="4"><div class="inv-detail-inner"><table class="inv-detail-table"><thead><tr><th>商品编码</th><th>品名</th><th>品类</th><th class="num">库存数量</th><th class="num">库存金额</th><th>库存日期</th></tr></thead><tbody><tr><td colspan="6" class="loading">加载中...</td></tr></tbody></table><div class="inv-detail-pagination pagination"></div></div></td>';
+        tr.after(wrapTr);
+        const innerTbody = wrapTr.querySelector('table.inv-detail-table tbody');
+        const pagEl = wrapTr.querySelector('.inv-detail-pagination');
+        try {
+          const q = queryParams({ category_large_code: largeCode, page: 1, page_size: PAGE_SIZE });
+          const r = await fetch(API + '/api/inv_alert_list?' + q);
+          const d = await r.json();
+          const rows = (d.items || []).filter(r => (r.stock_qty != null && r.stock_qty !== 0) || (r.stock_amount != null && r.stock_amount !== 0));
+          const total = d.total != null ? d.total : rows.length;
+          currentInvPage = 1;
+          innerTbody.innerHTML = rows.length === 0
+            ? '<tr><td colspan="6" class="loading">该大类下暂无低库存 SKU（已隐藏数量与金额均为 0 的条目）</td></tr>'
+            : rows.map(row => {
+                const qty = row.stock_qty;
+                const amt = row.stock_amount;
+                const qtyStr = (qty == null || qty === 0) ? '—' : String(qty);
+                const amtStr = (amt == null || amt === 0) ? '—' : fmtMoney(amt);
+                return `<tr>
+                  <td>${(row.sku_code || '').replace(/</g,'&lt;')}</td>
+                  <td>${(row.product_name || '').replace(/</g,'&lt;').slice(0,20)}</td>
+                  <td>${(row.category || '').replace(/</g,'&lt;')}</td>
+                  <td class="num">${qtyStr}</td>
+                  <td class="num">${amtStr}</td>
+                  <td>${row.data_date || ''}</td>
+                </tr>`;
+              }).join('');
+          renderPagination(pagEl, total, 1, PAGE_SIZE, (p) => loadInvDetailPage(largeCode, p));
+          try { wrapTr.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e2) { wrapTr.scrollIntoView(); }
+        } catch (err) {
+          innerTbody.innerHTML = '<tr><td colspan="6" class="error">加载失败: ' + (err.message || err) + '</td></tr>';
+        }
+      };
     }
 
     async function loadInvDetailPage(largeCode, page) {
-      const tbody = document.getElementById('invTableBody');
-      const pagEl = document.getElementById('invPagination');
+      const wrap = document.querySelector('#invCategoryBody tr.inv-detail-wrap');
+      if (!wrap) return;
+      const code = (largeCode != null && largeCode !== '') ? largeCode : (wrap.dataset.largeCode || '');
+      const innerTbody = wrap.querySelector('table.inv-detail-table tbody');
+      const pagEl = wrap.querySelector('.inv-detail-pagination');
+      if (!innerTbody || !pagEl) return;
       try {
-        const q = queryParams({ category_large_code: largeCode, page: page || 1, page_size: PAGE_SIZE });
+        const q = queryParams({ category_large_code: code, page: page || 1, page_size: PAGE_SIZE });
         const r = await fetch(API + '/api/inv_alert_list?' + q);
         const d = await r.json();
-        const rows = d.items || [];
+        const rows = (d.items || []).filter(r => (r.stock_qty != null && r.stock_qty !== 0) || (r.stock_amount != null && r.stock_amount !== 0));
         const total = d.total != null ? d.total : rows.length;
         currentInvPage = d.page != null ? d.page : 1;
-        tbody.innerHTML = rows.length === 0
+        innerTbody.innerHTML = rows.length === 0
           ? '<tr><td colspan="6" class="loading">暂无数据</td></tr>'
-          : rows.map(row => `<tr>
-            <td>${(row.sku_code || '').replace(/</g,'&lt;')}</td>
-            <td>${(row.product_name || '').replace(/</g,'&lt;').slice(0,20)}</td>
-            <td>${(row.category || '').replace(/</g,'&lt;')}</td>
-            <td class="num">${row.stock_qty}</td>
-            <td class="num">${fmtMoney(row.stock_amount)}</td>
-            <td>${row.data_date}</td>
-          </tr>`).join('');
-        renderPagination(pagEl, total, currentInvPage, PAGE_SIZE, (p) => loadInvDetailPage(largeCode, p));
-      } catch (e) { tbody.innerHTML = '<tr><td colspan="6" class="error">加载失败</td></tr>'; }
+          : rows.map(row => {
+              const qty = row.stock_qty;
+              const amt = row.stock_amount;
+              const qtyStr = (qty == null || qty === 0) ? '—' : String(qty);
+              const amtStr = (amt == null || amt === 0) ? '—' : fmtMoney(amt);
+              return `<tr>
+                <td>${(row.sku_code || '').replace(/</g,'&lt;')}</td>
+                <td>${(row.product_name || '').replace(/</g,'&lt;').slice(0,20)}</td>
+                <td>${(row.category || '').replace(/</g,'&lt;')}</td>
+                <td class="num">${qtyStr}</td>
+                <td class="num">${amtStr}</td>
+                <td>${row.data_date || ''}</td>
+              </tr>`;
+            }).join('');
+        renderPagination(pagEl, total, currentInvPage, PAGE_SIZE, (p) => loadInvDetailPage(code, p));
+      } catch (e) {
+        innerTbody.innerHTML = '<tr><td colspan="6" class="error">加载失败</td></tr>';
+      }
     }
 
     async function loadTaxBurdenSummary() {
@@ -1535,9 +1779,12 @@
 
     var insightChartInstances = {};
     var currentInsightTrendGran = 'week';
+    var _insightTrendLoadId = 0;
     function loadConsumerInsightTrend(granularity) {
       granularity = granularity || currentInsightTrendGran;
       currentInsightTrendGran = granularity;
+      _insightTrendLoadId++;
+      var myLoadId = _insightTrendLoadId;
       var titleEl = document.getElementById('insightTrendTitle');
       if (titleEl) {
         var s = currentStartDate || '', e = currentEndDate || '';
@@ -1549,10 +1796,15 @@
       if (noteEl) noteEl.textContent = '';
       if (trendEl) trendEl.innerHTML = '<div class="loading">加载走势...</div>';
       if (catTrendEl) catTrendEl.innerHTML = '<div class="loading">加载走势...</div>';
+      try {
+        if (insightChartInstances.insightTrendChart) { insightChartInstances.insightTrendChart.dispose(); insightChartInstances.insightTrendChart = null; }
+        if (insightChartInstances.insightCategoryTrendChart) { insightChartInstances.insightCategoryTrendChart.dispose(); insightChartInstances.insightCategoryTrendChart = null; }
+      } catch (_) {}
       var qs = (typeof queryParams === 'function') ? queryParams() : '';
       fetch((API || '') + '/api/consumer_insight_trend?granularity=' + encodeURIComponent(granularity) + '&days=90&' + qs, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
         .then(function(r) { return r.json(); })
         .then(function(td) {
+          if (myLoadId !== _insightTrendLoadId) return;
           if (td.error) { if (trendEl) trendEl.innerHTML = '<div class="error">' + (td.error || '').replace(/</g,'&lt;') + '</div>'; if (catTrendEl) catTrendEl.innerHTML = ''; return; }
           var labels = td.labels || [];
           var series = td.series || {};
@@ -1563,6 +1815,11 @@
           var dataSourceSpan = document.getElementById('insightTrendDataSource');
           if (dataSourceSpan) dataSourceSpan.textContent = labels.length && td.data_source ? ('数据来源: ' + (td.data_source === 'sale' ? '销售表' : td.data_source)) : '';
           ensureEcharts(function() {
+            if (myLoadId !== _insightTrendLoadId) return;
+            try {
+              if (insightChartInstances.insightTrendChart) { insightChartInstances.insightTrendChart.dispose(); insightChartInstances.insightTrendChart = null; }
+              if (insightChartInstances.insightCategoryTrendChart) { insightChartInstances.insightCategoryTrendChart.dispose(); insightChartInstances.insightCategoryTrendChart = null; }
+            } catch (_) {}
             if (trendEl && labels.length) {
               trendEl.innerHTML = '';
               var ch = echarts.init(trendEl);
@@ -1592,10 +1849,10 @@
               ch2.setOption({ grid: { left: 55, right: 40, top: 20, bottom: 35 }, tooltip: { trigger: 'axis' }, legend: { data: catNames.slice(0, 5), bottom: 0 }, xAxis: { type: 'category', data: labels, axisLabel: { rotate: labels.length > 20 ? 45 : 0 } }, yAxis: { type: 'value', name: '销售额' }, series: seriesCat });
             } else if (catTrendEl && !catNames.length) { catTrendEl.innerHTML = '<div class="loading" style="padding:20px;color:#94a3b8;">暂无品类走势数据</div>'; }
             var catTrendTitleEl = document.getElementById('insightCategoryTrendTitle');
-            if (catTrendTitleEl) catTrendTitleEl.textContent = '品类 Top5 销售额走势';
+            if (catTrendTitleEl) catTrendTitleEl.textContent = catNames.length ? ('品类 Top5 销售额走势：' + catNames.slice(0, 5).join('、')) : '品类 Top5 销售额走势';
           });
         })
-        .catch(function(e) { if (trendEl) trendEl.innerHTML = '<div class="error">走势加载失败</div>'; if (catTrendEl) catTrendEl.innerHTML = ''; });
+        .catch(function(e) { if (myLoadId !== _insightTrendLoadId) return; if (trendEl) trendEl.innerHTML = '<div class="error">走势加载失败</div>'; if (catTrendEl) catTrendEl.innerHTML = ''; });
     }
     function resizeInsightCharts() {
       ['insightCategoryBarChart','insightCategoryBubbleChart','insightBrandBarChart','insightPriceBandChart','insightDistPieChart','insightDiscountBarChart','insightTrendChart','insightCategoryTrendChart'].forEach(function(id) {
@@ -1608,10 +1865,12 @@
         var q = new URLSearchParams(window.location.search);
         var c = q.get('category');
         var b = q.get('brand');
+        var pn = q.get('product_name');
         var s = (q.get('start_date') || '').replace(/\//g, '-').trim();
         var e = (q.get('end_date') || '').replace(/\//g, '-').trim();
         if (c != null) currentInsightCategory = decodeURIComponent(c);
         if (b != null) currentInsightBrand = decodeURIComponent(b);
+        if (pn != null) currentInsightProductName = decodeURIComponent(pn);
         if (s && e && s.length === 10 && e.length === 10) {
           currentStartDate = s;
           currentEndDate = e;
@@ -1655,18 +1914,25 @@
       if (!catMatrixBody) return;
       var breadEl = document.getElementById('insightBreadcrumb');
       if (breadEl) {
-        if (currentInsightCategory || currentInsightBrand) {
+        if (currentInsightCategory || currentInsightBrand || currentInsightProductName) {
           var segs = [];
-          segs.push('<a href="javascript:void(0)" class="insight-breadcrumb-link" data-category="" data-brand="" style="color:#38bdf8;text-decoration:none;">好特卖沈阳仓</a>');
+          segs.push('<a href="javascript:void(0)" class="insight-breadcrumb-link" data-category="" data-brand="" data-product-name="" style="color:#38bdf8;text-decoration:none;">好特卖沈阳仓</a>');
           if (currentInsightCategory) {
             var catEnc = (currentInsightCategory || '').replace(/"/g,'&quot;').replace(/</g,'&lt;');
-            if (currentInsightBrand)
-              segs.push('<a href="javascript:void(0)" class="insight-breadcrumb-link" data-category="' + catEnc + '" data-brand="" style="color:#38bdf8;text-decoration:none;">' + (currentInsightCategory || '').replace(/</g,'&lt;') + '</a>');
+            if (currentInsightBrand || currentInsightProductName)
+              segs.push('<a href="javascript:void(0)" class="insight-breadcrumb-link" data-category="' + catEnc + '" data-brand="" data-product-name="" style="color:#38bdf8;text-decoration:none;">' + (currentInsightCategory || '').replace(/</g,'&lt;') + '</a>');
             else
               segs.push('<span style="color:#e2e8f0;">' + (currentInsightCategory || '').replace(/</g,'&lt;') + '</span>');
           }
-          if (currentInsightBrand)
-            segs.push('<span style="color:#e2e8f0;">' + (currentInsightBrand || '').replace(/</g,'&lt;') + '</span>');
+          if (currentInsightBrand) {
+            var brandEnc = (currentInsightBrand || '').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+            if (currentInsightProductName)
+              segs.push('<a href="javascript:void(0)" class="insight-breadcrumb-link" data-category="' + catEnc + '" data-brand="' + brandEnc + '" data-product-name="" style="color:#38bdf8;text-decoration:none;">' + (currentInsightBrand || '').replace(/</g,'&lt;') + '</a>');
+            else
+              segs.push('<span style="color:#e2e8f0;">' + (currentInsightBrand || '').replace(/</g,'&lt;') + '</span>');
+          }
+          if (currentInsightProductName)
+            segs.push('<span style="color:#e2e8f0;">' + (currentInsightProductName || '').replace(/</g,'&lt;') + '</span>');
           breadEl.innerHTML = segs.join(' &gt; ') + ' <a href="javascript:void(0)" id="insightClearDrill" style="margin-left:8px;color:#38bdf8;">清除下钻</a>';
           breadEl.style.display = '';
         } else {
@@ -1716,37 +1982,57 @@
           var cat = (row.category || '').replace(/</g,'&lt;');
           return '<tr class="summary-row insight-category-row" data-category="' + cat + '" title="点击下钻查看该品类"><td class="insight-no">' + (i + 1) + '</td><td>' + cat + '</td><td class="num">' + safeNum(row.sku_sold) + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + (row.sale_contrib_pct != null && !isNaN(row.sale_contrib_pct) ? row.sale_contrib_pct : 0) + '%</td><td class="num">' + safeFmtMoney(row.profit) + '</td><td class="num">' + (row.margin_pct != null ? row.margin_pct : 0) + '%</td><td class="num">' + safeFmtNum(row.avg_sale_price) + '</td><td class="num">' + (row.avg_discount_pct != null ? row.avg_discount_pct : '-') + (row.avg_discount_pct != null ? '%' : '') + '</td><td class="num">' + safeFmtNum(row.qty) + '</td></tr>';
         }).join('');
-        var drillSub = d.drill_subcategory || [];
-        var drillSubWrap = document.getElementById('insightDrillSubcategoryWrap');
-        var drillSubBody = document.getElementById('insightDrillSubcategoryBody');
-        if (drillSubWrap && drillSubBody) {
-          if (currentInsightCategory && drillSub.length > 0) {
-            drillSubWrap.style.display = '';
-            drillSubBody.innerHTML = drillSub.map(function(row, i) {
-              var sub = (row.subcategory || '').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+        var drillBrands = d.drill_brands || [];
+        var drillBrandWrap = document.getElementById('insightDrillBrandWrap');
+        var drillBrandBody = document.getElementById('insightDrillBrandBody');
+        if (drillBrandWrap && drillBrandBody) {
+          if (currentInsightCategory && drillBrands.length > 0) {
+            drillBrandWrap.style.display = '';
+            drillBrandBody.innerHTML = drillBrands.map(function(row, i) {
+              var brand = (row.brand || '').replace(/</g,'&lt;').replace(/"/g,'&quot;');
               var m = row.margin_pct != null ? row.margin_pct : 0;
               var marginCls = m < 15 ? 'margin-low' : (m >= 30 ? 'margin-high' : 'margin-mid');
-              return '<tr class="insight-subcategory-row" data-subcategory="' + sub + '" title="点击下钻查看该子品类"><td class="insight-no">' + (i + 1) + '</td><td>' + (row.subcategory || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeNum(row.sku_sold) + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + safeFmtMoney(row.profit) + '</td><td class="num">' + safeFmtNum(row.qty) + '</td><td class="num ' + marginCls + '">' + m + '%</td></tr>';
+              return '<tr class="insight-drill-brand-row" data-brand="' + brand + '" title="点击查看该品牌下款式"><td class="insight-no">' + (i + 1) + '</td><td>' + (row.brand || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeNum(row.sku_sold) + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + safeFmtMoney(row.profit) + '</td><td class="num">' + safeFmtNum(row.qty) + '</td><td class="num ' + marginCls + '">' + m + '%</td></tr>';
             }).join('');
           } else {
-            drillSubWrap.style.display = 'none';
-            drillSubBody.innerHTML = '';
+            drillBrandWrap.style.display = 'none';
+            drillBrandBody.innerHTML = '';
+          }
+        }
+        var drillStyles = d.drill_styles || [];
+        var drillStyleWrap = document.getElementById('insightDrillStyleWrap');
+        var drillStyleBody = document.getElementById('insightDrillStyleBody');
+        if (drillStyleWrap && drillStyleBody) {
+          if (currentInsightCategory && currentInsightBrand && drillStyles.length > 0) {
+            drillStyleWrap.style.display = '';
+            drillStyleBody.innerHTML = drillStyles.map(function(row, i) {
+              var pn = (row.product_name || '').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+              var m = row.margin_pct != null ? row.margin_pct : 0;
+              var marginCls = m < 15 ? 'margin-low' : (m >= 30 ? 'margin-high' : 'margin-mid');
+              return '<tr class="insight-drill-style-row" data-product-name="' + pn + '" title="点击查看该款式下货号明细"><td class="insight-no">' + (i + 1) + '</td><td>' + (row.product_name || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeNum(row.sku_sold) + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + safeFmtMoney(row.profit) + '</td><td class="num">' + safeFmtNum(row.qty) + '</td><td class="num ' + marginCls + '">' + m + '%</td></tr>';
+            }).join('');
+          } else {
+            drillStyleWrap.style.display = 'none';
+            drillStyleBody.innerHTML = '';
           }
         }
         var drillSku = d.drill_sku_rank || [];
         var drillSkuWrap = document.getElementById('insightDrillSkuRankWrap');
         var drillSkuBody = document.getElementById('insightDrillSkuRankBody');
+        var drillSkuTitle = document.getElementById('insightDrillSkuRankTitle');
         if (drillSkuWrap && drillSkuBody) {
-          if (currentInsightBrand && drillSku.length > 0) {
+          if (currentInsightCategory && currentInsightBrand && currentInsightProductName && drillSku.length > 0) {
             drillSkuWrap.style.display = '';
+            if (drillSkuTitle) drillSkuTitle.textContent = '四级看板 · ' + (currentInsightBrand || '').replace(/</g,'&lt;') + ' / ' + (currentInsightProductName || '').replace(/</g,'&lt;') + ' 货号销售明细';
             drillSkuBody.innerHTML = drillSku.map(function(row, i) {
               var disc = row.avg_discount_pct != null ? row.avg_discount_pct + '%' : '-';
               var discCls = row.avg_discount_pct != null && row.avg_discount_pct > 40 ? 'margin-low' : '';
-              return '<tr><td class="insight-no">' + (i + 1) + '</td><td>' + (row.sku_code || '').replace(/</g,'&lt;') + '</td><td>' + (row.product_name || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + safeFmtMoney(row.profit) + '</td><td class="num">' + safeFmtNum(row.qty) + '</td><td class="num">' + (row.margin_pct != null ? row.margin_pct : 0) + '%</td><td class="num ' + discCls + '">' + disc + '</td></tr>';
+              return '<tr><td class="insight-no">' + (i + 1) + '</td><td>' + (row.sku_code || '').replace(/</g,'&lt;') + '</td><td>' + (row.brand_name || '').replace(/</g,'&lt;') + '</td><td>' + (row.product_name || '').replace(/</g,'&lt;') + '</td><td class="num">' + safeFmtMoney(row.sale_amount) + '</td><td class="num">' + safeFmtMoney(row.profit) + '</td><td class="num">' + safeFmtNum(row.qty) + '</td><td class="num">' + (row.margin_pct != null ? row.margin_pct : 0) + '%</td><td class="num ' + discCls + '">' + disc + '</td></tr>';
             }).join('');
           } else {
             drillSkuWrap.style.display = 'none';
             drillSkuBody.innerHTML = '';
+            if (drillSkuTitle) drillSkuTitle.textContent = '四级看板 · 该款式下货号销售明细';
           }
         }
         loadConsumerInsightTrend('week');
@@ -1946,13 +2232,15 @@
         var clearLink = e.target && e.target.id === 'insightClearDrill' ? e.target : (e.target && e.target.closest && e.target.closest('#insightClearDrill'));
         if (clearLink) {
           e.preventDefault();
+          currentInsightCategory = ''; currentInsightBrand = ''; currentInsightProductName = '';
           try {
             var u = new URL(window.location.href);
             u.searchParams.delete('category');
             u.searchParams.delete('brand');
+            u.searchParams.delete('product_name');
             var newUrl = u.pathname + (u.searchParams.toString() ? '?' + u.searchParams.toString() : '');
             window.location.replace(newUrl);
-          } catch (_) { currentInsightCategory = ''; currentInsightBrand = ''; loadConsumerInsight(); }
+          } catch (_) { loadConsumerInsight(); }
           return;
         }
         var breadLink = e.target && e.target.closest && e.target.closest('.insight-breadcrumb-link');
@@ -1960,9 +2248,11 @@
           e.preventDefault();
           var cat = (breadLink.getAttribute('data-category') || '').replace(/&quot;/g,'"').replace(/&lt;/g,'<');
           var brand = (breadLink.getAttribute('data-brand') || '').replace(/&quot;/g,'"').replace(/&lt;/g,'<');
+          var pn = (breadLink.getAttribute('data-product-name') || '').replace(/&quot;/g,'"').replace(/&lt;/g,'<');
           currentInsightCategory = cat;
           currentInsightBrand = brand;
-          try { var u = new URL(window.location.href); u.searchParams.set('page', 'insight'); if (cat) u.searchParams.set('category', cat); else u.searchParams.delete('category'); if (brand) u.searchParams.set('brand', brand); else u.searchParams.delete('brand'); window.history.replaceState({}, '', u.pathname + '?' + u.searchParams.toString()); } catch (_) {}
+          currentInsightProductName = pn;
+          try { var u = new URL(window.location.href); u.searchParams.set('page', 'insight'); if (cat) u.searchParams.set('category', cat); else u.searchParams.delete('category'); if (brand) u.searchParams.set('brand', brand); else u.searchParams.delete('brand'); if (pn) u.searchParams.set('product_name', pn); else u.searchParams.delete('product_name'); window.history.replaceState({}, '', u.pathname + '?' + u.searchParams.toString()); } catch (_) {}
           loadConsumerInsight();
           return;
         }
@@ -1972,7 +2262,29 @@
           if (cat) {
             currentInsightCategory = cat;
             currentInsightBrand = '';
-            try { var u = new URL(window.location.href); u.searchParams.set('page', 'insight'); u.searchParams.set('category', cat); u.searchParams.delete('brand'); window.history.replaceState({}, '', u.pathname + '?' + u.searchParams.toString()); } catch (_) {}
+            currentInsightProductName = '';
+            try { var u = new URL(window.location.href); u.searchParams.set('page', 'insight'); u.searchParams.set('category', cat); u.searchParams.delete('brand'); u.searchParams.delete('product_name'); window.history.replaceState({}, '', u.pathname + '?' + u.searchParams.toString()); } catch (_) {}
+            loadConsumerInsight();
+          }
+          return;
+        }
+        var drillBrandRow = e.target && e.target.closest && e.target.closest('.insight-drill-brand-row');
+        if (drillBrandRow) {
+          var brand = (drillBrandRow.getAttribute('data-brand') || '').replace(/&quot;/g,'"').replace(/&lt;/g,'<');
+          if (brand) {
+            currentInsightBrand = brand;
+            currentInsightProductName = '';
+            try { var u = new URL(window.location.href); u.searchParams.set('page', 'insight'); if (currentInsightCategory) u.searchParams.set('category', currentInsightCategory); u.searchParams.set('brand', brand); u.searchParams.delete('product_name'); window.history.replaceState({}, '', u.pathname + '?' + u.searchParams.toString()); } catch (_) {}
+            loadConsumerInsight();
+          }
+          return;
+        }
+        var drillStyleRow = e.target && e.target.closest && e.target.closest('.insight-drill-style-row');
+        if (drillStyleRow) {
+          var pn = (drillStyleRow.getAttribute('data-product-name') || '').replace(/&quot;/g,'"').replace(/&lt;/g,'<');
+          if (pn) {
+            currentInsightProductName = pn;
+            try { var u = new URL(window.location.href); u.searchParams.set('page', 'insight'); if (currentInsightCategory) u.searchParams.set('category', currentInsightCategory); if (currentInsightBrand) u.searchParams.set('brand', currentInsightBrand); u.searchParams.set('product_name', pn); window.history.replaceState({}, '', u.pathname + '?' + u.searchParams.toString()); } catch (_) {}
             loadConsumerInsight();
           }
           return;
@@ -1982,18 +2294,8 @@
           var brand = brandRow.getAttribute('data-brand');
           if (brand) {
             currentInsightBrand = brand;
-            try { var u = new URL(window.location.href); u.searchParams.set('page', 'insight'); if (currentInsightCategory) u.searchParams.set('category', currentInsightCategory); u.searchParams.set('brand', brand); window.history.replaceState({}, '', u.pathname + '?' + u.searchParams.toString()); } catch (_) {}
-            loadConsumerInsight();
-          }
-          return;
-        }
-        var subcatRow = e.target && e.target.closest && e.target.closest('.insight-subcategory-row');
-        if (subcatRow) {
-          var subcat = subcatRow.getAttribute('data-subcategory');
-          if (subcat) {
-            currentInsightCategory = subcat;
-            currentInsightBrand = '';
-            try { var u = new URL(window.location.href); u.searchParams.set('page', 'insight'); u.searchParams.set('category', subcat); u.searchParams.delete('brand'); window.history.replaceState({}, '', u.pathname + '?' + u.searchParams.toString()); } catch (_) {}
+            currentInsightProductName = '';
+            try { var u = new URL(window.location.href); u.searchParams.set('page', 'insight'); if (currentInsightCategory) u.searchParams.set('category', currentInsightCategory); u.searchParams.set('brand', brand); u.searchParams.delete('product_name'); window.history.replaceState({}, '', u.pathname + '?' + u.searchParams.toString()); } catch (_) {}
             loadConsumerInsight();
           }
           return;
@@ -2288,41 +2590,315 @@
     async function loadBrandSummary() {
       const tbody = document.getElementById('brandSummaryBody');
       if (!tbody) return;
-      tbody.innerHTML = '<tr><td colspan="6" class="loading">加载中...</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="loading">加载中...</td></tr>';
       try {
         const r = await fetch(API + '/api/brand_summary?' + queryParams());
         const data = await r.json();
         const list = safeArray(data);
-        tbody.innerHTML = list.length === 0 ? '<tr><td colspan="6" class="loading">暂无数据</td></tr>' : list.map(row => `
-          <tr><td>${(row.brand_name || '').replace(/</g,'&lt;')}</td><td class="num">${fmtMoney(row.sale_amount)}</td><td class="num">${fmtMoney(row.profit)}</td><td class="num">${row.qty}</td><td class="num">${row.margin_pct}%</td><td class="num">${row.contrib_pct}%</td></tr>
-        `).join('');
-      } catch (e) { tbody.innerHTML = '<tr><td colspan="6" class="error">加载失败</td></tr>'; }
+        tbody.innerHTML = list.length === 0 ? '<tr><td colspan="7" class="loading">暂无数据</td></tr>' : list.map(row => {
+          const name = (row.brand_name || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+          return `<tr class="biz-brand-row summary-row" data-expanded="0" data-brand="${name}" title="点击展开该品牌涉及品类及商品"><td><span class="expand-icon">▶</span></td><td>${(row.brand_name || '').replace(/</g,'&lt;')}</td><td class="num">${fmtMoney(row.sale_amount)}</td><td class="num">${fmtMoney(row.profit)}</td><td class="num">${row.qty}</td><td class="num">${row.margin_pct}%</td><td class="num">${row.contrib_pct}%</td></tr>`;
+        }).join('');
+      } catch (e) { tbody.innerHTML = '<tr><td colspan="7" class="error">加载失败</td></tr>'; }
     }
+
+    function bindBrandExpand() {
+      const table = document.getElementById('brandSummaryTable');
+      if (!table) return;
+      table.onclick = async (e) => {
+        if (e.target.closest('.sortable-th')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const productRow = e.target.closest('.cat-product-row');
+        const catRow = e.target.closest('.biz-brand-cat-row');
+        const brandRow = e.target.closest('.biz-brand-row');
+
+        if (productRow) {
+          const expanded = productRow.dataset.expanded === '1';
+          const skuCode = (productRow.dataset.skuCode || '').trim();
+          const productName = (productRow.dataset.productName || '').trim();
+          const nextWrap = productRow.nextElementSibling;
+          if (expanded && nextWrap && nextWrap.classList.contains('cat-sale-detail-wrap')) {
+            productRow.classList.remove('expanded');
+            productRow.dataset.expanded = '0';
+            nextWrap.remove();
+            return;
+          }
+          if (expanded) return;
+          const parentTbody = productRow.parentElement;
+          parentTbody.querySelectorAll('.cat-product-row').forEach(r => { r.classList.remove('expanded'); r.dataset.expanded = '0'; });
+          parentTbody.querySelectorAll('.cat-sale-detail-wrap').forEach(w => w.remove());
+          productRow.classList.add('expanded');
+          productRow.dataset.expanded = '1';
+          const loadTr = document.createElement('tr');
+          loadTr.className = 'cat-sale-detail-wrap';
+          loadTr.innerHTML = '<td colspan="7"><div class="category-sale-detail"><table><thead><tr><th>日期</th><th class="num">销量</th><th class="num">销售额</th><th class="num">成本</th><th class="num">毛利</th><th class="num">毛利率</th></tr></thead><tbody><tr><td colspan="6" class="loading">加载销售明细...</td></tr></tbody></table></div></td>';
+          productRow.after(loadTr);
+          try {
+            const q = (queryParams() ? queryParams() + '&' : '') + 'sku_code=' + encodeURIComponent(skuCode) + '&page=1&page_size=100';
+            const r = await fetch(API + '/api/sale_detail?' + q);
+            if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+            const d = await r.json();
+            const items = d.items || [];
+            const dtbody = loadTr.querySelector('tbody');
+            dtbody.innerHTML = items.length === 0
+              ? '<tr><td colspan="6" class="loading">该商品暂无销售记录</td></tr>'
+              : items.map(x => '<tr><td>' + (x.data_date || '') + '</td><td class="num">' + (x.sale_qty != null ? Number(x.sale_qty).toLocaleString() : '-') + '</td><td class="num">' + fmtMoney(x.sale_amount) + '</td><td class="num">' + fmtMoney(x.sale_cost) + '</td><td class="num">' + fmtMoney(x.gross_profit) + '</td><td class="num">' + (x.profit_rate_pct != null ? x.profit_rate_pct.toFixed(2) : 0) + '%</td></tr>').join('');
+          } catch (err) {
+            loadTr.querySelector('tbody').innerHTML = '<tr><td colspan="6" class="error">加载失败: ' + (err.message || err) + '</td></tr>';
+          }
+          return;
+        }
+
+        if (catRow) {
+          const expanded = catRow.dataset.expanded === '1';
+          const largeCode = (catRow.dataset.largeCode || '').trim();
+          const midCode = (catRow.dataset.midCode || '').trim();
+          const smallCode = (catRow.dataset.smallCode || catRow.dataset.smallName || '').trim();
+          const brand = (catRow.dataset.brand || '').trim();
+          const nextWrap = catRow.nextElementSibling;
+          if (expanded && nextWrap && nextWrap.classList.contains('cat-products-wrap')) {
+            catRow.classList.remove('expanded');
+            catRow.dataset.expanded = '0';
+            nextWrap.remove();
+            return;
+          }
+          if (expanded) return;
+          const parentTbody = catRow.parentElement;
+          parentTbody.querySelectorAll('.biz-brand-cat-row').forEach(r => { r.classList.remove('expanded'); r.dataset.expanded = '0'; });
+          parentTbody.querySelectorAll('.cat-products-wrap').forEach(w => w.remove());
+          catRow.classList.add('expanded');
+          catRow.dataset.expanded = '1';
+          const loadTr = document.createElement('tr');
+          loadTr.className = 'cat-products-wrap';
+          loadTr.innerHTML = '<td colspan="7"><div class="category-products-detail"><table><thead><tr><th style="width:28px;"></th><th>排名</th><th>SKU</th><th>商品名称</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">毛利率</th></tr></thead><tbody><tr><td colspan="7" class="loading">加载商品...</td></tr></tbody></table></div></td>';
+          catRow.after(loadTr);
+          try {
+            const base = queryParams();
+            const q = (base ? base + '&' : '') + 'category_large_code=' + encodeURIComponent(largeCode) + '&category_mid_code=' + encodeURIComponent(midCode) + '&category_small_code=' + encodeURIComponent(smallCode) + '&brand=' + encodeURIComponent(brand);
+            const r = await fetch(API + '/api/category_rank_products?' + q);
+            if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+            const rows = safeArray(await r.json());
+            const dtbody = loadTr.querySelector('tbody');
+            dtbody.innerHTML = rows.length === 0
+              ? '<tr><td colspan="7" class="loading">该品类下暂无商品</td></tr>'
+              : rows.map((row, i) => {
+                  const sku = (row.sku_code || '').replace(/"/g, '&quot;');
+                  const pn = (row.product_name || '').replace(/</g,'&lt;').replace(/"/g,'&quot;').substring(0, 48);
+                  return '<tr class="cat-product-row summary-row" data-expanded="0" data-sku-code="' + sku + '" data-product-name="' + pn + '" title="点击查看销售明细"><td><span class="expand-icon">▶</span></td><td>' + (i + 1) + '</td><td>' + (row.sku_code || '').replace(/</g,'&lt;') + '</td><td>' + (row.product_name || '').replace(/</g,'&lt;').substring(0, 48) + '</td><td class="num">' + fmtMoney(row.sale_amount) + '</td><td class="num">' + fmtMoney(row.profit_amount) + '</td><td class="num">' + (row.margin_pct != null ? row.margin_pct : 0).toFixed(2) + '%</td></tr>';
+                }).join('');
+          } catch (err) {
+            loadTr.querySelector('tbody').innerHTML = '<tr><td colspan="7" class="error">加载失败: ' + (err.message || err) + '</td></tr>';
+          }
+          return;
+        }
+
+        if (!brandRow) return;
+        const expanded = brandRow.dataset.expanded === '1';
+        const brand = (brandRow.dataset.brand || '').trim();
+        if (expanded) {
+          brandRow.classList.remove('expanded');
+          brandRow.dataset.expanded = '0';
+          let next = brandRow.nextElementSibling;
+          while (next && next.classList.contains('biz-brand-detail-wrap')) {
+            const n = next.nextElementSibling;
+            next.remove();
+            next = n;
+          }
+          return;
+        }
+        document.querySelectorAll('#brandSummaryBody .biz-brand-row').forEach(r => { r.classList.remove('expanded'); r.dataset.expanded = '0'; });
+        document.querySelectorAll('#brandSummaryBody tr.biz-brand-detail-wrap').forEach(w => w.remove());
+        brandRow.classList.add('expanded');
+        brandRow.dataset.expanded = '1';
+        const wrapTr = document.createElement('tr');
+        wrapTr.className = 'biz-brand-detail-wrap';
+        wrapTr.innerHTML = '<td colspan="7"><div class="biz-brand-detail-inner"><table class="biz-brand-cat-table"><thead><tr><th style="width:28px;"></th><th>大类</th><th>中类</th><th>小类</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">毛利率</th></tr></thead><tbody><tr><td colspan="7" class="loading">加载品类...</td></tr></tbody></table></div></td>';
+        brandRow.after(wrapTr);
+        const innerTbody = wrapTr.querySelector('table.biz-brand-cat-table tbody');
+        try {
+          const q = (queryParams() ? queryParams() + '&' : '') + 'brand=' + encodeURIComponent(brand);
+          const r = await fetch(API + '/api/brand_categories?' + q);
+          if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+          const rows = safeArray(await r.json());
+          innerTbody.innerHTML = rows.length === 0
+            ? '<tr><td colspan="7" class="loading">该品牌下暂无品类数据</td></tr>'
+            : rows.map(row => {
+                const lc = (row.category_large_code || row.category_large || '').replace(/"/g, '&quot;');
+                const mc = (row.category_mid_code || row.category_mid || '').replace(/"/g, '&quot;');
+                const sc = (row.category_small_code || row.category_small || '').replace(/"/g, '&quot;');
+                const bn = (brand || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                return `<tr class="biz-brand-cat-row summary-row" data-expanded="0" data-brand="${bn}" data-large-code="${lc}" data-mid-code="${mc}" data-small-code="${sc}" data-small-name="${(row.category_small || '').replace(/"/g, '&quot;')}" title="点击展开该品类下商品"><td><span class="expand-icon">▶</span></td><td>${(row.category_large || '').replace(/</g,'&lt;')}</td><td>${(row.category_mid || '').replace(/</g,'&lt;')}</td><td>${(row.category_small || '').replace(/</g,'&lt;')}</td><td class="num">${fmtMoney(row.sale_amount)}</td><td class="num">${fmtMoney(row.profit_amount)}</td><td class="num">${(row.margin_pct != null ? row.margin_pct : 0).toFixed(2)}%</td></tr>`;
+              }).join('');
+          try { wrapTr.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e2) { wrapTr.scrollIntoView(); }
+        } catch (err) {
+          innerTbody.innerHTML = '<tr><td colspan="7" class="error">加载失败: ' + (err.message || err) + '</td></tr>';
+        }
+      };
+    }
+
     async function loadSupplierSummary() {
       const tbody = document.getElementById('supplierSummaryBody');
       if (!tbody) return;
-      tbody.innerHTML = '<tr><td colspan="6" class="loading">加载中...</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="loading">加载中...</td></tr>';
       try {
         const r = await fetch(API + '/api/supplier_summary?' + queryParams());
         const data = await r.json();
         const list = safeArray(data);
-        tbody.innerHTML = list.length === 0 ? '<tr><td colspan="6" class="loading">暂无数据</td></tr>' : list.map(row => `
-          <tr><td>${(row.supplier_name || '').replace(/</g,'&lt;').slice(0,40)}</td><td class="num">${fmtMoney(row.sale_amount)}</td><td class="num">${fmtMoney(row.profit)}</td><td class="num">${row.qty}</td><td class="num">${row.margin_pct}%</td><td class="num">${row.contrib_pct}%</td></tr>
-        `).join('');
-      } catch (e) { tbody.innerHTML = '<tr><td colspan="6" class="error">加载失败</td></tr>'; }
+        tbody.innerHTML = list.length === 0 ? '<tr><td colspan="7" class="loading">暂无数据</td></tr>' : list.map(row => {
+          const name = (row.supplier_name || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').slice(0, 80);
+          return `<tr class="biz-supplier-row summary-row" data-expanded="0" data-supplier="${name}" title="点击展开该供应商供应品类及商品"><td><span class="expand-icon">▶</span></td><td>${(row.supplier_name || '').replace(/</g,'&lt;').slice(0,40)}</td><td class="num">${fmtMoney(row.sale_amount)}</td><td class="num">${fmtMoney(row.profit)}</td><td class="num">${row.qty}</td><td class="num">${row.margin_pct}%</td><td class="num">${row.contrib_pct}%</td></tr>`;
+        }).join('');
+      } catch (e) { tbody.innerHTML = '<tr><td colspan="7" class="error">加载失败</td></tr>'; }
+    }
+
+    function bindSupplierExpand() {
+      const table = document.getElementById('supplierSummaryTable');
+      if (!table) return;
+      table.onclick = async (e) => {
+        if (e.target.closest('.sortable-th')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const productRow = e.target.closest('.cat-product-row');
+        const catRow = e.target.closest('.biz-supplier-cat-row');
+        const supplierRow = e.target.closest('.biz-supplier-row');
+
+        if (productRow) {
+          const expanded = productRow.dataset.expanded === '1';
+          const skuCode = (productRow.dataset.skuCode || '').trim();
+          const nextWrap = productRow.nextElementSibling;
+          if (expanded && nextWrap && nextWrap.classList.contains('cat-sale-detail-wrap')) {
+            productRow.classList.remove('expanded');
+            productRow.dataset.expanded = '0';
+            nextWrap.remove();
+            return;
+          }
+          if (expanded) return;
+          const parentTbody = productRow.parentElement;
+          parentTbody.querySelectorAll('.cat-product-row').forEach(r => { r.classList.remove('expanded'); r.dataset.expanded = '0'; });
+          parentTbody.querySelectorAll('.cat-sale-detail-wrap').forEach(w => w.remove());
+          productRow.classList.add('expanded');
+          productRow.dataset.expanded = '1';
+          const loadTr = document.createElement('tr');
+          loadTr.className = 'cat-sale-detail-wrap';
+          loadTr.innerHTML = '<td colspan="7"><div class="category-sale-detail"><table><thead><tr><th>日期</th><th class="num">销量</th><th class="num">销售额</th><th class="num">成本</th><th class="num">毛利</th><th class="num">毛利率</th></tr></thead><tbody><tr><td colspan="6" class="loading">加载销售明细...</td></tr></tbody></table></div></td>';
+          productRow.after(loadTr);
+          try {
+            const q = (queryParams() ? queryParams() + '&' : '') + 'sku_code=' + encodeURIComponent(skuCode) + '&page=1&page_size=100';
+            const r = await fetch(API + '/api/sale_detail?' + q);
+            if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+            const d = await r.json();
+            const items = d.items || [];
+            const dtbody = loadTr.querySelector('tbody');
+            dtbody.innerHTML = items.length === 0
+              ? '<tr><td colspan="6" class="loading">该商品暂无销售记录</td></tr>'
+              : items.map(x => '<tr><td>' + (x.data_date || '') + '</td><td class="num">' + (x.sale_qty != null ? Number(x.sale_qty).toLocaleString() : '-') + '</td><td class="num">' + fmtMoney(x.sale_amount) + '</td><td class="num">' + fmtMoney(x.sale_cost) + '</td><td class="num">' + fmtMoney(x.gross_profit) + '</td><td class="num">' + (x.profit_rate_pct != null ? x.profit_rate_pct.toFixed(2) : 0) + '%</td></tr>').join('');
+          } catch (err) {
+            loadTr.querySelector('tbody').innerHTML = '<tr><td colspan="6" class="error">加载失败: ' + (err.message || err) + '</td></tr>';
+          }
+          return;
+        }
+
+        if (catRow) {
+          const expanded = catRow.dataset.expanded === '1';
+          const largeCode = (catRow.dataset.largeCode || '').trim();
+          const midCode = (catRow.dataset.midCode || '').trim();
+          const smallCode = (catRow.dataset.smallCode || catRow.dataset.smallName || '').trim();
+          const supplier = (catRow.dataset.supplier || '').trim();
+          const nextWrap = catRow.nextElementSibling;
+          if (expanded && nextWrap && nextWrap.classList.contains('cat-products-wrap')) {
+            catRow.classList.remove('expanded');
+            catRow.dataset.expanded = '0';
+            nextWrap.remove();
+            return;
+          }
+          if (expanded) return;
+          const parentTbody = catRow.parentElement;
+          parentTbody.querySelectorAll('.biz-supplier-cat-row').forEach(r => { r.classList.remove('expanded'); r.dataset.expanded = '0'; });
+          parentTbody.querySelectorAll('.cat-products-wrap').forEach(w => w.remove());
+          catRow.classList.add('expanded');
+          catRow.dataset.expanded = '1';
+          const loadTr = document.createElement('tr');
+          loadTr.className = 'cat-products-wrap';
+          loadTr.innerHTML = '<td colspan="7"><div class="category-products-detail"><table><thead><tr><th style="width:28px;"></th><th>排名</th><th>SKU</th><th>商品名称</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">毛利率</th></tr></thead><tbody><tr><td colspan="7" class="loading">加载商品...</td></tr></tbody></table></div></td>';
+          catRow.after(loadTr);
+          try {
+            const base = queryParams();
+            const q = (base ? base + '&' : '') + 'supplier=' + encodeURIComponent(supplier) + '&category_large_code=' + encodeURIComponent(largeCode) + '&category_mid_code=' + encodeURIComponent(midCode) + '&category_small_code=' + encodeURIComponent(smallCode);
+            const r = await fetch(API + '/api/supplier_products?' + q);
+            if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+            const rows = safeArray(await r.json());
+            const dtbody = loadTr.querySelector('tbody');
+            dtbody.innerHTML = rows.length === 0
+              ? '<tr><td colspan="7" class="loading">该品类下暂无商品</td></tr>'
+              : rows.map((row, i) => {
+                  const sku = (row.sku_code || '').replace(/"/g, '&quot;');
+                  const pn = (row.product_name || '').replace(/</g,'&lt;').replace(/"/g,'&quot;').substring(0, 48);
+                  return '<tr class="cat-product-row summary-row" data-expanded="0" data-sku-code="' + sku + '" data-product-name="' + pn + '" title="点击查看销售明细"><td><span class="expand-icon">▶</span></td><td>' + (i + 1) + '</td><td>' + (row.sku_code || '').replace(/</g,'&lt;') + '</td><td>' + (row.product_name || '').replace(/</g,'&lt;').substring(0, 48) + '</td><td class="num">' + fmtMoney(row.sale_amount) + '</td><td class="num">' + fmtMoney(row.profit_amount) + '</td><td class="num">' + (row.margin_pct != null ? row.margin_pct : 0).toFixed(2) + '%</td></tr>';
+                }).join('');
+          } catch (err) {
+            loadTr.querySelector('tbody').innerHTML = '<tr><td colspan="7" class="error">加载失败: ' + (err.message || err) + '</td></tr>';
+          }
+          return;
+        }
+
+        if (!supplierRow) return;
+        const expanded = supplierRow.dataset.expanded === '1';
+        const supplier = (supplierRow.dataset.supplier || '').trim();
+        if (expanded) {
+          supplierRow.classList.remove('expanded');
+          supplierRow.dataset.expanded = '0';
+          let next = supplierRow.nextElementSibling;
+          while (next && next.classList.contains('biz-supplier-detail-wrap')) {
+            const n = next.nextElementSibling;
+            next.remove();
+            next = n;
+          }
+          return;
+        }
+        document.querySelectorAll('#supplierSummaryBody .biz-supplier-row').forEach(r => { r.classList.remove('expanded'); r.dataset.expanded = '0'; });
+        document.querySelectorAll('#supplierSummaryBody tr.biz-supplier-detail-wrap').forEach(w => w.remove());
+        supplierRow.classList.add('expanded');
+        supplierRow.dataset.expanded = '1';
+        const wrapTr = document.createElement('tr');
+        wrapTr.className = 'biz-supplier-detail-wrap';
+        wrapTr.innerHTML = '<td colspan="7"><div class="biz-supplier-detail-inner"><table class="biz-supplier-cat-table"><thead><tr><th style="width:28px;"></th><th>大类</th><th>中类</th><th>小类</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">毛利率</th></tr></thead><tbody><tr><td colspan="7" class="loading">加载品类...</td></tr></tbody></table></div></td>';
+        supplierRow.after(wrapTr);
+        const innerTbody = wrapTr.querySelector('table.biz-supplier-cat-table tbody');
+        try {
+          const q = (queryParams() ? queryParams() + '&' : '') + 'supplier=' + encodeURIComponent(supplier);
+          const r = await fetch(API + '/api/supplier_categories?' + q);
+          if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+          const rows = safeArray(await r.json());
+          innerTbody.innerHTML = rows.length === 0
+            ? '<tr><td colspan="7" class="loading">该供应商下暂无品类数据</td></tr>'
+            : rows.map(row => {
+                const lc = (row.category_large_code || row.category_large || '').replace(/"/g, '&quot;');
+                const mc = (row.category_mid_code || row.category_mid || '').replace(/"/g, '&quot;');
+                const sc = (row.category_small_code || row.category_small || '').replace(/"/g, '&quot;');
+                const sn = (supplier || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                return `<tr class="biz-supplier-cat-row summary-row" data-expanded="0" data-supplier="${sn}" data-large-code="${lc}" data-mid-code="${mc}" data-small-code="${sc}" data-small-name="${(row.category_small || '').replace(/"/g, '&quot;')}" title="点击展开该品类下商品"><td><span class="expand-icon">▶</span></td><td>${(row.category_large || '').replace(/</g,'&lt;')}</td><td>${(row.category_mid || '').replace(/</g,'&lt;')}</td><td>${(row.category_small || '').replace(/</g,'&lt;')}</td><td class="num">${fmtMoney(row.sale_amount)}</td><td class="num">${fmtMoney(row.profit_amount)}</td><td class="num">${(row.margin_pct != null ? row.margin_pct : 0).toFixed(2)}%</td></tr>`;
+              }).join('');
+          try { wrapTr.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e2) { wrapTr.scrollIntoView(); }
+        } catch (err) {
+          innerTbody.innerHTML = '<tr><td colspan="7" class="error">加载失败: ' + (err.message || err) + '</td></tr>';
+        }
+      };
     }
     async function loadPriceBandSummary() {
       const chartEl = document.getElementById('priceBandChart');
       const tbody = document.getElementById('priceBandBody');
       if (!tbody) return;
-      tbody.innerHTML = '<tr><td colspan="7" class="loading">加载中...</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="loading">加载中...</td></tr>';
       try {
         const r = await fetch(API + '/api/price_band_summary?' + queryParams());
         const data = await r.json();
         const list = safeArray(data);
-        tbody.innerHTML = list.length === 0 ? '<tr><td colspan="7" class="loading">暂无数据</td></tr>' : list.map(row => `
-          <tr><td>${(row.band || '').replace(/</g,'&lt;')} 元</td><td class="num">${fmtMoney(row.sale_amount)}</td><td class="num">${fmtNum(row.qty)}</td><td class="num">${fmtNum(row.record_count || 0)}</td><td class="num">${row.sale_contrib_pct}%</td><td class="num">${row.qty_contrib_pct}%</td><td class="num">${row.record_contrib_pct || 0}%</td></tr>
-        `).join('');
+        tbody.innerHTML = list.length === 0 ? '<tr><td colspan="8" class="loading">暂无数据</td></tr>' : list.map(row => {
+          const bandVal = (row.band || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+          const bandDisplay = bandVal ? bandVal + ' 元' : '-';
+          return `<tr class="biz-price-band-row summary-row" data-expanded="0" data-band="${bandVal}" title="点击展开该价格带涉及品类及商品"><td><span class="expand-icon">▶</span></td><td>${bandDisplay}</td><td class="num">${fmtMoney(row.sale_amount)}</td><td class="num">${fmtNum(row.qty)}</td><td class="num">${fmtNum(row.record_count || 0)}</td><td class="num">${row.sale_contrib_pct}%</td><td class="num">${row.qty_contrib_pct}%</td><td class="num">${row.record_contrib_pct || 0}%</td></tr>`;
+        }).join('');
         if (chartEl && typeof echarts !== 'undefined' && list.length > 0) {
           ensureEcharts(function() {
             const ch = echarts.init(chartEl);
@@ -2333,7 +2909,150 @@
             });
           });
         }
-      } catch (e) { tbody.innerHTML = '<tr><td colspan="7" class="error">加载失败</td></tr>'; }
+      } catch (e) { tbody.innerHTML = '<tr><td colspan="8" class="error">加载失败</td></tr>'; }
+    }
+
+    function bindPriceBandExpand() {
+      const table = document.getElementById('priceBandSummaryTable');
+      if (!table) return;
+      table.onclick = async (e) => {
+        if (e.target.closest('.sortable-th')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const productRow = e.target.closest('.cat-product-row');
+        const catRow = e.target.closest('.biz-price-band-cat-row');
+        const bandRow = e.target.closest('.biz-price-band-row');
+
+        if (productRow) {
+          const expanded = productRow.dataset.expanded === '1';
+          const skuCode = (productRow.dataset.skuCode || '').trim();
+          const nextWrap = productRow.nextElementSibling;
+          if (expanded && nextWrap && nextWrap.classList.contains('cat-sale-detail-wrap')) {
+            productRow.classList.remove('expanded');
+            productRow.dataset.expanded = '0';
+            nextWrap.remove();
+            return;
+          }
+          if (expanded) return;
+          const parentTbody = productRow.parentElement;
+          parentTbody.querySelectorAll('.cat-product-row').forEach(r => { r.classList.remove('expanded'); r.dataset.expanded = '0'; });
+          parentTbody.querySelectorAll('.cat-sale-detail-wrap').forEach(w => w.remove());
+          productRow.classList.add('expanded');
+          productRow.dataset.expanded = '1';
+          const loadTr = document.createElement('tr');
+          loadTr.className = 'cat-sale-detail-wrap';
+          loadTr.innerHTML = '<td colspan="7"><div class="category-sale-detail"><table><thead><tr><th>日期</th><th class="num">销量</th><th class="num">销售额</th><th class="num">成本</th><th class="num">毛利</th><th class="num">毛利率</th></tr></thead><tbody><tr><td colspan="6" class="loading">加载销售明细...</td></tr></tbody></table></div></td>';
+          productRow.after(loadTr);
+          try {
+            const q = (queryParams() ? queryParams() + '&' : '') + 'sku_code=' + encodeURIComponent(skuCode) + '&page=1&page_size=100';
+            const r = await fetch(API + '/api/sale_detail?' + q);
+            if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+            const d = await r.json();
+            const items = d.items || [];
+            const dtbody = loadTr.querySelector('tbody');
+            dtbody.innerHTML = items.length === 0
+              ? '<tr><td colspan="6" class="loading">该商品暂无销售记录</td></tr>'
+              : items.map(x => '<tr><td>' + (x.data_date || '') + '</td><td class="num">' + (x.sale_qty != null ? Number(x.sale_qty).toLocaleString() : '-') + '</td><td class="num">' + fmtMoney(x.sale_amount) + '</td><td class="num">' + fmtMoney(x.sale_cost) + '</td><td class="num">' + fmtMoney(x.gross_profit) + '</td><td class="num">' + (x.profit_rate_pct != null ? x.profit_rate_pct.toFixed(2) : 0) + '%</td></tr>').join('');
+          } catch (err) {
+            loadTr.querySelector('tbody').innerHTML = '<tr><td colspan="6" class="error">加载失败: ' + (err.message || err) + '</td></tr>';
+          }
+          return;
+        }
+
+        if (catRow) {
+          const expanded = catRow.dataset.expanded === '1';
+          const largeCode = (catRow.dataset.largeCode || '').trim();
+          const midCode = (catRow.dataset.midCode || '').trim();
+          const smallCode = (catRow.dataset.smallCode || catRow.dataset.smallName || '').trim();
+          const band = (catRow.dataset.band || '').trim();
+          const nextWrap = catRow.nextElementSibling;
+          if (expanded && nextWrap && nextWrap.classList.contains('cat-products-wrap')) {
+            catRow.classList.remove('expanded');
+            catRow.dataset.expanded = '0';
+            nextWrap.remove();
+            return;
+          }
+          if (expanded) return;
+          const parentTbody = catRow.parentElement;
+          parentTbody.querySelectorAll('.biz-price-band-cat-row').forEach(r => { r.classList.remove('expanded'); r.dataset.expanded = '0'; });
+          parentTbody.querySelectorAll('.cat-products-wrap').forEach(w => w.remove());
+          catRow.classList.add('expanded');
+          catRow.dataset.expanded = '1';
+          const loadTr = document.createElement('tr');
+          loadTr.className = 'cat-products-wrap';
+          loadTr.innerHTML = '<td colspan="7"><div class="category-products-detail"><table><thead><tr><th style="width:28px;"></th><th>排名</th><th>SKU</th><th>商品名称</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">毛利率</th></tr></thead><tbody><tr><td colspan="7" class="loading">加载商品...</td></tr></tbody></table></div></td>';
+          catRow.after(loadTr);
+          try {
+            const base = queryParams();
+            const q = (base ? base + '&' : '') + 'band=' + encodeURIComponent(band) + '&category_large_code=' + encodeURIComponent(largeCode) + '&category_mid_code=' + encodeURIComponent(midCode) + '&category_small_code=' + encodeURIComponent(smallCode);
+            const r = await fetch(API + '/api/price_band_products?' + q);
+            if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+            const rows = safeArray(await r.json());
+            const dtbody = loadTr.querySelector('tbody');
+            dtbody.innerHTML = rows.length === 0
+              ? '<tr><td colspan="7" class="loading">该品类下暂无商品</td></tr>'
+              : rows.map((row, i) => {
+                  const sku = (row.sku_code || '').replace(/"/g, '&quot;');
+                  const pn = (row.product_name || '').replace(/</g,'&lt;').replace(/"/g,'&quot;').substring(0, 48);
+                  return '<tr class="cat-product-row summary-row" data-expanded="0" data-sku-code="' + sku + '" data-product-name="' + pn + '" title="点击查看销售明细"><td><span class="expand-icon">▶</span></td><td>' + (i + 1) + '</td><td>' + (row.sku_code || '').replace(/</g,'&lt;') + '</td><td>' + (row.product_name || '').replace(/</g,'&lt;').substring(0, 48) + '</td><td class="num">' + fmtMoney(row.sale_amount) + '</td><td class="num">' + fmtMoney(row.profit_amount) + '</td><td class="num">' + (row.margin_pct != null ? row.margin_pct : 0).toFixed(2) + '%</td></tr>';
+                }).join('');
+          } catch (err) {
+            loadTr.querySelector('tbody').innerHTML = '<tr><td colspan="7" class="error">加载失败: ' + (err.message || err) + '</td></tr>';
+          }
+          return;
+        }
+
+        if (!bandRow) return;
+        const expanded = bandRow.dataset.expanded === '1';
+        const band = (bandRow.dataset.band || '').trim();
+        if (expanded) {
+          bandRow.classList.remove('expanded');
+          bandRow.dataset.expanded = '0';
+          let next = bandRow.nextElementSibling;
+          while (next && next.classList.contains('biz-price-band-detail-wrap')) {
+            const n = next.nextElementSibling;
+            next.remove();
+            next = n;
+          }
+          return;
+        }
+        document.querySelectorAll('#priceBandBody .biz-price-band-row').forEach(r => { r.classList.remove('expanded'); r.dataset.expanded = '0'; });
+        document.querySelectorAll('#priceBandBody tr.biz-price-band-detail-wrap').forEach(w => w.remove());
+        bandRow.classList.add('expanded');
+        bandRow.dataset.expanded = '1';
+        const wrapTr = document.createElement('tr');
+        wrapTr.className = 'biz-price-band-detail-wrap';
+        wrapTr.innerHTML = '<td colspan="8"><div class="biz-price-band-detail-inner"><table class="biz-price-band-cat-table"><thead><tr><th style="width:28px;"></th><th>大类</th><th>中类</th><th>小类</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">毛利率</th></tr></thead><tbody><tr><td colspan="7" class="loading">加载品类...</td></tr></tbody></table></div></td>';
+        bandRow.after(wrapTr);
+        const innerTbody = wrapTr.querySelector('table.biz-price-band-cat-table tbody');
+        try {
+          const q = (queryParams() ? queryParams() + '&' : '') + 'band=' + encodeURIComponent(band);
+          const r = await fetch(API + '/api/price_band_categories?' + q);
+          if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+          const rows = safeArray(await r.json());
+          innerTbody.innerHTML = rows.length === 0
+            ? '<tr><td colspan="7" class="loading">该价格带下暂无品类数据</td></tr>'
+            : rows.map(row => {
+                const lc = (row.category_large_code || row.category_large || '').replace(/"/g, '&quot;');
+                const mc = (row.category_mid_code || row.category_mid || '').replace(/"/g, '&quot;');
+                const sc = (row.category_small_code || row.category_small || '').replace(/"/g, '&quot;');
+                const bn = (band || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                return `<tr class="biz-price-band-cat-row summary-row" data-expanded="0" data-band="${bn}" data-large-code="${lc}" data-mid-code="${mc}" data-small-code="${sc}" data-small-name="${(row.category_small || '').replace(/"/g, '&quot;')}" title="点击展开该品类下商品"><td><span class="expand-icon">▶</span></td><td>${(row.category_large || '').replace(/</g,'&lt;')}</td><td>${(row.category_mid || '').replace(/</g,'&lt;')}</td><td>${(row.category_small || '').replace(/</g,'&lt;')}</td><td class="num">${fmtMoney(row.sale_amount)}</td><td class="num">${fmtMoney(row.profit_amount)}</td><td class="num">${(row.margin_pct != null ? row.margin_pct : 0).toFixed(2)}%</td></tr>`;
+              }).join('');
+          try { wrapTr.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e2) { wrapTr.scrollIntoView(); }
+        } catch (err) {
+          innerTbody.innerHTML = '<tr><td colspan="7" class="error">加载失败: ' + (err.message || err) + '</td></tr>';
+        }
+      };
+    }
+    function fmtTurnoverDays(v) {
+      if (v == null || v === '' || isNaN(v)) return { text: '—', cls: 'turnover-days-na' };
+      const n = Number(v);
+      if (n < 0) return { text: '—', cls: 'turnover-days-na' };
+      if (n >= 999 || !isFinite(n)) return { text: '>999', cls: 'turnover-days-slow' };
+      const text = n >= 100 ? Math.round(n) : (Math.round(n * 10) / 10).toFixed(1);
+      const cls = n <= 30 ? 'turnover-days-fast' : n <= 90 ? 'turnover-days-mid' : 'turnover-days-slow';
+      return { text: String(text), cls };
     }
     async function loadSkuTurnover() {
       const tbody = document.getElementById('skuTurnoverBody');
@@ -2343,32 +3062,80 @@
         const r = await fetch(API + '/api/sku_turnover?' + queryParams());
         const data = await r.json();
         const list = safeArray(data);
-        tbody.innerHTML = list.length === 0 ? '<tr><td colspan="7" class="loading">暂无数据</td></tr>' : list.map(row => `
-          <tr><td>${(row.sku_code || '').replace(/</g,'&lt;')}</td><td>${(row.product_name || '').replace(/</g,'&lt;').slice(0,24)}</td><td>${(row.category || '').replace(/</g,'&lt;').slice(0,16)}</td><td class="num">${row.sale_qty}</td><td class="num">${fmtMoney(row.sale_amount)}</td><td class="num">${row.stock_qty}</td><td class="num">${row.turnover_days != null ? row.turnover_days : '-'}</td></tr>
-        `).join('');
+        tbody.innerHTML = list.length === 0 ? '<tr><td colspan="7" class="loading">暂无数据</td></tr>' : list.map(row => {
+          const to = fmtTurnoverDays(row.turnover_days);
+          return `<tr><td>${(row.sku_code || '').replace(/</g,'&lt;')}</td><td>${(row.product_name || '').replace(/</g,'&lt;').slice(0,24)}</td><td>${(row.category || '').replace(/</g,'&lt;').slice(0,16)}</td><td class="num">${safeFmtNum(row.sale_qty, '—')}</td><td class="num">${fmtMoney(row.sale_amount)}</td><td class="num">${safeFmtNum(row.stock_qty, '—')}</td><td class="num turnover-cell ${to.cls}">${to.text}</td></tr>`;
+        }).join('');
       } catch (e) { tbody.innerHTML = '<tr><td colspan="7" class="error">加载失败</td></tr>'; }
     }
     async function loadSkuAbc() {
       const kpiEl = document.getElementById('abcSummaryKpi');
       const tbody = document.getElementById('skuAbcBody');
       if (!tbody) return;
-      tbody.innerHTML = '<tr><td colspan="7" class="loading">加载中...</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" class="loading">加载中...</td></tr>';
       if (kpiEl) kpiEl.innerHTML = '<div class="loading">加载中...</div>';
       try {
-        const r = await fetch(API + '/api/sku_abc?' + queryParams());
+        const r = await fetch(API + '/api/sku_abc?' + queryParams() + '&limit=500');
         const d = await r.json();
         const summary = d.summary || {};
         const list = safeArray(d.items);
         if (kpiEl) kpiEl.innerHTML = `
           <div class="kpi-card"><div class="label">A 类 (前80%销售额) SKU 数</div><div class="value">${summary.A_count != null ? summary.A_count : 0}</div></div>
-          <div class="kpi-card"><div class="label">B 类 (80-95%) SKU 数</div><div class="value">${summary.B_count != null ? summary.B_count : 0}</div></div>
+          <div class="kpi-card"><div class="label">B 类 (80–95%累计) SKU 数</div><div class="value">${summary.B_count != null ? summary.B_count : 0}</div></div>
           <div class="kpi-card"><div class="label">C 类 (其余) SKU 数</div><div class="value">${summary.C_count != null ? summary.C_count : 0}</div></div>
           <div class="kpi-card"><div class="label">周期总销售额</div><div class="value">${fmtNum(summary.total_sale || 0)}</div></div>
         `;
-        tbody.innerHTML = list.length === 0 ? '<tr><td colspan="7" class="loading">暂无数据</td></tr>' : list.map(row => `
-          <tr><td>${(row.abc_class || '').replace(/</g,'&lt;')}</td><td>${(row.sku_code || '').replace(/</g,'&lt;')}</td><td>${(row.product_name || '').replace(/</g,'&lt;').slice(0,24)}</td><td>${(row.category || '').replace(/</g,'&lt;').slice(0,16)}</td><td class="num">${fmtMoney(row.sale_amount)}</td><td class="num">${fmtMoney(row.profit)}</td><td class="num">${row.cum_contrib_pct}%</td></tr>
-        `).join('');
-      } catch (e) { tbody.innerHTML = '<tr><td colspan="7" class="error">加载失败</td></tr>'; if (kpiEl) kpiEl.innerHTML = '<div class="error">加载失败</div>'; }
+        const byClass = { A: [], B: [], C: [] };
+        list.forEach(row => { const c = row.abc_class || 'A'; if (byClass[c]) byClass[c].push(row); });
+        window.__abcItemsByClass = byClass;
+        const classMeta = [
+          { key: 'A', label: 'A 类 (前80%销售额)', count: summary.A_count != null ? summary.A_count : 0, pct: '80%' },
+          { key: 'B', label: 'B 类 (80–95%累计)', count: summary.B_count != null ? summary.B_count : 0, pct: '95%' },
+          { key: 'C', label: 'C 类 (其余)', count: summary.C_count != null ? summary.C_count : 0, pct: '100%' }
+        ];
+        tbody.innerHTML = classMeta.map(m => {
+          const items = byClass[m.key] || [];
+          const batchSale = items.reduce((s, r) => s + (Number(r.sale_amount) || 0), 0);
+          const batchProfit = items.reduce((s, r) => s + (Number(r.profit) || 0), 0);
+          const esc = (x) => (x || '').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+          return `<tr class="abc-summary-row summary-row" data-expanded="0" data-class="${m.key}" title="点击展开查看该类 SKU 明细"><td><span class="expand-icon">▶</span></td><td>${esc(m.label)}</td><td class="num">${m.count}</td><td class="num">${fmtMoney(batchSale)}</td><td class="num">${fmtMoney(batchProfit)}</td><td class="num">${m.pct}</td></tr>`;
+        }).join('');
+        bindAbcExpand();
+      } catch (e) { tbody.innerHTML = '<tr><td colspan="6" class="error">加载失败</td></tr>'; if (kpiEl) kpiEl.innerHTML = '<div class="error">加载失败</div>'; }
+    }
+
+    function bindAbcExpand() {
+      const table = document.getElementById('abcSummaryTable');
+      if (!table) return;
+      table.onclick = (e) => {
+        const row = e.target.closest('.abc-summary-row');
+        if (!row) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const cls = (row.dataset.class || '').trim();
+        const expanded = row.dataset.expanded === '1';
+        const next = row.nextElementSibling;
+        if (expanded && next && next.classList.contains('abc-detail-wrap')) {
+          row.classList.remove('expanded');
+          row.dataset.expanded = '0';
+          next.remove();
+          return;
+        }
+        if (expanded) return;
+        document.querySelectorAll('#skuAbcBody .abc-summary-row').forEach(r => { r.classList.remove('expanded'); r.dataset.expanded = '0'; });
+        document.querySelectorAll('#skuAbcBody tr.abc-detail-wrap').forEach(w => w.remove());
+        row.classList.add('expanded');
+        row.dataset.expanded = '1';
+        const items = window.__abcItemsByClass ? (window.__abcItemsByClass[cls] || []) : [];
+        const wrapTr = document.createElement('tr');
+        wrapTr.className = 'abc-detail-wrap';
+        const rowsHtml = items.length === 0
+          ? '<tr><td colspan="6" class="loading">该类本批无明细</td></tr>'
+          : items.map(r => `<tr><td>${(r.sku_code || '').replace(/</g,'&lt;')}</td><td>${(r.product_name || '').replace(/</g,'&lt;').slice(0,28)}</td><td>${(r.category || '').replace(/</g,'&lt;').slice(0,16)}</td><td class="num">${fmtMoney(r.sale_amount)}</td><td class="num">${fmtMoney(r.profit)}</td><td class="num">${(r.cum_contrib_pct != null ? r.cum_contrib_pct : 0)}%</td></tr>`).join('');
+        wrapTr.innerHTML = '<td colspan="6"><div class="abc-detail-inner"><table class="abc-detail-table"><thead><tr><th>商品编码</th><th>品名</th><th>品类</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">累计贡献%</th></tr></thead><tbody>' + rowsHtml + '</tbody></table></div></td>';
+        row.after(wrapTr);
+        try { wrapTr.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e2) { wrapTr.scrollIntoView(); }
+      };
     }
     async function loadNegativeMarginDetail() {
       const tbody = document.getElementById('negativeMarginBody');
@@ -2387,20 +3154,50 @@
     }
     let categoryTrendGran = 'week';
     let currentBizSub = 'return_gift';
+    const CATEGORY_TREND_PAGE_SIZE = 25;
+    let categoryTrendRows = [];
+    let categoryTrendPage = 1;
+
+    function renderCategoryTrendTableBody(page) {
+      const tbody = document.getElementById('categoryTrendBody');
+      const pagEl = document.getElementById('categoryTrendPagination');
+      if (!tbody) return;
+      const total = categoryTrendRows.length;
+      const from = (page - 1) * CATEGORY_TREND_PAGE_SIZE;
+      const slice = categoryTrendRows.slice(from, from + CATEGORY_TREND_PAGE_SIZE);
+      tbody.innerHTML = slice.length === 0 ? '<tr><td colspan="6" class="loading">暂无数据</td></tr>' : slice.map(row => `
+        <tr><td>${(row.period || '').replace(/</g,'&lt;')}</td><td>${(row.category || '').replace(/</g,'&lt;').slice(0,24)}</td><td class="num">${fmtMoney(row.sale_amount)}</td><td class="num">${row.share_pct}%</td><td class="num">${fmtMoney(row.profit_amount)}</td><td class="num">${row.profit_share_pct}%</td></tr>
+      `).join('');
+      if (pagEl) {
+        if (total <= CATEGORY_TREND_PAGE_SIZE) pagEl.style.display = 'none';
+        else { pagEl.style.display = 'block'; renderPagination(pagEl, total, page, CATEGORY_TREND_PAGE_SIZE, (p) => { categoryTrendPage = p; renderCategoryTrendTableBody(p); }); }
+      }
+    }
+
     async function loadCategoryStructureTrend() {
       const chartEl = document.getElementById('categoryTrendChart');
       const tbody = document.getElementById('categoryTrendBody');
+      const pagEl = document.getElementById('categoryTrendPagination');
       if (!tbody) return;
-      tbody.innerHTML = '<tr><td colspan="4" class="loading">加载中...</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" class="loading">加载中...</td></tr>';
+      if (pagEl) pagEl.style.display = 'none';
       try {
         const r = await fetch(API + '/api/category_structure_trend?granularity=' + categoryTrendGran + '&' + queryParams());
         const data = await r.json();
         const list = safeArray(data);
-        let rows = [];
-        list.forEach(p => { (p.by_category || []).slice(0, 8).forEach(c => rows.push({ period: p.period, category: c.category, sale_amount: c.sale_amount, share_pct: c.share_pct })); });
-        tbody.innerHTML = rows.length === 0 ? '<tr><td colspan="4" class="loading">暂无数据</td></tr>' : rows.map(row => `
-          <tr><td>${(row.period || '').replace(/</g,'&lt;')}</td><td>${(row.category || '').replace(/</g,'&lt;').slice(0,20)}</td><td class="num">${fmtMoney(row.sale_amount)}</td><td class="num">${row.share_pct}%</td></tr>
-        `).join('');
+        categoryTrendRows = [];
+        list.forEach(p => {
+          (p.by_category || []).forEach(c => categoryTrendRows.push({
+            period: p.period,
+            category: c.category,
+            sale_amount: c.sale_amount,
+            share_pct: c.share_pct,
+            profit_amount: c.profit_amount != null ? c.profit_amount : 0,
+            profit_share_pct: c.profit_share_pct != null ? c.profit_share_pct : 0
+          }));
+        });
+        categoryTrendPage = 1;
+        renderCategoryTrendTableBody(1);
         if (chartEl && typeof echarts !== 'undefined' && list.length > 0) {
           ensureEcharts(function() {
             const ch = echarts.init(chartEl);
@@ -2408,7 +3205,7 @@
             const catSet = new Set();
             list.forEach(p => (p.by_category || []).forEach(c => catSet.add(c.category)));
             const cats = Array.from(catSet).slice(0, 8);
-            const series = cats.map((cat, i) => ({
+            const series = cats.map((cat) => ({
               name: cat,
               type: 'line',
               data: list.map(p => { const c = (p.by_category || []).find(x => x.category === cat); return c ? c.share_pct : 0; }),
@@ -2419,27 +3216,64 @@
               legend: { bottom: 0, textStyle: { color: '#94a3b8' }, type: 'scroll' },
               grid: { left: 50, right: 30, top: 24, bottom: 60 },
               xAxis: { type: 'category', data: periods, axisLabel: { color: '#94a3b8' } },
-              yAxis: { type: 'value', name: '占比%', axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: '#334155' } } },
+              yAxis: { type: 'value', name: '销售占比%', axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: '#334155' } } },
               series: series
             });
           });
         }
-      } catch (e) { tbody.innerHTML = '<tr><td colspan="4" class="error">加载失败</td></tr>'; }
+      } catch (e) { tbody.innerHTML = '<tr><td colspan="6" class="error">加载失败</td></tr>'; }
     }
+    const INV_TURNOVER_PAGE_SIZE = 20;
+    let invTurnoverByCategoryRows = [];
+    let invTurnoverByCategoryPage = 1;
+
+    function renderInvTurnoverByCategoryTable(page) {
+      const tbody = document.getElementById('invTurnoverByCategoryBody');
+      const pagEl = document.getElementById('invTurnoverByCategoryPagination');
+      if (!tbody) return;
+      const total = invTurnoverByCategoryRows.length;
+      const from = (page - 1) * INV_TURNOVER_PAGE_SIZE;
+      const slice = invTurnoverByCategoryRows.slice(from, from + INV_TURNOVER_PAGE_SIZE);
+      tbody.innerHTML = slice.length === 0 ? '<tr><td colspan="5" class="loading">暂无品类数据</td></tr>' : slice.map(row => {
+        const days = row.days != null ? row.days : '—';
+        const td = row.turnover_days != null ? (row.turnover_days >= 999 ? '>999' : String(row.turnover_days)) : '—';
+        const cls = row.turnover_days != null ? (row.turnover_days <= 30 ? 'turnover-days-fast' : row.turnover_days <= 90 ? 'turnover-days-mid' : 'turnover-days-slow') : '';
+        return `<tr><td>${(row.category_large || '').replace(/</g,'&lt;')}</td><td class="num">${fmtNum(row.stock_amount)}</td><td class="num">${fmtNum(row.period_cost_amount)}</td><td class="num turnover-cell ${cls}">${td}</td><td class="num">${days}</td></tr>`;
+      }).join('');
+      if (pagEl) {
+        if (total <= INV_TURNOVER_PAGE_SIZE) pagEl.style.display = 'none';
+        else { pagEl.style.display = 'block'; renderPagination(pagEl, total, page, INV_TURNOVER_PAGE_SIZE, (p) => { invTurnoverByCategoryPage = p; renderInvTurnoverByCategoryTable(p); }); }
+      }
+    }
+
     async function loadInventoryTurnoverSummary() {
       const kpiEl = document.getElementById('invTurnoverKpi');
+      const tbody = document.getElementById('invTurnoverByCategoryBody');
+      const pagEl = document.getElementById('invTurnoverByCategoryPagination');
       if (!kpiEl) return;
       kpiEl.innerHTML = '<div class="loading">加载中...</div>';
+      if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="loading">加载中...</td></tr>';
+      if (pagEl) pagEl.style.display = 'none';
       try {
-        const r = await fetch(API + '/api/inventory_turnover_summary?' + queryParams());
-        const d = await r.json();
+        const [rSummary, rByCat] = await Promise.all([
+          fetch(API + '/api/inventory_turnover_summary?' + queryParams()),
+          fetch(API + '/api/inventory_turnover_by_category?' + queryParams())
+        ]);
+        const d = await rSummary.json();
         kpiEl.innerHTML = `
           <div class="kpi-card"><div class="label">期末库存金额</div><div class="value">${fmtNum(d.total_stock_amount || 0)}</div></div>
           <div class="kpi-card"><div class="label">周期销售成本</div><div class="value">${fmtNum(d.period_cost_amount || 0)}</div></div>
           <div class="kpi-card"><div class="label">周转天数</div><div class="value">${d.turnover_days != null ? d.turnover_days : '-'}</div></div>
           <div class="kpi-card"><div class="label">统计天数</div><div class="value">${d.days != null ? d.days : '-'}</div></div>
         `;
-      } catch (e) { kpiEl.innerHTML = '<div class="error">加载失败</div>'; }
+        const list = rByCat.ok ? safeArray(await rByCat.json()) : [];
+        invTurnoverByCategoryRows = list;
+        invTurnoverByCategoryPage = 1;
+        renderInvTurnoverByCategoryTable(1);
+      } catch (e) {
+        kpiEl.innerHTML = '<div class="error">加载失败</div>';
+        if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="error">加载失败</td></tr>';
+      }
     }
     async function loadDataQuality() {
       const kpiEl = document.getElementById('dataQualityKpi');
@@ -2469,6 +3303,9 @@
     function loadBizSub(sub) {
       const f = { return_gift: loadReturnGiftSummary, brand: loadBrandSummary, supplier: loadSupplierSummary, price_band: loadPriceBandSummary, turnover: loadSkuTurnover, abc: loadSkuAbc, negative_margin: loadNegativeMarginDetail, category_trend: loadCategoryStructureTrend, inv_turnover: loadInventoryTurnoverSummary, data_quality: loadDataQuality }[sub];
       if (f) f();
+      if (sub === 'brand') bindBrandExpand();
+      if (sub === 'supplier') bindSupplierExpand();
+      if (sub === 'price_band') bindPriceBandExpand();
     }
 
     function fmtAxisVal(v) {
@@ -3090,14 +3927,18 @@
             if (page === 'insight') {
               currentInsightCategory = '';
               currentInsightBrand = '';
+              currentInsightProductName = '';
               u.searchParams.delete('category');
               u.searchParams.delete('brand');
+              u.searchParams.delete('product_name');
             } else {
               // 切换到概览/经营分析等非消费洞察页时，清除下钻参数，避免影响 KPI/图表等
               currentInsightCategory = '';
               currentInsightBrand = '';
+              currentInsightProductName = '';
               u.searchParams.delete('category');
               u.searchParams.delete('brand');
+              u.searchParams.delete('product_name');
             }
             window.history.replaceState({}, '', u.pathname + '?' + u.searchParams.toString());
           } catch (_) {}

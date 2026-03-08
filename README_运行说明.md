@@ -62,6 +62,22 @@ npm run htma:import
 - 执行过 `scripts/04_create_category_table.sql` 创建品类表
 - 执行过 `python scripts/run_add_columns.py` 补齐扩展列
 
+## 如何跑测试
+
+看板自动化测试（query_layer 单元测试 + 核心 API 接口测试，mock DB、无需真实 MySQL）：
+
+```bash
+# 推荐
+npm run htma:test
+# 或
+bash scripts/run_htma_tests.sh
+
+# 或手动指定 pytest
+.venv/bin/python -m pytest htma_dashboard/tests/ -v
+```
+
+首次运行可先创建虚拟环境并安装依赖：`python3 -m venv .venv && .venv/bin/pip install -r htma_dashboard/requirements.txt`。详见 `docs/项目重构与优化方案.md` §6.2。
+
 ## 修复说明
 
 - **导入误清空**：已修复。仅当上传合法 .xls/.xlsx 文件时才清空表，无效文件不会触发清空。

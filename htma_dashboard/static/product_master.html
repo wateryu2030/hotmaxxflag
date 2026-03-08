@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>分店商品档案 · 数据分析</title>
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+  <script src="/static/js/charts.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; padding: 12px 16px; font-size: 0.85rem; }
@@ -109,35 +110,39 @@
 
   function drawCharts(data) {
     if (typeof echarts === 'undefined') return;
+    var useComponents = typeof createPieChart !== 'undefined' && typeof createBarChart !== 'undefined';
     var status = data.by_status || [];
     if (status.length && document.getElementById('chartStatus')) {
-      var ch = echarts.init(document.getElementById('chartStatus'));
-      ch.setOption({ tooltip: { trigger: 'item' }, series: [{ type: 'pie', radius: ['40%','70%'], data: status.map(function(r) { return { value: r.count, name: (r.name || '').slice(0, 8) }; }) }] });
+      var statusData = status.map(function(r) { return { value: r.count, name: (r.name || '').slice(0, 8) }; });
+      if (useComponents) createPieChart('chartStatus').render(statusData); else { var ch = echarts.init(document.getElementById('chartStatus')); ch.setOption({ tooltip: { trigger: 'item' }, series: [{ type: 'pie', radius: ['40%','70%'], data: statusData }] }); }
     }
     var cat = (data.by_category || []).slice(0, 10);
     if (cat.length && document.getElementById('chartCategory')) {
-      var ch2 = echarts.init(document.getElementById('chartCategory'));
-      ch2.setOption({ grid: { left: 80, right: 20, top: 10, bottom: 30 }, xAxis: { type: 'value' }, yAxis: { type: 'category', data: cat.map(function(r) { return (r.name || '').slice(0, 12); }).reverse() }, series: [{ type: 'bar', data: cat.map(function(r) { return r.count; }).reverse(), itemStyle: { color: '#38bdf8' } }] });
+      var catNames = cat.map(function(r) { return (r.name || '').slice(0, 12); }).reverse();
+      var catValues = cat.map(function(r) { return r.count; }).reverse();
+      if (useComponents) createBarChart('chartCategory', true).render({ xAxis: catNames, series: [{ name: 'SKU数', data: catValues }] }); else { var ch2 = echarts.init(document.getElementById('chartCategory')); ch2.setOption({ grid: { left: 80, right: 20, top: 10, bottom: 30 }, xAxis: { type: 'value' }, yAxis: { type: 'category', data: catNames }, series: [{ type: 'bar', data: catValues, itemStyle: { color: '#38bdf8' } }] }); }
     }
     var brand = (data.by_brand || []).slice(0, 20);
     if (brand.length && document.getElementById('chartBrand')) {
-      var ch3 = echarts.init(document.getElementById('chartBrand'));
-      ch3.setOption({ grid: { left: 80, right: 20, top: 10, bottom: 30 }, xAxis: { type: 'value' }, yAxis: { type: 'category', data: brand.map(function(r) { return (r.name || '').slice(0, 10); }).reverse() }, series: [{ type: 'bar', data: brand.map(function(r) { return r.count; }).reverse(), itemStyle: { color: '#34d399' } }] });
+      var brandNames = brand.map(function(r) { return (r.name || '').slice(0, 10); }).reverse();
+      var brandValues = brand.map(function(r) { return r.count; }).reverse();
+      if (useComponents) createBarChart('chartBrand', true).render({ xAxis: brandNames, series: [{ name: 'SKU数', data: brandValues }] }); else { var ch3 = echarts.init(document.getElementById('chartBrand')); ch3.setOption({ grid: { left: 80, right: 20, top: 10, bottom: 30 }, xAxis: { type: 'value' }, yAxis: { type: 'category', data: brandNames }, series: [{ type: 'bar', data: brandValues, itemStyle: { color: '#34d399' } }] }); }
     }
     var band = data.by_price_band || [];
     if (band.length && document.getElementById('chartPriceBand')) {
-      var ch4 = echarts.init(document.getElementById('chartPriceBand'));
-      ch4.setOption({ grid: { left: 50, right: 20, top: 10, bottom: 30 }, xAxis: { type: 'category', data: band.map(function(r) { return r.band || ''; }) }, yAxis: { type: 'value' }, series: [{ type: 'bar', data: band.map(function(r) { return r.count; }), itemStyle: { color: '#38bdf8' } }] });
+      var bandCats = band.map(function(r) { return r.band || ''; });
+      var bandValues = band.map(function(r) { return r.count; });
+      if (useComponents) createBarChart('chartPriceBand', false).render({ xAxis: bandCats, series: [{ name: 'SKU数', data: bandValues }] }); else { var ch4 = echarts.init(document.getElementById('chartPriceBand')); ch4.setOption({ grid: { left: 50, right: 20, top: 10, bottom: 30 }, xAxis: { type: 'category', data: bandCats }, yAxis: { type: 'value' }, series: [{ type: 'bar', data: bandValues, itemStyle: { color: '#38bdf8' } }] }); }
     }
     var dist = data.by_distribution || [];
     if (dist.length && document.getElementById('chartDist')) {
-      var ch5 = echarts.init(document.getElementById('chartDist'));
-      ch5.setOption({ tooltip: { trigger: 'item' }, series: [{ type: 'pie', radius: ['40%','70%'], data: dist.map(function(r) { return { value: r.count, name: (r.name || '').slice(0, 6) }; }) }] });
+      var distData = dist.map(function(r) { return { value: r.count, name: (r.name || '').slice(0, 6) }; });
+      if (useComponents) createPieChart('chartDist').render(distData); else { var ch5 = echarts.init(document.getElementById('chartDist')); ch5.setOption({ tooltip: { trigger: 'item' }, series: [{ type: 'pie', radius: ['40%','70%'], data: distData }] }); }
     }
     var gender = data.by_gender || [];
     if (gender.length && document.getElementById('chartGender')) {
-      var ch6 = echarts.init(document.getElementById('chartGender'));
-      ch6.setOption({ tooltip: { trigger: 'item' }, series: [{ type: 'pie', radius: ['40%','70%'], data: gender.map(function(r) { return { value: r.count, name: (r.name || '').slice(0, 6) }; }) }] });
+      var genderData = gender.map(function(r) { return { value: r.count, name: (r.name || '').slice(0, 6) }; });
+      if (useComponents) createPieChart('chartGender').render(genderData); else { var ch6 = echarts.init(document.getElementById('chartGender')); ch6.setOption({ tooltip: { trigger: 'item' }, series: [{ type: 'pie', radius: ['40%','70%'], data: genderData }] }); }
     }
   }
 

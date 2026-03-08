@@ -56,7 +56,7 @@ echo ""
 echo ">>> 2. 重启看板 (launchd)"
 launchctl unload "$AGENTS/$DASHBOARD_PLIST" 2>/dev/null || true
 sleep 2
-launchctl load "$AGENTS/$DASHBOARD_PLIST"
+launchctl load "$AGENTS/$DASHBOARD_PLIST" 2>/dev/null || true
 echo "    已执行 unload + load"
 echo ""
 

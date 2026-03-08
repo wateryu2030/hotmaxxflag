@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>收益评估 - 好特卖运营看板</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; padding: 24px; }
+    h1 { font-size: 1.4rem; margin-bottom: 8px; color: #f8fafc; }
+    .nav { margin-bottom: 24px; }
+    .nav a { color: #38bdf8; text-decoration: none; margin-right: 16px; }
+    .nav a:hover { text-decoration: underline; }
+    .section { background: #1e293b; border-radius: 12px; padding: 24px; margin-bottom: 20px; border: 1px solid #334155; max-width: 900px; }
+    .section h2 { font-size: 1rem; color: #94a3b8; margin-bottom: 16px; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+    .tabs .tab { padding: 10px 20px; border-radius: 8px; border: 1px solid #334155; background: #1e293b; color: #94a3b8; cursor: pointer; }
+    .tabs .tab:hover { background: #334155; color: #e2e8f0; }
+    .tabs .tab.active { background: #38bdf8; color: #0f172a; border-color: #38bdf8; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .btn { background: #38bdf8; color: #0f172a; border: none; padding: 10px 20px; border-radius: 8px; font-size: 0.95rem; cursor: pointer; font-weight: 600; }
+    .btn:hover { background: #0ea5e9; }
+    .btn:disabled { background: #64748b; cursor: not-allowed; }
+    .btn-secondary { background: #64748b; }
+    .btn-secondary:hover { background: #475569; }
+    .btn-danger { background: #dc2626; color: #fff; }
+    .btn-danger:hover { background: #b91c1c; }
+    .rule-bar { padding: 12px; background: #0f172a; border-radius: 8px; margin-bottom: 16px; border: 1px solid #334155; font-size: 0.9rem; }
+    .rule-bar strong { color: #38bdf8; }
+    .form-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+    .form-row label { min-width: 100px; color: #94a3b8; font-size: 0.9rem; }
+    .form-row input, .form-row select { padding: 8px 12px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font-size: 0.9rem; }
+    .form-row input[type="number"] { width: 90px; }
+    .form-row input[type="date"] { width: 140px; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
+    .card { background: #0f172a; border-radius: 8px; padding: 14px; border: 1px solid #334155; }
+    .card .label { font-size: 0.8rem; color: #94a3b8; margin-bottom: 4px; }
+    .card .value { font-size: 1.2rem; font-weight: 700; color: #38bdf8; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #334155; }
+    th { color: #94a3b8; font-weight: 600; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .result { margin-top: 16px; padding: 16px; background: #334155; border-radius: 8px; font-size: 0.9rem; white-space: pre-wrap; }
+    .result.success { border-left: 4px solid #34d399; }
+    .result.error { border-left: 4px solid #f87171; }
+    .tip { color: #64748b; font-size: 0.85rem; margin-top: 8px; }
+    .history-list { max-height: 280px; overflow-y: auto; }
+    .history-list tr { cursor: pointer; }
+    .history-list tr:hover { background: #334155; }
+    .excluded-row { color: #64748b; font-style: italic; }
+    .result-table { width: 100%; max-width: 640px; }
+    .result-table th { color: #94a3b8; }
+    #noPerm { display: none; padding: 24px; text-align: center; color: #94a3b8; }
+    .sortable-th { cursor: pointer; user-select: none; }
+    .sortable-th:hover { color: #38bdf8; }
+    .sortable-th .sort-arrow { font-size: 0.7rem; margin-left: 2px; opacity: 0.6; }
+    .ps-large { cursor: pointer; background: rgba(56,189,248,0.08); border-left: 4px solid #38bdf8; }
+    .ps-large:hover { background: rgba(56,189,248,0.14); }
+    .ps-large.expanded .expand-icon { transform: rotate(90deg); }
+    .ps-mid { background: rgba(34,211,238,0.06); border-left: 4px solid #22d3ee; }
+    .ps-mid td:nth-child(3) { padding-left: 24px; }
+    .expand-icon { display: inline-block; width: 14px; transition: transform 0.15s ease; }
+  </style>
+</head>
+<body>
+  <h1>收益评估（加盟商分账）</h1>
+  <div class="nav">
+    <a href="/">← 返回看板</a>
+    <a href="/import">数据导入</a>
+    <span id="authUserBar" style="margin-left:12px;color:#94a3b8;"></span>
+  </div>
+  <div id="noPerm">您暂无收益评估模块权限，请联系管理员。</div>
+  <div id="mainWrap">
+    <div class="tabs">
+      <button class="tab active" data-tab="calc">分账计算</button>
+      <button class="tab" data-tab="config">规则配置</button>
+    </div>
+
+    <!-- Tab1: 分账计算 -->
+    <div id="panelCalc" class="tab-panel active section">
+      <div class="rule-bar" id="currentRuleBar">当前规则：加载中…</div>
+      <div class="form-row">
+        <label>计算方式</label>
+        <label style="min-width:auto;"><input type="radio" name="calcMode" value="month" checked /> 按月份</label>
+        <label style="min-width:auto;"><input type="radio" name="calcMode" value="range" /> 自定义时间段</label>
+      </div>
+      <div id="calcMonthRow" class="form-row">
+        <label>计算月份</label>
+        <input type="month" id="calcMonth" />
+      </div>
+      <div id="calcRangeRow" class="form-row" style="display:none;">
+        <label>开始日期</label>
+        <input type="date" id="calcStartDate" />
+        <label style="min-width:auto;">结束日期</label>
+        <input type="date" id="calcEndDate" />
+      </div>
+      <div class="form-row">
+        <button class="btn" id="btnCalc">开始计算</button>
+      </div>
+      <div id="calcErrorWrap" class="result error" style="display:none; margin-top:12px;"></div>
+      <div id="calcResultWrap" style="display:none;">
+        <h2>计算周期</h2>
+        <p id="calcPeriodLabel" class="rule-bar" style="margin-bottom:12px;"></p>
+        <h2 style="margin-top:16px;">一、数据概览（选定时间段内销售额与毛利）</h2>
+        <table class="result-table" style="margin-bottom:20px;">
+          <thead><tr><th>项目</th><th class="num">销售额（元）</th><th class="num">毛利额（元）</th></tr></thead>
+          <tbody id="calcOverviewBody"></tbody>
+        </table>
+        <h2 style="margin-top:16px;">二、分账结果（总销售额扣除销售成本后，加盟商分 75% / 平台分 25%）</h2>
+        <table class="result-table" style="margin-bottom:20px;">
+          <thead><tr><th>项目</th><th class="num">金额（元）</th></tr></thead>
+          <tbody id="calcSettleBody"></tbody>
+        </table>
+        <h2 style="margin-top:16px;">按品类明细（参与计算部分）</h2>
+        <p class="tip" style="margin-bottom:8px;">先展示大类，点击行展开中类；点击列标题可排序。</p>
+        <div style="overflow-x:auto;">
+          <table class="result-table" id="calcDetailTable">
+            <thead><tr>
+              <th style="width:28px;"></th>
+              <th>大类</th><th>中类</th>
+              <th class="num sortable-th" data-sort="sales">销售额 <span class="sort-arrow">↕</span></th>
+              <th class="num sortable-th" data-sort="profit">毛利 <span class="sort-arrow">↕</span></th>
+              <th class="num sortable-th" data-sort="merchant_share">加盟商分成 <span class="sort-arrow">↕</span></th>
+            </tr></thead>
+            <tbody id="calcDetailBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <h2 style="margin-top:24px;">历史计算结果</h2>
+      <div class="form-row">
+        <label>筛选月份</label>
+        <input type="month" id="historyMonthFilter" />
+        <button class="btn btn-secondary" id="btnLoadHistory">查询</button>
+      </div>
+      <div class="history-list">
+        <table>
+          <thead><tr><th>计算周期</th><th class="num">总销售额</th><th class="num">加盟商结算</th><th class="num">平台金额</th><th>操作</th></tr></thead>
+          <tbody id="historyBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Tab2: 规则配置 -->
+    <div id="panelConfig" class="tab-panel section">
+      <h2>分成阶段规则</h2>
+      <p class="tip">同一时间只能启用一条规则；启用新规则会自动禁用其他规则。</p>
+      <table style="margin-bottom:20px;">
+        <thead><tr><th>阶段名称</th><th>起始日期</th><th>结束日期</th><th class="num">加盟商%</th><th class="num">平台%</th><th>启用</th><th>操作</th></tr></thead>
+        <tbody id="ruleTableBody"></tbody>
+      </table>
+      <button class="btn btn-secondary" id="btnAddRule">新增规则</button>
+      <div id="ruleFormWrap" style="display:none; margin-top:20px; padding:16px; background:#0f172a; border-radius:8px; border:1px solid #334155;">
+        <h3 style="font-size:0.95rem; margin-bottom:12px;">新增/编辑规则</h3>
+        <div class="form-row"><label>阶段名称</label><input type="text" id="ruleStageName" placeholder="前两年" /></div>
+        <div class="form-row"><label>起始日期</label><input type="date" id="ruleStart" /><label style="min-width:auto;">结束日期（空=永久）</label><input type="date" id="ruleEnd" /></div>
+        <div class="form-row"><label>加盟商比例%</label><input type="number" id="ruleMerchantRate" min="0" max="100" step="0.01" value="75" /><label style="min-width:auto;">平台比例%</label><input type="number" id="rulePlatformRate" min="0" max="100" step="0.01" value="25" /></div>
+        <div class="form-row"><label>是否启用</label><input type="checkbox" id="ruleActive" checked /></div>
+        <input type="hidden" id="ruleId" />
+        <button class="btn" id="btnSaveRule">保存</button>
+        <button class="btn btn-secondary" id="btnCancelRule">取消</button>
+      </div>
+
+      <h2 style="margin-top:28px;">品类排除（不参与分账）</h2>
+      <p class="tip">仅选大类表示排除该大类下全部中类；选大类+中类表示只排除该中类。</p>
+      <div class="form-row">
+        <label>大类</label>
+        <select id="excludeLarge"><option value="">请选择大类</option></select>
+        <label style="min-width:auto;">中类（可选）</label>
+        <select id="excludeMid"><option value="">全部</option></select>
+        <button class="btn btn-secondary" id="btnPreviewExclude">预览影响</button>
+        <button class="btn" id="btnAddExclude">添加排除</button>
+      </div>
+      <div id="previewResult" class="result" style="display:none; margin-top:8px;"></div>
+      <table style="margin-top:12px;">
+        <thead><tr><th>大类</th><th>中类</th><th>操作</th></tr></thead>
+        <tbody id="excludeTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    function apiBase() {
+      const o = window.location.origin;
+      if (o && (o.startsWith('http://') || o.startsWith('https://'))) return o;
+      return 'http://127.0.0.1:5002';
+    }
+    const API = apiBase();
+
+    async function checkPerm() {
+      try {
+        const r = await fetch(API + '/api/auth/me');
+        if (!r.ok) { document.getElementById('noPerm').style.display = 'block'; document.getElementById('mainWrap').style.display = 'none'; return false; }
+        const d = await r.json();
+        if (d.permissions && d.permissions.can_profit_share === false) {
+          document.getElementById('noPerm').style.display = 'block'; document.getElementById('mainWrap').style.display = 'none'; return false;
+        }
+        if (d.name) document.getElementById('authUserBar').innerHTML = '欢迎，' + (d.name || '').replace(/</g, '&lt;') + ' <a href="/api/auth/logout" style="color:#38bdf8;">退出</a>';
+        return true;
+      } catch (e) {
+        document.getElementById('noPerm').style.display = 'block'; document.getElementById('mainWrap').style.display = 'none'; return false;
+      }
+    }
+
+    document.querySelectorAll('.tabs .tab').forEach(t => {
+      t.addEventListener('click', function() {
+        document.querySelectorAll('.tabs .tab').forEach(x => x.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(x => x.classList.remove('active'));
+        this.classList.add('active');
+        const tab = this.getAttribute('data-tab');
+        document.getElementById(tab === 'calc' ? 'panelCalc' : 'panelConfig').classList.add('active');
+        if (tab === 'config') { loadCategoryOptions(); loadExcludeList(); loadRules(); }
+      });
+    });
+
+    async function loadCurrentRule() {
+      const bar = document.getElementById('currentRuleBar');
+      try {
+        const r = await fetch(API + '/api/profit_share/rule');
+        const d = await r.json();
+        const active = d.active_rule;
+        if (active) {
+          bar.innerHTML = '当前规则：<strong>' + (active.stage_name || '') + '</strong> 加盟商 ' + active.share_rate_merchant + '% / 平台 ' + active.share_rate_platform + '% &nbsp; <a href="#" id="linkToConfig" style="color:#38bdf8;">修改规则</a>';
+          document.getElementById('linkToConfig') && document.getElementById('linkToConfig').addEventListener('click', function(e) { e.preventDefault(); document.querySelector('.tab[data-tab="config"]').click(); });
+        } else {
+          bar.innerHTML = '当前无启用规则，请到「规则配置」Tab 新增并启用一条规则。';
+        }
+      } catch (e) {
+        bar.innerHTML = '当前规则：加载失败';
+      }
+    }
+
+    let defaultMonth = '';
+    function initMonth() {
+      const d = new Date();
+      defaultMonth = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+      document.getElementById('calcMonth').value = defaultMonth;
+      const today = d.toISOString().slice(0, 10);
+      document.getElementById('calcEndDate').value = today;
+      const firstDay = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+      document.getElementById('calcStartDate').value = firstDay;
+    }
+    function clearCalcResult() {
+      document.getElementById('calcResultWrap').style.display = 'none';
+      document.getElementById('calcErrorWrap').style.display = 'none';
+    }
+    document.querySelectorAll('input[name="calcMode"]').forEach(function(radio) {
+      radio.addEventListener('change', function() {
+        const isMonth = document.querySelector('input[name="calcMode"]:checked').value === 'month';
+        document.getElementById('calcMonthRow').style.display = isMonth ? '' : 'none';
+        document.getElementById('calcRangeRow').style.display = isMonth ? 'none' : '';
+        clearCalcResult();
+      });
+    });
+    document.getElementById('calcMonth').addEventListener('change', clearCalcResult);
+    document.getElementById('calcStartDate').addEventListener('change', clearCalcResult);
+    document.getElementById('calcEndDate').addEventListener('change', clearCalcResult);
+
+    function fmt(v) {
+      return v != null && v !== '' ? Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2 }) : '—';
+    }
+    var lastCalcDetailTree = [];
+    var lastCalcRateM = 0;
+    var lastCalcDetailSort = { key: 'sales', asc: false };
+    var lastCalcExpandedLarge = null;
+
+    function buildDetailTree(details, rateM) {
+      var map = {};
+      (details || []).forEach(function(row) {
+        var ln = (row.category_large_name || '').trim() || '—';
+        var mn = (row.category_mid_name || '').trim() || '—';
+        var sales = Number(row.sales) || 0;
+        var profit = Number(row.profit) || 0;
+        var ms = row.merchant_share != null ? Number(row.merchant_share) : profit * (rateM || 0) / 100;
+        if (!map[ln]) {
+          map[ln] = { largeName: ln, sales: 0, profit: 0, merchant_share: 0, children: [] };
+        }
+        map[ln].sales += sales;
+        map[ln].profit += profit;
+        map[ln].merchant_share += ms;
+        map[ln].children.push({ midName: mn, sales: sales, profit: profit, merchant_share: ms });
+      });
+      return Object.keys(map).map(function(k) { return map[k]; });
+    }
+
+    function renderDetailTable() {
+      var tbody = document.getElementById('calcDetailBody');
+      if (!tbody) return;
+      var tree = lastCalcDetailTree;
+      var key = lastCalcDetailSort.key;
+      var asc = lastCalcDetailSort.asc;
+      var sorted = tree.slice().sort(function(a, b) {
+        var va = key === 'sales' ? a.sales : key === 'profit' ? a.profit : key === 'merchant_share' ? a.merchant_share : (a.largeName || '');
+        var vb = key === 'sales' ? b.sales : key === 'profit' ? b.profit : key === 'merchant_share' ? b.merchant_share : (b.largeName || '');
+        if (typeof va === 'number' && typeof vb === 'number') return asc ? va - vb : vb - va;
+        return asc ? String(va).localeCompare(vb) : String(vb).localeCompare(va);
+      });
+      var expanded = lastCalcExpandedLarge;
+      var html = '';
+      sorted.forEach(function(lg) {
+        var ex = expanded === lg.largeName;
+        var esc = (lg.largeName || '').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+        var rowClass = 'ps-large' + (ex ? ' expanded' : '');
+        html += '<tr class="' + rowClass + '" data-expanded="' + (ex ? '1' : '0') + '" data-large-name="' + esc + '" title="点击展开中类">';
+        html += '<td><span class="expand-icon">▶</span></td><td>' + esc + '</td><td></td>';
+        html += '<td class="num">' + fmt(lg.sales) + '</td><td class="num">' + fmt(lg.profit) + '</td><td class="num">' + fmt(lg.merchant_share) + '</td></tr>';
+        if (ex && lg.children && lg.children.length) {
+          var midSorted = lg.children.slice().sort(function(a, b) {
+            var va = key === 'sales' ? a.sales : key === 'profit' ? a.profit : key === 'merchant_share' ? a.merchant_share : (a.midName || '');
+            var vb = key === 'sales' ? b.sales : key === 'profit' ? b.profit : key === 'merchant_share' ? b.merchant_share : (b.midName || '');
+            if (typeof va === 'number' && typeof vb === 'number') return asc ? va - vb : vb - va;
+            return asc ? String(va).localeCompare(vb) : String(vb).localeCompare(va);
+          });
+          midSorted.forEach(function(mid) {
+            var mesc = (mid.midName || '').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+            html += '<tr class="ps-mid" data-large-name="' + esc + '"><td></td><td></td><td>' + mesc + '</td>';
+            html += '<td class="num">' + fmt(mid.sales) + '</td><td class="num">' + fmt(mid.profit) + '</td><td class="num">' + fmt(mid.merchant_share) + '</td></tr>';
+          });
+        }
+      });
+      tbody.innerHTML = html || '<tr><td colspan="6" class="loading">暂无品类数据</td></tr>';
+      bindDetailExpand();
+      bindDetailSort();
+    }
+
+    function bindDetailExpand() {
+      var table = document.getElementById('calcDetailTable');
+      var tbody = document.getElementById('calcDetailBody');
+      if (!table || !tbody) return;
+      table.onclick = function(e) {
+        if (e.target.closest('.sortable-th')) return;
+        var row = e.target.closest('.ps-large');
+        if (!row) return;
+        e.preventDefault();
+        var largeName = (row.dataset.largeName || '').replace(/&quot;/g, '"');
+        var expanded = row.dataset.expanded === '1';
+        lastCalcExpandedLarge = expanded ? null : largeName;
+        renderDetailTable();
+      };
+    }
+
+    function bindDetailSort() {
+      document.querySelectorAll('#calcDetailTable .sortable-th').forEach(function(th) {
+        th.onclick = function(e) {
+          e.stopPropagation();
+          var key = th.dataset.sort;
+          if (!key) return;
+          lastCalcDetailSort.asc = lastCalcDetailSort.key === key ? !lastCalcDetailSort.asc : false;
+          lastCalcDetailSort.key = key;
+          renderDetailTable();
+        };
+      });
+    }
+
+    function renderCalcResult(d) {
+      document.getElementById('calcErrorWrap').style.display = 'none';
+      document.getElementById('calcResultWrap').style.display = 'block';
+      document.getElementById('calcPeriodLabel').textContent = (d.period_label || d.calc_month || '-') + (d.exclusion_summary ? '；剔除因素：' + d.exclusion_summary : '');
+      var hasAll = d.total_sales_all != null && d.total_profit_all != null;
+      var hasExcl = d.excluded_sales != null && d.excluded_profit != null;
+      document.getElementById('calcOverviewBody').innerHTML =
+        '<tr><td>全口径（该时间段全部品类）</td><td class="num">' + (hasAll ? fmt(d.total_sales_all) : '—') + '</td><td class="num">' + (hasAll ? fmt(d.total_profit_all) : '—') + '</td></tr>' +
+        '<tr><td>参与计算（剔除排除项后）</td><td class="num">' + fmt(d.total_sales) + '</td><td class="num">' + fmt(d.total_profit) + '</td></tr>' +
+        '<tr><td>排除项（不参与分账部分）</td><td class="num">' + (hasExcl ? fmt(d.excluded_sales) : '—') + '</td><td class="num">' + (hasExcl ? fmt(d.excluded_profit) : '—') + '</td></tr>';
+      var rateM = d.share_rate_merchant != null ? d.share_rate_merchant : d.share_rate_used;
+      var rateP = d.share_rate_platform != null ? d.share_rate_platform : (100 - (rateM || 0));
+      document.getElementById('calcSettleBody').innerHTML =
+        '<tr><td>总销售额（参与计算）</td><td class="num">' + fmt(d.total_sales) + '</td></tr>' +
+        '<tr><td>销售成本</td><td class="num">' + fmt(d.total_cost) + '</td></tr>' +
+        '<tr><td>总毛利（销售额－成本）</td><td class="num">' + fmt(d.total_profit) + '</td></tr>' +
+        '<tr><td>分成比例</td><td>加盟商 ' + (rateM != null ? rateM : '—') + '% / 平台 ' + rateP + '%' + (d.rule_name ? '（' + d.rule_name + '）' : '') + '</td></tr>' +
+        '<tr><td>加盟商结算金额（总毛利×' + (rateM != null ? rateM : '—') + '%）</td><td class="num">' + fmt(d.merchant_settle_amount) + '</td></tr>' +
+        '<tr><td>平台留存金额（总毛利×' + rateP + '%）</td><td class="num">' + fmt(d.platform_amount) + '</td></tr>';
+      lastCalcRateM = rateM != null ? rateM : 0;
+      lastCalcDetailTree = buildDetailTree(d.details || [], lastCalcRateM);
+      lastCalcExpandedLarge = null;
+      renderDetailTable();
+    }
+    function showCalcError(msg, detail) {
+      document.getElementById('calcResultWrap').style.display = 'none';
+      const el = document.getElementById('calcErrorWrap');
+      el.style.display = 'block';
+      el.className = 'result error';
+      el.innerHTML = (msg || '计算失败') + (detail ? '<pre style="font-size:0.8rem;margin-top:8px;overflow:auto;max-height:200px;">' + String(detail).replace(/</g, '&lt;').replace(/&/g, '&amp;') + '</pre>' : '');
+    }
+
+    document.getElementById('btnCalc').addEventListener('click', async function() {
+      const isMonth = document.querySelector('input[name="calcMode"]:checked').value === 'month';
+      let payload = {};
+      if (isMonth) {
+        var monthEl = document.getElementById('calcMonth');
+        var month = (monthEl.value || '').trim();
+        if (!month && defaultMonth) {
+          monthEl.value = defaultMonth;
+          month = defaultMonth;
+        }
+        if (!month || month.length !== 7 || month.indexOf('-') !== 4) {
+          alert('请选择计算月份（格式 YYYY-MM）');
+          monthEl.focus();
+          return;
+        }
+        payload.month = month;
+      } else {
+        const startDate = (document.getElementById('calcStartDate').value || '').trim();
+        const endDate = (document.getElementById('calcEndDate').value || '').trim();
+        if (!startDate || !endDate) { alert('请选择开始日期和结束日期'); return; }
+        if (startDate > endDate) { alert('开始日期不能晚于结束日期'); return; }
+        payload.start_date = startDate;
+        payload.end_date = endDate;
+      }
+      const btn = this;
+      btn.disabled = true;
+      document.getElementById('calcErrorWrap').style.display = 'none';
+      try {
+        const r = await fetch(API + '/api/profit_share/calculate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), credentials: 'include' });
+        const d = await r.json();
+        if (!r.ok) {
+          showCalcError(d.error || '计算失败', d.detail || null);
+          return;
+        }
+        renderCalcResult(d);
+        loadHistory();
+      } catch (e) {
+        showCalcError('请求失败: ' + e.message, e.stack || null);
+      }
+      btn.disabled = false;
+    });
+
+    async function loadHistory() {
+      const month = document.getElementById('historyMonthFilter').value;
+      const q = month ? '?month=' + encodeURIComponent(month) : '';
+      try {
+        const r = await fetch(API + '/api/profit_share/results' + q);
+        const d = await r.json();
+        const items = d.items || [];
+        const tbody = document.getElementById('historyBody');
+        tbody.innerHTML = items.length === 0 ? '<tr><td colspan="5">暂无记录</td></tr>' : items.map(x => '<tr data-id="' + x.id + '"><td>' + (x.period_label || x.calc_month || '') + '</td><td class="num">' + Number(x.total_sales || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2 }) + '</td><td class="num">' + Number(x.merchant_settle_amount || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2 }) + '</td><td class="num">' + Number(x.platform_amount || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2 }) + '</td><td><a href="#" class="linkDetail" data-id="' + x.id + '" style="color:#38bdf8;">详情</a></td></tr>').join('');
+        tbody.querySelectorAll('.linkDetail').forEach(a => {
+          a.addEventListener('click', function(e) { e.preventDefault(); showResultDetail(parseInt(this.getAttribute('data-id'), 10)); });
+        });
+      } catch (e) {
+        document.getElementById('historyBody').innerHTML = '<tr><td colspan="5">加载失败</td></tr>';
+      }
+    }
+    function showResultDetail(id) {
+      fetch(API + '/api/profit_share/result/' + id).then(r => r.json()).then(d => {
+        if (d.error) { showCalcError(d.error, d.detail || null); return; }
+        const r = d.result;
+        const combined = {
+          period_label: r.period_label, calc_month: r.calc_month,
+          total_sales_all: r.total_sales_all, total_profit_all: r.total_profit_all,
+          excluded_sales: r.excluded_sales, excluded_profit: r.excluded_profit,
+          total_sales: r.total_sales, total_cost: r.total_cost, total_profit: r.total_profit,
+          exclusion_summary: r.exclusion_summary, share_rate_merchant: r.share_rate_merchant, share_rate_platform: r.share_rate_platform, share_rate_used: r.share_rate_used,
+          rule_name: r.rule_name, merchant_settle_amount: r.merchant_settle_amount, platform_amount: r.platform_amount, formula_note: r.formula_note,
+          details: d.details || []
+        };
+        renderCalcResult(combined);
+      }).catch(e => showCalcError('加载详情失败: ' + e.message, e.stack || null));
+    }
+    document.getElementById('btnLoadHistory').addEventListener('click', loadHistory);
+
+    async function loadRules() {
+      try {
+        const r = await fetch(API + '/api/profit_share/rule');
+        const d = await r.json();
+        const list = d.all_rules || [];
+        document.getElementById('ruleTableBody').innerHTML = list.map(x => '<tr><td>' + (x.stage_name || '') + '</td><td>' + (x.effective_start || '') + '</td><td>' + (x.effective_end || '') + '</td><td class="num">' + x.share_rate_merchant + '</td><td class="num">' + x.share_rate_platform + '</td><td>' + (x.is_active ? '是' : '否') + '</td><td><button class="btn btn-secondary edit-rule" data-id="' + x.id + '" style="padding:4px 10px;font-size:0.85rem;">编辑</button> ' + (x.is_active ? '' : '<button class="btn btn-danger del-rule" data-id="' + x.id + '" style="padding:4px 10px;font-size:0.85rem;">删除</button>') + '</td></tr>').join('');
+        document.querySelectorAll('.edit-rule').forEach(btn => {
+          btn.addEventListener('click', function() {
+            const id = parseInt(this.getAttribute('data-id'), 10);
+            const rule = list.find(r => r.id === id);
+            if (!rule) return;
+            document.getElementById('ruleId').value = rule.id;
+            document.getElementById('ruleStageName').value = rule.stage_name || '';
+            document.getElementById('ruleStart').value = rule.effective_start || '';
+            document.getElementById('ruleEnd').value = rule.effective_end || '';
+            document.getElementById('ruleMerchantRate').value = rule.share_rate_merchant ?? 75;
+            document.getElementById('rulePlatformRate').value = rule.share_rate_platform ?? 25;
+            document.getElementById('ruleActive').checked = !!rule.is_active;
+            document.getElementById('ruleFormWrap').style.display = 'block';
+          });
+        });
+        document.querySelectorAll('.del-rule').forEach(btn => {
+          btn.addEventListener('click', async function() {
+            if (!confirm('确定删除该规则？')) return;
+            const id = this.getAttribute('data-id');
+            const res = await fetch(API + '/api/profit_share/rule/' + id, { method: 'DELETE', credentials: 'include' });
+            const data = await res.json();
+            if (res.ok && data.success) loadRules(); else alert(data.error || '删除失败');
+          });
+        });
+      } catch (e) {
+        document.getElementById('ruleTableBody').innerHTML = '<tr><td colspan="7">加载失败</td></tr>';
+      }
+    }
+    document.getElementById('btnAddRule').addEventListener('click', function() {
+      document.getElementById('ruleId').value = '';
+      document.getElementById('ruleStageName').value = '';
+      document.getElementById('ruleStart').value = '';
+      document.getElementById('ruleEnd').value = '';
+      document.getElementById('ruleMerchantRate').value = '75';
+      document.getElementById('rulePlatformRate').value = '25';
+      document.getElementById('ruleActive').checked = true;
+      document.getElementById('ruleFormWrap').style.display = 'block';
+    });
+    document.getElementById('btnCancelRule').addEventListener('click', function() {
+      document.getElementById('ruleFormWrap').style.display = 'none';
+    });
+    document.getElementById('btnSaveRule').addEventListener('click', async function() {
+      const id = document.getElementById('ruleId').value;
+      const payload = {
+        stage_name: document.getElementById('ruleStageName').value.trim(),
+        effective_start: document.getElementById('ruleStart').value,
+        effective_end: document.getElementById('ruleEnd').value || null,
+        share_rate_merchant: parseFloat(document.getElementById('ruleMerchantRate').value) || 0,
+        share_rate_platform: parseFloat(document.getElementById('rulePlatformRate').value) || 0,
+        is_active: document.getElementById('ruleActive').checked ? 1 : 0,
+      };
+      if (!payload.stage_name || !payload.effective_start) { alert('请填写阶段名称和起始日期'); return; }
+      if (id) payload.id = parseInt(id, 10);
+      const r = await fetch(API + '/api/profit_share/rule', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), credentials: 'include' });
+      const d = await r.json();
+      if (r.ok && !d.error) {
+        document.getElementById('ruleFormWrap').style.display = 'none';
+        loadRules();
+        loadCurrentRule();
+      } else {
+        alert(d.error || '保存失败');
+      }
+    });
+
+    let categoryOptions = { large: [], midByLarge: {} };
+    async function loadCategoryOptions() {
+      try {
+        const r = await fetch(API + '/api/profit_share/category_options');
+        const d = await r.json();
+        categoryOptions = { large: d.large || [], midByLarge: d.midByLarge || {} };
+        const sel = document.getElementById('excludeLarge');
+        sel.innerHTML = '<option value="">请选择大类</option>' + categoryOptions.large.map(x => '<option value="' + (x.code || '').replace(/"/g, '&quot;') + '">' + (x.name || x.code || '').replace(/</g, '&lt;') + '</option>').join('');
+        document.getElementById('excludeMid').innerHTML = '<option value="">全部</option>';
+      } catch (e) {}
+    }
+    document.getElementById('excludeLarge').addEventListener('change', function() {
+      const lc = this.value || '';
+      const mids = categoryOptions.midByLarge[lc] || [];
+      const sel = document.getElementById('excludeMid');
+      sel.innerHTML = '<option value="">全部</option>' + mids.map(x => '<option value="' + (x.code || '').replace(/"/g, '&quot;') + '">' + (x.name || x.code || '').replace(/</g, '&lt;') + '</option>').join('');
+    });
+
+    async function loadExcludeList() {
+      try {
+        const r = await fetch(API + '/api/profit_share/exclude_categories');
+        const list = await r.json();
+        if (list.error) throw new Error(list.error);
+        document.getElementById('excludeTableBody').innerHTML = (Array.isArray(list) ? list : []).map(x => '<tr><td>' + (x.category_large_name || x.category_large_code || '') + '</td><td>' + (x.category_mid_name || x.category_mid_code || '全部') + '</td><td><button class="btn btn-danger btn-sm del-exclude" data-id="' + x.id + '" style="padding:4px 10px;font-size:0.85rem;">删除</button></td></tr>').join('');
+        document.querySelectorAll('.del-exclude').forEach(btn => {
+          btn.addEventListener('click', async function() {
+            if (!confirm('确定移除该排除项？')) return;
+            const id = this.getAttribute('data-id');
+            const res = await fetch(API + '/api/profit_share/exclude_categories/' + id, { method: 'DELETE', credentials: 'include' });
+            const data = await res.json();
+            if (res.ok && data.success) loadExcludeList(); else alert(data.error || '删除失败');
+          });
+        });
+      } catch (e) {
+        document.getElementById('excludeTableBody').innerHTML = '<tr><td colspan="3">加载失败</td></tr>';
+      }
+    }
+    document.getElementById('btnAddExclude').addEventListener('click', async function() {
+      const largeCode = document.getElementById('excludeLarge').value;
+      if (!largeCode) { alert('请先选择大类'); return; }
+      const largeName = document.getElementById('excludeLarge').options[document.getElementById('excludeLarge').selectedIndex].text;
+      const midCode = document.getElementById('excludeMid').value || null;
+      const midName = midCode ? document.getElementById('excludeMid').options[document.getElementById('excludeMid').selectedIndex].text : null;
+      const payload = { category_large_code: largeCode, category_large_name: largeName, category_mid_code: midCode || undefined, category_mid_name: midName || undefined };
+      const r = await fetch(API + '/api/profit_share/exclude_categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), credentials: 'include' });
+      const d = await r.json();
+      if (r.ok && !d.error) { loadExcludeList(); document.getElementById('excludeMid').value = ''; } else alert(d.error || '添加失败');
+    });
+    document.getElementById('btnPreviewExclude').addEventListener('click', async function() {
+      const largeCode = document.getElementById('excludeLarge').value;
+      if (!largeCode) { alert('请先选择大类'); return; }
+      const midCode = document.getElementById('excludeMid').value || '';
+      const month = document.getElementById('calcMonth').value || defaultMonth;
+      let q = '?month=' + encodeURIComponent(month) + '&category_large_code=' + encodeURIComponent(largeCode);
+      if (midCode) q += '&category_mid_code=' + encodeURIComponent(midCode);
+      const r = await fetch(API + '/api/profit_share/preview' + q);
+      const d = await r.json();
+      const el = document.getElementById('previewResult');
+      el.style.display = 'block';
+      if (d.error) { el.textContent = d.error; el.className = 'result error'; return; }
+      el.className = 'result success';
+      el.textContent = '该品类在 ' + month + ' 的销售汇总：销售额 ' + Number(d.sales || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2 }) + '，毛利 ' + Number(d.profit || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2 });
+    });
+
+    (async function init() {
+      if (!await checkPerm()) return;
+      initMonth();
+      loadCurrentRule();
+      loadHistory();
+    })();
+  </script>
+</body>
+</html>
