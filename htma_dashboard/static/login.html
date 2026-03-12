@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
   <title>登录 - 好特卖运营看板</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -75,6 +75,7 @@
       line-height: 1.5;
     }
   </style>
+  <link rel="stylesheet" href="/static/css/mobile.css">
 </head>
 <body>
   <div class="card">
@@ -84,7 +85,8 @@
     <button type="button" class="btn-feishu btn-wecom" disabled>企业微信扫码登录（敬请期待）</button>
     <div id="error" class="error" style="display:none;"></div>
     <p class="tip">登录后即可查看经营数据与 AI 分析。数据仅限授权人员访问。</p>
-    <p class="tip" style="margin-top:8px;">若提示「没有 hotmaxxblog 使用权限」或需选择企业，请联系管理员在飞书开放平台为贵司开通该应用可用性（见文档：飞书扫码登录配置）。</p>
+    <p class="tip"><strong>其他企业飞书用户</strong>：可点击「飞书扫码登录」提交访问申请，超级管理员审批通过后您本人即可登录。仅允许经审批的个别用户访问，并非该企业全员可访问。</p>
+    <p class="tip" style="margin-top:8px;">若提示「没有使用权限」或需选择企业，请联系管理员在飞书开放平台为贵司开通该应用可用性（见文档：飞书扫码登录配置）。</p>
   </div>
   <script>
     (function () {

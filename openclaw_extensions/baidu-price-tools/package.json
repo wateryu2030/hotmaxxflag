@@ -1,0 +1,10 @@
+{
+  "name": "baidu-price-tools",
+  "version": "1.0.0",
+  "description": "Expose get_price_comparison and search_products to OpenClaw gateway /tools/invoke",
+  "type": "module",
+  "main": "baidu-price-tools.js",
+  "openclaw": {
+    "extensions": ["./baidu-price-tools.js"]
+  }
+}

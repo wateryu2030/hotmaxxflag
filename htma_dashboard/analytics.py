@@ -6,9 +6,14 @@
 """
 from datetime import datetime
 
+try:
+    from query_layer import date_condition as _date_condition
+except Exception:
+    _date_condition = None
 
-def build_insights(conn, store_id="沈阳超级仓"):
-    """基于数据生成智能分析建议"""
+
+def build_insights(conn, store_id="沈阳超级仓", drill_context=None):
+    """基于数据生成智能分析建议。drill_context 可选：下钻时的 {category, brand, product_name, drill_brands, drill_styles, drill_sku_rank}，用于生成「当前品类/品牌下」维度的建议。"""
     insights = []
     cur = conn.cursor()
 
@@ -37,6 +42,10 @@ def build_insights(conn, store_id="沈阳超级仓"):
             "title": "低毛利品类需关注",
             "desc": f"{names} 等品类毛利率低于15%，建议检查定价或成本结构。",
             "action": "可考虑优化采购成本或调整售价策略",
+            "sources": [
+                "1. 出处：t_htma_profit 近90天按品类汇总（销售额>1000元）。",
+                "2. 口径：毛利率 = 总毛利/总销售额×100%；低于15%且销售额>5000元记为低毛利品类。",
+            ],
         })
     if high_margin:
         names = "、".join([c["category"] for c in high_margin[:3]])
@@ -45,6 +54,10 @@ def build_insights(conn, store_id="沈阳超级仓"):
             "title": "高毛利优势品类",
             "desc": f"{names} 毛利率超过35%，可作为重点推广品类。",
             "action": "建议加大陈列与促销力度，提升销售占比",
+            "sources": [
+                "1. 出处：t_htma_profit 近90天按品类汇总。",
+                "2. 口径：毛利率≥35%且销售额>3000元记为高毛利优势品类。",
+            ],
         })
 
     # 2. 品类销售贡献度（二八分析）
@@ -62,6 +75,10 @@ def build_insights(conn, store_id="沈阳超级仓"):
             "title": "销售集中度分析",
             "desc": f"前 {top80_pct} 个品类贡献了约80%销售额，共 {len(sorted_cats)} 个品类。",
             "action": "可聚焦头部品类做精细化运营，同时关注长尾品类动销",
+            "sources": [
+                "1. 出处：t_htma_profit 近90天品类销售额汇总，按销售额降序累加。",
+                "2. 理由：累加至≥80%总销售额时的品类数即为「前 N 个贡献约80%」的 N。",
+            ],
         })
 
     # 3. 低库存预警
@@ -78,6 +95,10 @@ def build_insights(conn, store_id="沈阳超级仓"):
             "title": "低库存 SKU 较多",
             "desc": f"共有 {low_stock} 个 SKU 库存低于50，存在断货风险。",
             "action": "建议及时补货，优先保障畅销品库存",
+            "sources": [
+                "1. 出处：t_htma_stock 最新数据日期的库存快照。",
+                "2. 口径：stock_qty < 50 且 ≥0 的 SKU 数；超过20个即提示断货风险。",
+            ],
         })
 
     # 4. 负毛利/零销售异常
@@ -93,6 +114,10 @@ def build_insights(conn, store_id="沈阳超级仓"):
             "title": "存在负毛利记录",
             "desc": f"近30天有 {neg_profit} 条负毛利记录（销售额>0但毛利<0）。",
             "action": "建议核查成本数据或促销力度是否过大",
+            "sources": [
+                "1. 出处：t_htma_profit 近30天按日+品类汇总。",
+                "2. 口径：total_sale>0 且 total_profit<0 的记录条数，每条代表一个品类在某日的负毛利。",
+            ],
         })
 
     # 5. 整体毛利率健康度
@@ -102,6 +127,10 @@ def build_insights(conn, store_id="沈阳超级仓"):
             "title": "整体毛利率偏低",
             "desc": f"近90天平均毛利率约 {avg_margin:.1f}%，低于零售业常见水平。",
             "action": "建议优化品类结构，提升高毛利品类占比",
+            "sources": [
+                "1. 出处：t_htma_profit 近90天全店汇总（总毛利/总销售额）。",
+                "2. 理由：总销售额>1万时，平均毛利率<20%视为整体偏低。",
+            ],
         })
     elif avg_margin >= 30:
         insights.append({
@@ -109,6 +138,10 @@ def build_insights(conn, store_id="沈阳超级仓"):
             "title": "毛利率表现良好",
             "desc": f"近90天平均毛利率约 {avg_margin:.1f}%，盈利结构健康。",
             "action": "可继续保持，关注周转与库存健康",
+            "sources": [
+                "1. 出处：t_htma_profit 近90天全店汇总。",
+                "2. 理由：平均毛利率≥30%视为盈利结构健康。",
+            ],
         })
 
     # 6. 好特卖临期折扣特色：周转与动销
@@ -128,6 +161,10 @@ def build_insights(conn, store_id="沈阳超级仓"):
                 "title": "临期折扣动销分析",
                 "desc": f"近30天 {sku_cnt} 个 SKU 动销，平均每 SKU 销售 {avg_qty:.1f} 件。",
                 "action": "建议关注滞销品类，加快清仓或调整陈列位置",
+                "sources": [
+                    "1. 出处：t_htma_sale 近30天动销 SKU 数及总销量。",
+                    "2. 口径：平均每 SKU 销量 = 总销量/动销 SKU 数；<2 件视为动销偏弱。",
+                ],
             })
         elif avg_qty > 5:
             insights.append({
@@ -135,6 +172,10 @@ def build_insights(conn, store_id="沈阳超级仓"):
                 "title": "动销表现良好",
                 "desc": f"近30天 {sku_cnt} 个 SKU 动销，平均每 SKU 销售 {avg_qty:.1f} 件。",
                 "action": "周转良好，可维持当前补货节奏",
+                "sources": [
+                    "1. 出处：t_htma_sale 近30天动销 SKU 数及总销量。",
+                    "2. 口径：平均每 SKU 销量>5 件视为动销表现良好。",
+                ],
             })
 
     # 7. 数据新鲜度
@@ -152,6 +193,10 @@ def build_insights(conn, store_id="沈阳超级仓"):
                 "title": "数据更新提醒",
                 "desc": f"最新销售数据日期为 {d_str}，距今 {days_ago} 天。",
                 "action": "建议定期导入最新数据以保持看板时效性",
+                "sources": [
+                    "1. 出处：t_htma_sale 表 MAX(data_date)。",
+                    "2. 理由：与当前日期相差>3 天即提示更新。",
+                ],
             })
 
     # 8. 退货/赠送（精细化：损耗与赠品占比）
@@ -173,6 +218,10 @@ def build_insights(conn, store_id="沈阳超级仓"):
                 "title": "退货占比偏高",
                 "desc": f"近30天退货金额占比 {return_ratio:.1f}%（退货约 {_fmt_money(return_amt)}），影响净销售。",
                 "action": "建议排查高退货品类与供应商质量，优化验收与陈列减少退货",
+                "sources": [
+                    "1. 出处：t_htma_sale 近30天 return_amount、sale_amount 汇总。",
+                    "2. 口径：退货占比 = 退货金额/销售额×100%；>5% 即提示偏高。",
+                ],
             })
         elif return_ratio > 0:
             insights.append({
@@ -180,6 +229,10 @@ def build_insights(conn, store_id="沈阳超级仓"):
                 "title": "退货与赠送概况",
                 "desc": f"近30天退货金额占比 {return_ratio:.1f}%，赠送金额占比 {gift_ratio:.1f}%。",
                 "action": "可在「经营分析」查看退货/赠送明细，做精细化管控",
+                "sources": [
+                    "1. 出处：t_htma_sale 近30天 return_amount、gift_amount、sale_amount。",
+                    "2. 口径：退货占比=退货/销售额×100%；赠送占比=赠送/销售额×100%。",
+                ],
             })
         if gift_ratio > 2 and gift_ratio < 15:
             insights.append({
@@ -187,6 +240,10 @@ def build_insights(conn, store_id="沈阳超级仓"):
                 "title": "赠送占比",
                 "desc": f"赠送金额占比 {gift_ratio:.1f}%（约 {_fmt_money(gift_amt)}），属促销与引流成本。",
                 "action": "可结合毛利与复购评估赠品 ROI，避免过度赠送",
+                "sources": [
+                    "1. 出处：t_htma_sale 近30天 gift_amount、sale_amount。",
+                    "2. 理由：赠送占比在 2%～15% 区间单独提示，便于评估促销成本。",
+                ],
             })
 
     # 9. 品牌/供应商集中度（精细化：供应链与品牌结构）
@@ -206,6 +263,10 @@ def build_insights(conn, store_id="沈阳超级仓"):
                 "title": "品牌集中度",
                 "desc": f"前3品牌（{names}）销售占比约 {top3_pct:.0f}%。",
                 "action": "可做品牌级毛利与周转分析，优化采购与陈列资源",
+                "sources": [
+                    "1. 出处：t_htma_sale 近30天按 brand_name 汇总销售额，取前5品牌。",
+                    "2. 口径：前3品牌销售额/全店销售额×100%；>50% 即品牌集中度较高。",
+                ],
             })
 
     # 10. 库存周转（精细化：资金占用与周转效率）
@@ -230,6 +291,10 @@ def build_insights(conn, store_id="沈阳超级仓"):
                 "title": "库存周转偏慢",
                 "desc": f"按当前销速估算周转天数约 {turnover_days:.0f} 天，库存资金占用较高。",
                 "action": "建议压缩滞销品、加快促销与清仓，提升周转",
+                "sources": [
+                    "1. 出处：t_htma_stock 最新日库存金额；t_htma_sale 近30天销售成本。",
+                    "2. 口径：周转天数 = 库存金额/(近30天销售成本/30)；>60 天视为偏慢。",
+                ],
             })
         elif turnover_days < 30 and total_stock > 50000:
             insights.append({
@@ -237,6 +302,10 @@ def build_insights(conn, store_id="沈阳超级仓"):
                 "title": "周转表现良好",
                 "desc": f"估算周转天数约 {turnover_days:.0f} 天，资金使用效率较好。",
                 "action": "保持补货与动销监控，避免断货",
+                "sources": [
+                    "1. 出处：t_htma_stock 最新日库存金额；t_htma_sale 近30天销售成本。",
+                    "2. 理由：周转<30 天且库存金额>5万视为周转良好。",
+                ],
             })
 
     # 11. 数据质量（精细化：数据可信度与整改优先级）
@@ -269,10 +338,456 @@ def build_insights(conn, store_id="沈阳超级仓"):
             "title": "数据质量待优化",
             "desc": "存在 " + "、".join(parts) + "，可能影响毛利与经营分析准确性。",
             "action": "建议在「经营分析-数据质量」查看明细，优先补全成本与售价",
+            "sources": [
+                "1. 出处：t_htma_sale 中 sale_cost/sale_price 为空或0 的记录数；同 sku_code 多 category 的 SKU 数。",
+                "2. 理由：成本缺失>100 或售价缺失>100 或同 SKU 多品类>50 即提示数据质量待优化。",
+            ],
         })
+
+    # 下钻维度可选建议：当前品类下品牌集中度 / 当前品牌下款式集中度
+    if drill_context:
+        drill_brands = drill_context.get("drill_brands") or []
+        drill_styles = drill_context.get("drill_styles") or []
+        category = (drill_context.get("category") or "").strip()
+        brand = (drill_context.get("brand") or "").strip()
+        if drill_brands and len(drill_brands) >= 2:
+            total_sale = sum(float(b.get("sale_amount") or 0) for b in drill_brands)
+            if total_sale > 0:
+                top3_sale = sum(float(b.get("sale_amount") or 0) for b in drill_brands[:3])
+                pct = top3_sale / total_sale * 100
+                if pct >= 50:
+                    names = "、".join([(b.get("brand") or "未填")[:8] for b in drill_brands[:3]])
+                    scope = f"「{category}」" if category else "当前品类"
+                    insights.append({
+                        "type": "info",
+                        "title": "下钻：品牌集中度较高",
+                        "desc": f"{scope}下前3品牌（{names}）销售占比约 {pct:.0f}%。",
+                        "action": "可重点维护头部品牌库存与陈列，同时关注长尾品牌动销",
+                        "sources": [
+                            "1. 出处：消费洞察下钻数据 drill_brands（当前品类下按品牌汇总销售额）。",
+                            "2. 口径：前3品牌销售额/该品类总销售额×100%；≥50% 即集中度较高。",
+                        ],
+                    })
+        if drill_styles and len(drill_styles) >= 2 and brand:
+            total_sale = sum(float(s.get("sale_amount") or 0) for s in drill_styles)
+            if total_sale > 0:
+                top3_sale = sum(float(s.get("sale_amount") or 0) for s in drill_styles[:3])
+                pct = top3_sale / total_sale * 100
+                if pct >= 50:
+                    names = "、".join([(s.get("product_name") or "未填")[:8] for s in drill_styles[:3]])
+                    scope = f"「{brand}」" if brand else "当前品牌"
+                    insights.append({
+                        "type": "info",
+                        "title": "下钻：款式集中度较高",
+                        "desc": f"{scope}下前3款式（{names}）销售占比约 {pct:.0f}%。",
+                        "action": "可聚焦畅销款补货与陈列，并评估滞销款清仓或调位",
+                        "sources": [
+                            "1. 出处：消费洞察下钻数据 drill_styles（当前品类+品牌下按款式 product_name 汇总）。",
+                            "2. 口径：前3款式销售额/该品牌下总销售额×100%；≥50% 即集中度较高。",
+                        ],
+                    })
+
+    # 比价预警（t_price_compare 近 7 天：降价、价差）
+    try:
+        insights.extend(_get_price_compare_insights(conn, store_id))
+    except Exception:
+        pass
 
     cur.close()
     return insights
+
+
+def build_enhanced_insights(conn, store_id="沈阳超级仓", period_days=30, category_large=None):
+    """
+    返回增强后的分析卡片数据（结构化），供前端 /api/enhanced_insights 渲染。
+    包含：高毛利品类、销售集中度、低库存预警、毛利率表现、动销、退货Top3、库存周转、数据质量、新品（可选）。
+    """
+    cur = conn.cursor()
+    try:
+        out = {}
+        params = [store_id]
+        cat_cond = ""
+        if category_large and str(category_large).strip():
+            cat_cond = " AND (COALESCE(TRIM(category_large), '') = %s OR COALESCE(TRIM(category), '') = %s) "
+            params.extend([category_large.strip(), category_large.strip()])
+
+        # 1. 高毛利优势品类 Top5（毛利率>35% 且 销售额>5000）
+        cur.execute("""
+            SELECT COALESCE(category, '未分类') AS category,
+                   SUM(total_sale) AS total_sale, SUM(total_profit) AS total_profit,
+                   SUM(total_profit)/NULLIF(SUM(total_sale),0)*100 AS margin_pct
+            FROM t_htma_profit
+            WHERE store_id = %s AND data_date >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)
+            GROUP BY category
+            HAVING SUM(total_sale) > 5000 AND SUM(total_profit)/NULLIF(SUM(total_sale),0)*100 >= 35
+            ORDER BY margin_pct DESC
+            LIMIT 5
+        """, (store_id,))
+        rows = cur.fetchall()
+        out["high_margin_cats"] = [
+            {"name": _row(r, "category"), "margin_pct": round(float(r.get("margin_pct") or 0), 2),
+             "sale_amount": round(float(r.get("total_sale") or 0), 2), "profit_amount": round(float(r.get("total_profit") or 0), 2)}
+            for r in rows
+        ] if rows else []
+
+        # 2. 销售集中度：前 N 个品类贡献 80%
+        cur.execute("""
+            SELECT COALESCE(category, '未分类') AS category, SUM(total_sale) AS total_sale
+            FROM t_htma_profit
+            WHERE store_id = %s AND data_date >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)
+            GROUP BY category HAVING SUM(total_sale) > 0
+        """, (store_id,))
+        cats = cur.fetchall()
+        total_sale = sum(float(c.get("total_sale") or 0) for c in cats)
+        sorted_cats = sorted(cats, key=lambda x: float(x.get("total_sale") or 0), reverse=True)
+        core_n = 0
+        cum = 0
+        for i, c in enumerate(sorted_cats):
+            cum += float(c.get("total_sale") or 0)
+            if cum >= total_sale * 0.8 and core_n == 0:
+                core_n = i + 1
+                break
+        out["sales_concentration"] = {"total_cats": len(sorted_cats), "core_cats_80": core_n or len(sorted_cats)}
+
+        # 3. 低库存预警：库存<50 的 SKU 数，其中有动销的（断货风险）
+        cur.execute("""
+            SELECT COUNT(DISTINCT s.sku_code) AS cnt
+            FROM t_htma_stock s
+            INNER JOIN (SELECT sku_code FROM t_htma_sale WHERE store_id = %s AND data_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) GROUP BY sku_code) sale ON sale.sku_code = s.sku_code
+            WHERE s.store_id = %s AND s.data_date = (SELECT MAX(data_date) FROM t_htma_stock WHERE store_id = %s)
+            AND s.stock_qty < 50 AND s.stock_qty >= 0
+        """, (store_id, store_id, store_id))
+        r3 = cur.fetchone()
+        with_risk = int(r3.get("cnt") or 0) if r3 else 0
+        cur.execute("""
+            SELECT COUNT(DISTINCT sku_code) AS cnt FROM t_htma_stock
+            WHERE store_id = %s AND data_date = (SELECT MAX(data_date) FROM t_htma_stock WHERE store_id = %s)
+            AND stock_qty < 50 AND stock_qty >= 0
+        """, (store_id, store_id))
+        r3b = cur.fetchone()
+        total_low = int(r3b.get("cnt") or 0) if r3b else 0
+        out["low_stock_alert"] = {"total_low": total_low, "with_sale_risk": with_risk, "est_loss": None}
+
+        # 4. 毛利率表现：近90天/30天平均，环比
+        cur.execute("""
+            SELECT SUM(total_sale) AS s, SUM(total_profit) AS p FROM t_htma_profit
+            WHERE store_id = %s AND data_date >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)
+        """, (store_id,))
+        r90 = cur.fetchone()
+        cur.execute("""
+            SELECT SUM(total_sale) AS s, SUM(total_profit) AS p FROM t_htma_profit
+            WHERE store_id = %s AND data_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+        """, (store_id,))
+        r30 = cur.fetchone()
+        s90 = float(r90.get("s") or 0) if r90 else 0
+        p90 = float(r90.get("p") or 0) if r90 else 0
+        s30 = float(r30.get("s") or 0) if r30 else 0
+        p30 = float(r30.get("p") or 0) if r30 else 0
+        avg_90 = (p90 / s90 * 100) if s90 > 0 else None
+        avg_30 = (p30 / s30 * 100) if s30 > 0 else None
+        cur.execute("""
+            SELECT SUM(total_sale) AS s, SUM(total_profit) AS p FROM t_htma_profit
+            WHERE store_id = %s AND data_date >= DATE_SUB(CURDATE(), INTERVAL 60 DAY) AND data_date < DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+        """, (store_id,))
+        r_prev = cur.fetchone()
+        s_prev = float(r_prev.get("s") or 0) if r_prev else 0
+        p_prev = float(r_prev.get("p") or 0) if r_prev else 0
+        avg_prev = (p_prev / s_prev * 100) if s_prev > 0 else None
+        vs_last = (avg_30 - avg_prev) if (avg_30 is not None and avg_prev is not None) else None
+        trend = "up" if (vs_last is not None and vs_last > 0.5) else ("down" if (vs_last is not None and vs_last < -0.5) else "stable")
+        out["margin_trend"] = {"avg_margin_90": round(avg_90, 2) if avg_90 is not None else None, "avg_margin_30": round(avg_30, 2) if avg_30 is not None else None, "trend": trend, "vs_last_month": round(vs_last, 2) if vs_last is not None else None}
+
+        # 5. 动销表现：动销SKU、总SKU、滞销数
+        cur.execute("""
+            SELECT COUNT(DISTINCT sku_code) AS cnt FROM t_htma_sale
+            WHERE store_id = %s AND data_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+        """, (store_id,))
+        active_row = cur.fetchone()
+        active_sku = int(active_row.get("cnt") or 0) if active_row else 0
+        try:
+            cur.execute("SELECT COUNT(DISTINCT sku_code) AS cnt FROM t_htma_product_master WHERE store_id = %s", (store_id,))
+            total_row = cur.fetchone()
+            total_sku = int(total_row.get("cnt") or 0) if total_row else 0
+        except Exception:
+            total_sku = active_sku
+        stale_sku = max(0, total_sku - active_sku) if total_sku else 0
+        rate = (active_sku / total_sku * 100) if total_sku else 0
+        out["sell_through"] = {"active_sku": active_sku, "total_sku": total_sku, "stale_sku": stale_sku, "rate_pct": round(rate, 2)}
+
+        # 6. 退货 Top3 品类
+        cur.execute("""
+            SELECT COALESCE(category, '未分类') AS category,
+                   COALESCE(SUM(return_amount), 0) AS return_amt, COALESCE(SUM(sale_amount), 0) AS sale_amt
+            FROM t_htma_sale WHERE store_id = %s AND data_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+            GROUP BY category HAVING SUM(sale_amount) > 0
+        """, (store_id,))
+        return_rows = cur.fetchall()
+        total_sale_30 = sum(float(r.get("sale_amt") or 0) for r in return_rows)
+        total_return = sum(float(r.get("return_amt") or 0) for r in return_rows)
+        return_rate = (total_return / total_sale_30 * 100) if total_sale_30 > 0 else 0
+        top3 = sorted(return_rows, key=lambda x: float(x.get("return_amt") or 0), reverse=True)[:3]
+        out["return_top3"] = {
+            "return_rate_pct": round(return_rate, 2),
+            "return_amount": round(total_return, 2),
+            "top3": [{"category": _row(r, "category"), "return_amount": round(float(r.get("return_amt") or 0), 2), "pct": round((float(r.get("return_amt") or 0) / total_return * 100), 2) if total_return > 0 else 0} for r in top3]
+        }
+
+        # 7. 库存周转
+        cur.execute("SELECT COALESCE(SUM(stock_amount), 0) AS total FROM t_htma_stock WHERE store_id = %s AND data_date = (SELECT MAX(data_date) FROM t_htma_stock WHERE store_id = %s)", (store_id, store_id))
+        stock_row = cur.fetchone()
+        cur.execute("SELECT COALESCE(SUM(sale_amount), 0) AS sale FROM t_htma_sale WHERE store_id = %s AND data_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)", (store_id,))
+        sale_row = cur.fetchone()
+        total_stock = float(stock_row.get("total") or 0) if stock_row else 0
+        sale_30 = float(sale_row.get("sale") or 0) if sale_row else 0
+        daily_sale = sale_30 / 30 if sale_30 > 0 else 0
+        turnover_days = (total_stock / daily_sale) if daily_sale > 0 else None
+        out["turnover"] = {"turnover_days": round(turnover_days, 1) if turnover_days is not None else None, "stock_amount": round(total_stock, 2)}
+
+        # 8. 数据质量
+        cur.execute("SELECT COUNT(*) AS cnt FROM t_htma_sale WHERE store_id = %s AND (sale_cost IS NULL OR sale_cost = 0) AND sale_amount > 0", (store_id,))
+        mc = cur.fetchone()
+        cur.execute("SELECT COUNT(*) AS cnt FROM t_htma_sale WHERE store_id = %s AND (sale_price IS NULL OR sale_price = 0) AND sale_qty > 0", (store_id,))
+        mp = cur.fetchone()
+        cur.execute("SELECT COUNT(*) AS cnt FROM (SELECT sku_code FROM t_htma_sale WHERE store_id = %s GROUP BY sku_code HAVING COUNT(DISTINCT COALESCE(category, '')) > 1) t", (store_id,))
+        mcat = cur.fetchone()
+        out["data_quality"] = {
+            "missing_cost": int(mc.get("cnt") or 0) if mc else 0,
+            "missing_price": int(mp.get("cnt") or 0) if mp else 0,
+            "multi_category": int(mcat.get("cnt") or 0) if mcat else 0,
+        }
+
+        # 比价预警（供 AI 分析卡片展示）
+        try:
+            out["price_compare_alerts"] = _get_price_compare_insights(conn, store_id)
+        except Exception:
+            out["price_compare_alerts"] = []
+
+        cur.close()
+        return out
+    except Exception as e:
+        try:
+            cur.close()
+        except Exception:
+            pass
+        return {"error": str(e)}
+
+
+def _get_price_compare_insights(conn, store_id="沈阳超级仓"):
+    """
+    基于 t_price_compare 近 7 天数据生成比价预警：连续降价、自家售价与竞品价差。
+    返回 list of dict: { type, title, desc, action }，供 build_insights 与 build_enhanced_insights 使用。
+    表不存在或出错时返回 []。
+    """
+    out = []
+    try:
+        cur = conn.cursor()
+        # 1) 近 7 天各 (sku_code, platform) 的两次最近抓取，用于检测降价
+        cur.execute("""
+            SELECT sku_code, product_name, platform, price, capture_date
+            FROM t_price_compare
+            WHERE capture_date >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+            ORDER BY sku_code, platform, capture_date DESC
+        """)
+        rows = cur.fetchall()
+        cur.close()
+    except Exception:
+        return []
+
+    # 按 (sku_code, platform) 分组，取最近两次；若最新价 < 上次价则记为降价
+    from collections import defaultdict
+    groups = defaultdict(list)
+    for r in rows:
+        sku = (r.get("sku_code") or "").strip()
+        platform = (r.get("platform") or "").strip()
+        if not sku or not platform:
+            continue
+        key = (sku, platform)
+        if len(groups[key]) >= 2:
+            continue
+        try:
+            price = float(r.get("price") or 0)
+        except (TypeError, ValueError):
+            continue
+        groups[key].append({
+            "product_name": (r.get("product_name") or "").strip() or sku,
+            "price": price,
+            "capture_date": r.get("capture_date"),
+        })
+
+    drops = []
+    for (sku_code, platform), recs in groups.items():
+        if len(recs) < 2:
+            continue
+        latest, prev = recs[0], recs[1]
+        if latest["price"] < prev["price"]:
+            drop_amt = prev["price"] - latest["price"]
+            drops.append({
+                "product_name": latest["product_name"],
+                "platform": platform,
+                "old_price": prev["price"],
+                "new_price": latest["price"],
+                "drop_amt": drop_amt,
+            })
+
+    if drops:
+        # 最多展示 3 条具体降价，其余汇总
+        show = drops[:3]
+        names = "、".join([(d["product_name"] or "")[:12] for d in show])
+        if len(drops) > 3:
+            desc = "商品【%s】等共 %d 个在近 7 天内出现平台降价（如 %s 等）。" % (names, len(drops), show[0]["platform"])
+        else:
+            parts = ["【%s】在 %s 较上次降价 %.2f 元" % (d["product_name"][:10], d["platform"], d["drop_amt"]) for d in show]
+            desc = "；".join(parts) + "。"
+        out.append({
+            "type": "warning",
+            "title": "价格监控提醒",
+            "desc": desc,
+            "action": "建议在消费洞察-高级查询中查看比价历史，关注竞品动向",
+        })
+
+    # 2) 自家零售价 vs 竞品最低价：价差过高预警（需 t_htma_product_master.retail_price）
+    try:
+        cur2 = conn.cursor()
+        cur2.execute("""
+            SELECT p.sku_code, p.product_name, p.retail_price,
+                   (SELECT MIN(c.price) FROM t_price_compare c
+                    WHERE c.sku_code = p.sku_code
+                      AND c.capture_date >= DATE_SUB(NOW(), INTERVAL 7 DAY)) AS comp_min
+            FROM t_htma_product_master p
+            WHERE p.store_id = %s AND COALESCE(p.retail_price, 0) > 0
+        """, (store_id,))
+        master_rows = cur2.fetchall()
+        cur2.close()
+    except Exception:
+        master_rows = []
+
+    gap_high = []
+    for r in master_rows:
+        try:
+            our = float(r.get("retail_price") or 0)
+            comp_min = r.get("comp_min")
+            if comp_min is None:
+                continue
+            comp_min = float(comp_min)
+            if comp_min <= 0:
+                continue
+            if our > comp_min * 1.15:
+                gap_high.append({
+                    "product_name": (r.get("product_name") or "").strip() or r.get("sku_code"),
+                    "our_price": our,
+                    "comp_min": comp_min,
+                    "pct": (our / comp_min - 1) * 100,
+                })
+        except (TypeError, ValueError):
+            continue
+
+    if gap_high:
+        top = gap_high[:2]
+        names = "、".join([(g["product_name"] or "")[:10] for g in top])
+        pct = top[0]["pct"]
+        out.append({
+            "type": "info",
+            "title": "价差提醒",
+            "desc": "商品【%s】等自家零售价高于竞品最低价约 %.0f%%，共 %d 个 SKU。" % (names, pct, len(gap_high)),
+            "action": "可在消费洞察-高级查询比价列查看各平台价格，评估定价与促销策略",
+        })
+
+    return out
+
+
+def _row(r, key):
+    """从行 r 取 key，支持 dict 或 tuple 索引"""
+    if r is None:
+        return ""
+    if hasattr(r, "get"):
+        v = r.get(key)
+    else:
+        try:
+            v = r[key] if hasattr(r, "__getitem__") else ""
+        except (IndexError, KeyError):
+            v = ""
+    return (v or "").strip() or "未分类"
+
+
+def build_structured_report(insight_data, insights, market_report_text=None):
+    """
+    从已获取的 insight_data、insights 及可选市场拓展报告文本，组装结构化分析报告 JSON。
+    供 app 在 /api/structured_report 中调用，避免 analytics 依赖 app/request。
+    """
+    report = {}
+
+    # 1. 总览与商业结论
+    report["summary"] = {
+        "kpi": insight_data.get("overview") or {},
+        "insights": insights,
+        "conclusion": (market_report_text or "").strip()[:500] if market_report_text else "",
+    }
+
+    # 2. 品类结构
+    report["category_structure"] = {
+        "matrix": insight_data.get("category_matrix") or [],
+        "top_sales": insight_data.get("category_top_sale") or [],
+        "top_profit": insight_data.get("category_top_profit") or [],
+        "top_margin": insight_data.get("category_top_margin") or [],
+    }
+
+    # 3. 下钻摘要（由 app 根据请求参数传入的 insight_data 已含 drill_*）
+    drill_section = {}
+    drill_brands = insight_data.get("drill_brands") or []
+    drill_styles = insight_data.get("drill_styles") or []
+    drill_sku_rank = insight_data.get("drill_sku_rank") or []
+    if drill_brands and not drill_styles and not drill_sku_rank:
+        drill_section["type"] = "category_drill"
+        drill_section["brands"] = drill_brands[:10]
+    elif drill_styles and not drill_sku_rank:
+        drill_section["type"] = "brand_drill"
+        drill_section["styles"] = drill_styles[:10]
+    elif drill_sku_rank:
+        drill_section["type"] = "product_drill"
+        drill_section["skus"] = drill_sku_rank[:20]
+    report["drill_section"] = drill_section
+
+    # 4. 品牌与供应商
+    report["brand_supplier"] = {
+        "brands": insight_data.get("brand") or [],
+        "suppliers": insight_data.get("supplier") or [],
+    }
+
+    # 5. 价格、经销与促销
+    report["price_promo"] = {
+        "price_band": insight_data.get("price_band") or [],
+        "distribution": insight_data.get("distribution") or [],
+        "discount_band": insight_data.get("discount_band") or [],
+        "high_discount_low_margin": insight_data.get("high_discount_low_margin") or [],
+    }
+
+    # 6. 问题与行动（从 insight_data 已有字段提取；负毛利/数据质量 Phase2 可另查补充）
+    report["issues"] = {
+        "negative_profit": {"count": 0, "amount": 0, "top_items": []},
+        "stock": {"low_stock_cats": [], "need_replenish": []},
+        "data_quality": {"missing_cost": 0, "missing_price": 0, "multi_category": 0},
+        "return_gift": {
+            "return_rate": insight_data.get("return_rate_pct") or 0,
+            "return_by_cat": insight_data.get("return_by_cat") or [],
+        },
+        "zero_sale_skus": insight_data.get("zero_sale_skus") or [],
+        "high_discount_low_margin": insight_data.get("high_discount_low_margin") or [],
+    }
+
+    # 7. 市场拓展（可选，app 传入时已为文本）
+    report["market_expansion"] = market_report_text if market_report_text else None
+
+    # 8. 附录：下钻明细（仅当有下钻数据时）
+    appendix = {}
+    if drill_brands:
+        appendix["drill_brands"] = drill_brands
+    if drill_styles:
+        appendix["drill_styles"] = drill_styles
+    if drill_sku_rank:
+        appendix["drill_sku_rank"] = drill_sku_rank
+    report["appendix"] = appendix if appendix else None
+
+    return report
 
 
 def _fmt_money(v):
@@ -924,11 +1439,53 @@ def _ai_fetch_context(conn, store_id="沈阳超级仓", days=30, include_monthly
     return ctx
 
 
-def ai_chat_response(conn, user_message, report_summary=None):
-    """基于真实数据返回可操作的 AI 回复，避免模板式空泛建议"""
+def _format_drill_prefix(current_drill_summary):
+    """根据 current_drill 生成回复顶部的下钻摘要（品类/品牌/款式 + Top 列表）。"""
+    if not current_drill_summary:
+        return ""
+    parts = []
+    cat = (current_drill_summary.get("category") or "").strip()
+    br = (current_drill_summary.get("brand") or "").strip()
+    pn = (current_drill_summary.get("product_name") or "").strip()
+    if cat:
+        parts.append(f"品类：{cat}")
+    if br:
+        parts.append(f"品牌：{br}")
+    if pn:
+        parts.append(f"款式：{pn}")
+    if not parts:
+        return ""
+    line1 = "【当前下钻】" + "；".join(parts) + "。"
+    lines = [line1]
+    drill_brands = current_drill_summary.get("drill_brands") or []
+    drill_styles = current_drill_summary.get("drill_styles") or []
+    drill_sku_rank = current_drill_summary.get("drill_sku_rank") or []
+    if drill_brands and not drill_styles and not drill_sku_rank:
+        top = [b.get("brand") or "未填" for b in drill_brands[:5]]
+        lines.append("本维度下品牌 Top5： " + "、".join(top[:5]))
+    elif drill_styles and not drill_sku_rank:
+        top = [s.get("product_name") or "未填" for s in drill_styles[:5]]
+        lines.append("本维度下款式 Top5： " + "、".join(top[:5]))
+    elif drill_sku_rank:
+        top = [s.get("sku_code") or s.get("product_name") or "-" for s in drill_sku_rank[:5]]
+        lines.append("本维度下货号 Top5： " + "、".join(top[:5]))
+    return "\n".join(lines)
+
+
+def _with_drill(reply, drill_prefix):
+    """在回复前附加下钻摘要（若有）。"""
+    if not drill_prefix or not (reply or "").strip():
+        return reply or ""
+    return (drill_prefix + "\n\n" + reply).strip()
+
+
+def ai_chat_response(conn, user_message, report_summary=None, current_drill_summary=None):
+    """基于真实数据返回可操作的 AI 回复，避免模板式空泛建议。
+    current_drill_summary: 可选，来自消费洞察下钻的 {category, brand, product_name, drill_brands, drill_styles, drill_sku_rank}，回复中会引用。"""
     import re
     msg = (user_message or "").strip()
     msg_lower = msg.lower()
+    drill_prefix = _format_drill_prefix(current_drill_summary) if current_drill_summary else ""
 
     # 是否拉取多月数据（用户提到「几个月」「结合」「预测」「品类」等）
     need_monthly = any(k in msg for k in ["几个月", "前几个月", "结合", "销售情况", "历史", "3月", "2月", "1月", "预测", "品类"])
@@ -993,7 +1550,7 @@ def ai_chat_response(conn, user_message, report_summary=None):
             actions.append("③ 促销活动：满减/第二件半价/限时折扣，拉升客单价与连带")
             actions.append("④ 异业合作：移动办套餐送券、满额赠话费，零成本拉新、放大到店客流")
             actions.append("⑤ 3月节点：妇女节、春游季做主题陈列与促销，抓住节日消费")
-        return "\n".join(actions)
+        return _with_drill("\n".join(actions), drill_prefix)
 
     # 1b. 毛利目标：提高毛利到 X 万（与「月毛利」同口径：用本月至今对比目标）
     if is_profit_goal:
@@ -1040,7 +1597,7 @@ def ai_chat_response(conn, user_message, report_summary=None):
                     pred_wan = target / 10000 * (float(r.get("profit") or 0) / total_last)
                     actions.append(f"  · {cat} 占比{pct:.0f}% → 本月约 {pred_wan:.1f}万")
                 actions.append("（以上为按上月结构静态推算，实际需结合断货补货与促销节奏）")
-        return "\n".join(actions)
+        return _with_drill("\n".join(actions), drill_prefix)
 
     # 2a. 退货 / 赠送 / 损耗（精细化）
     if "退货" in msg or "赠送" in msg or "损耗" in msg:
@@ -1056,13 +1613,13 @@ def ai_chat_response(conn, user_message, report_summary=None):
             lines.append("建议：在「经营分析」查看退货/赠送明细，按品类与供应商做精细化管控；赠送可结合毛利与复购评估 ROI。")
         else:
             lines.append("当前退货/赠送占比较低。建议定期查看经营分析中的退货与赠送报表，做好事前管控。")
-        return "\n".join(lines)
+        return _with_drill("\n".join(lines), drill_prefix)
 
     # 2b. 品牌 / 供应商（精细化）
     if "品牌" in msg and ("集中" in msg or "哪些" in msg or "占比" in msg or "排行" in msg):
         brands = ctx.get("top_brands") or []
         if not brands or not ctx["total_sale"]:
-            return "【品牌】暂无品牌销售数据或销售额为 0。建议在导入数据时补全 brand_name 字段。"
+            return _with_drill("【品牌】暂无品牌销售数据或销售额为 0。建议在导入数据时补全 brand_name 字段。", drill_prefix)
         total = ctx["total_sale"]
         lines = ["【品牌销售占比】近30天前5品牌："]
         for r in brands[:5]:
@@ -1070,11 +1627,11 @@ def ai_chat_response(conn, user_message, report_summary=None):
             pct = (s / total * 100) if total > 0 else 0
             lines.append(f"  · {(r.get('brand_name') or '未填')[:12]} 销售额 {_fmt_money(s)} 占比 {pct:.1f}%")
         lines.append("建议：可做品牌级毛利与周转分析，优化采购与陈列资源；在「经营分析-品牌分析」查看明细。")
-        return "\n".join(lines)
+        return _with_drill("\n".join(lines), drill_prefix)
     if "供应商" in msg and ("集中" in msg or "哪些" in msg or "占比" in msg or "排行" in msg):
         suppliers = ctx.get("top_suppliers") or []
         if not suppliers or not ctx["total_sale"]:
-            return "【供应商】暂无供应商销售数据或销售额为 0。建议在导入数据时补全 supplier_name 字段。"
+            return _with_drill("【供应商】暂无供应商销售数据或销售额为 0。建议在导入数据时补全 supplier_name 字段。", drill_prefix)
         total = ctx["total_sale"]
         lines = ["【供应商销售占比】近30天前5供应商："]
         for r in suppliers[:5]:
@@ -1082,14 +1639,14 @@ def ai_chat_response(conn, user_message, report_summary=None):
             pct = (s / total * 100) if total > 0 else 0
             lines.append(f"  · {(r.get('supplier_name') or '未填')[:12]} 销售额 {_fmt_money(s)} 占比 {pct:.1f}%")
         lines.append("建议：结合毛利与周转做供应商评估，在「经营分析」查看供应商明细。")
-        return "\n".join(lines)
+        return _with_drill("\n".join(lines), drill_prefix)
 
     # 2c. 周转 / 库存周转（精细化）
     if "周转" in msg or "库存周转" in msg:
         days_val = ctx.get("inventory_turnover_days")
         stock_amt = ctx.get("total_stock_amount") or 0
         if days_val is None or stock_amt <= 0:
-            return "【库存周转】当前无法估算周转天数（需有库存金额与近30天销售成本）。请在「经营分析-库存周转」查看明细。"
+            return _with_drill("【库存周转】当前无法估算周转天数（需有库存金额与近30天销售成本）。请在「经营分析-库存周转」查看明细。", drill_prefix)
         lines = [f"【库存周转】按近30天销速估算，当前库存金额约 {_fmt_money(stock_amt)}，周转天数约 {days_val:.0f} 天。"]
         if days_val > 60:
             lines.append("周转偏慢，建议：压缩滞销品、加快促销与清仓，提升周转。")
@@ -1097,7 +1654,7 @@ def ai_chat_response(conn, user_message, report_summary=None):
             lines.append("周转表现较好，建议保持补货与动销监控，避免断货。")
         else:
             lines.append("建议结合品类做周转分析，在「经营分析-库存周转」查看各品类/品牌明细。")
-        return "\n".join(lines)
+        return _with_drill("\n".join(lines), drill_prefix)
 
     # 2d. 数据质量 / 精细化（数据可信度）
     if "数据质量" in msg or ("精细化" in msg and ("管理" in msg or "数据" in msg or "经营" in msg)):
@@ -1117,64 +1674,64 @@ def ai_chat_response(conn, user_message, report_summary=None):
             lines.append("建议：在「经营分析-数据质量」查看明细，优先补全成本与售价；同 SKU 多品类可统一归类便于分析。")
         else:
             lines.append("当前数据质量尚可。建议：① 定期在「经营分析-数据质量」巡检 ② 退货/赠送、品牌/供应商、周转等维度已支持，可做精细化管控。")
-        return "\n".join(lines)
+        return _with_drill("\n".join(lines), drill_prefix)
 
     # 2. 负毛利 / 亏损
     if "负毛利" in msg or "亏损" in msg:
         if ctx["neg_count"] == 0:
-            return "【负毛利】近30天暂无负毛利商品，数据健康。建议保持成本与售价监控，新上架品重点核查。"
+            return _with_drill("【负毛利】近30天暂无负毛利商品，数据健康。建议保持成本与售价监控，新上架品重点核查。", drill_prefix)
         lines = [f"【负毛利诊断】近30天共 {ctx['neg_count']} 个商品负毛利，总损失约 {_fmt_money(ctx['neg_loss'])}"]
         for r in ctx["neg_top"][:3]:
             name = (r.get("name") or r["sku_code"])[:12]
             diag = _neg_diagnosis_hint(name, r["sale"], r["profit"])
             lines.append(f"  · {name} | 销售额{_fmt_money(r['sale'])} 毛利{_fmt_money(r['profit'])} → {diag}")
         lines.append("建议：① 核查参考进价 ② 确认是否清仓 ③ 设计7天后自动复验闭环")
-        return "\n".join(lines)
+        return _with_drill("\n".join(lines), drill_prefix)
 
     # 3. 高毛利 / 烘焙
     if "高毛利" in msg or "烘焙" in msg:
         if not ctx["high_margin_cats"]:
-            return "【高毛利】当前数据中暂无毛利率>35%且销售额>3000的品类。建议：① 核查成本录入 ② 识别加工品/自有品牌等高毛利品 ③ 设「移动新客专享区」紧邻移动点位"
+            return _with_drill("【高毛利】当前数据中暂无毛利率>35%且销售额>3000的品类。建议：① 核查成本录入 ② 识别加工品/自有品牌等高毛利品 ③ 设「移动新客专享区」紧邻移动点位", drill_prefix)
         cats = ctx["high_margin_cats"]
         lines = ["【高毛利运营 SOP】基于数据的高毛利品类："]
         for r in cats[:5]:
             lines.append(f"  · {r['cat'][:10]} | 毛利率{float(r['margin_pct'] or 0):.0f}% 毛利{_fmt_money(r['profit'])}")
         lines.append("可执行动作：① 设「移动新客专享区」紧邻移动点位 ② 输出小红书推广大纲/陈列视觉提示词 ③ 做「高毛利爆品运营 SOP」标准化")
-        return "\n".join(lines)
+        return _with_drill("\n".join(lines), drill_prefix)
 
     # 4. 补货 / 断货
     if "补货" in msg or "断货" in msg:
         if not ctx["low_stock_cats"]:
-            return "【断货】当前无低库存畅销品类。建议：① 设自动巡检机制 ② 浆果/烘焙/水饮等引流爆品优先保障库存"
+            return _with_drill("【断货】当前无低库存畅销品类。建议：① 设自动巡检机制 ② 浆果/烘焙/水饮等引流爆品优先保障库存", drill_prefix)
         cats = [r["category"][:8] for r in ctx["low_stock_cats"][:5]]
         top = [r["category"][:8] for r in ctx["top_sale_cats"][:5]]
-        return f"【断货优先级】畅销但库存不足：{', '.join(cats)}\n动销 Top：{', '.join(top)}\n建议：① 设自动巡检机制 ② 补货后放在移动点位旁做首单转化"
+        return _with_drill(f"【断货优先级】畅销但库存不足：{', '.join(cats)}\n动销 Top：{', '.join(top)}\n建议：① 设自动巡检机制 ② 补货后放在移动点位旁做首单转化", drill_prefix)
 
     # 5. 移动 / 异业
     if "移动" in msg or "异业" in msg or "合作" in msg:
         high = [r["cat"][:6] for r in ctx["high_margin_cats"][:3]] if ctx["high_margin_cats"] else ["服装", "烘焙", "鞋"]
-        return f"【中国移动联动】① 满额赠话费匹配客单价（建议满99/199）② 办套餐送券定向核销高毛利区（{', '.join(high)}）③ 设点放在引流爆品+烘焙旁 ④ 零成本零对接，适合总部审批"
+        return _with_drill(f"【中国移动联动】① 满额赠话费匹配客单价（建议满99/199）② 办套餐送券定向核销高毛利区（{', '.join(high)}）③ 设点放在引流爆品+烘焙旁 ④ 零成本零对接，适合总部审批", drill_prefix)
 
     # 6. 验证 / 闭环
     if "验证" in msg or "闭环" in msg:
         neg_cnt = ctx["neg_count"]
         if neg_cnt > 0:
-            return f"【验证闭环】当前有 {neg_cnt} 个负毛利商品，建议：① 生成3组调价实验方案 ② 7天后自动拉取数据验证 ③ 小步快跑、暴力迭代。没经过验证的数据只是噪音。"
-        return "【验证闭环】建议：对高毛利爆品、断货补货效果做 A/B 实验，7天后自动拉取数据验证。小步快跑、暴力迭代。"
+            return _with_drill(f"【验证闭环】当前有 {neg_cnt} 个负毛利商品，建议：① 生成3组调价实验方案 ② 7天后自动拉取数据验证 ③ 小步快跑、暴力迭代。没经过验证的数据只是噪音。", drill_prefix)
+        return _with_drill("【验证闭环】建议：对高毛利爆品、断货补货效果做 A/B 实验，7天后自动拉取数据验证。小步快跑、暴力迭代。", drill_prefix)
 
     # 7. 市场 / 拓展
     if "市场" in msg or "拓展" in msg:
-        return f"【市场拓展】报告已按「市场引流区、利润收割区、问题清仓区、移动联动区」重构。当前近30天销售额{_fmt_money(ctx['total_sale'])}、毛利{_fmt_money(ctx['total_profit'])}、毛利率{ctx['avg_margin']:.1f}%。从「只看货卖得怎么样」变成「怎么拉来人、怎么留住人、怎么用移动合作把货卖得更贵更稳」。"
+        return _with_drill(f"【市场拓展】报告已按「市场引流区、利润收割区、问题清仓区、移动联动区」重构。当前近30天销售额{_fmt_money(ctx['total_sale'])}、毛利{_fmt_money(ctx['total_profit'])}、毛利率{ctx['avg_margin']:.1f}%。从「只看货卖得怎么样」变成「怎么拉来人、怎么留住人、怎么用移动合作把货卖得更贵更稳」。", drill_prefix)
 
     # 8. 性价比 / 比价 / 百度识货 → 4 阶段货盘价格对比
     if any(k in msg for k in ["性价比", "比价", "价格对比", "百度识货", "百度skill", "识货", "划算", "货品价格"]):
         try:
             from price_compare import run_full_pipeline, format_report
             result = run_full_pipeline(conn, store_id="沈阳超级仓", days=30, use_mock_fetcher=True)
-            return format_report(result)
+            return _with_drill(format_report(result), drill_prefix)
         except Exception as e:
             if not ctx.get("value_skus"):
-                return f"【货盘分析】执行失败: {e}。可尝试运行 scripts/openclaw_price_compare.sh 生成完整报告。"
+                return _with_drill(f"【货盘分析】执行失败: {e}。可尝试运行 scripts/openclaw_price_compare.sh 生成完整报告。", drill_prefix)
             lines = [
                 "【性价比货品排行】货盘 4 阶段分析暂不可用，基于内部数据的高性价比货品：",
                 ""
@@ -1187,7 +1744,7 @@ def ai_chat_response(conn, user_message, report_summary=None):
                 lines.append(f"  {i}. {name} | 单价{up:.1f}元 毛利率{margin:.0f}% 销售额{_fmt_money(sale)}")
             lines.append("")
             lines.append("完整货盘分析请执行: bash scripts/openclaw_price_compare.sh")
-            return "\n".join(lines)
+            return _with_drill("\n".join(lines), drill_prefix)
 
     # 9. 通用 / 无匹配：基于数据给综合建议（含退货/周转/数据质量等精细化维度）
     lines = [f"【综合建议】基于近30天数据：销售额{_fmt_money(ctx['total_sale'])}、毛利{_fmt_money(ctx['total_profit'])}、毛利率{ctx['avg_margin']:.1f}%"]
@@ -1214,4 +1771,161 @@ def ai_chat_response(conn, user_message, report_summary=None):
         lines.append("⑥ 数据质量：存在成本/售价缺失，建议在「经营分析-数据质量」补全以提升分析准确性")
     if not any("移动" in ln or "异业" in ln for ln in lines):
         lines.append("⑦ 移动异业合作可零成本拉新、放大黄金品类销售")
-    return "\n".join(lines)
+    return _with_drill("\n".join(lines), drill_prefix)
+
+
+def advanced_search_consumer_insight(
+    conn,
+    store_id="沈阳超级仓",
+    period="recent30",
+    start_date=None,
+    end_date=None,
+    min_price=None,
+    max_price=None,
+    brands=None,
+    suppliers=None,
+    categories=None,
+    stock_status=None,
+    page=1,
+    page_size=20,
+    sort_by="sales_amount",
+    sort_order="desc",
+    range_days=30,
+):
+    """
+    消费洞察高级查询：按价格区间、品牌、供应商、品类、库存状态筛选，返回 SKU 级销售与库存。
+    返回 {"total": int, "items": [{"sku_code", "product_name", "brand", "category", "supplier",
+          "avg_unit_price", "total_qty", "total_sales", "stock_qty", "stock_turnover_days"}, ...]}
+    """
+    if _date_condition is None:
+        return {"total": 0, "items": []}
+    date_cond, date_params = _date_condition(period, start_date, end_date)
+    page = max(1, int(page))
+    page_size = min(max(1, int(page_size)), 100)
+    offset = (page - 1) * page_size
+
+    sort_column_map = {
+        "sales_amount": "s.total_sales",
+        "avg_price": "s.avg_unit_price",
+        "stock_qty": "COALESCE(st.stock_qty, 0)",
+        "total_qty": "s.total_qty",
+    }
+    sort_col = sort_column_map.get(sort_by, "s.total_sales")
+    order = "DESC" if (sort_order or "desc").lower() == "desc" else "ASC"
+
+    sale_subquery = """
+        SELECT
+            sku_code,
+            MAX(category) AS category,
+            SUM(sale_qty) AS total_qty,
+            SUM(sale_amount) AS total_sales,
+            SUM(sale_amount) / NULLIF(SUM(sale_qty), 0) AS avg_unit_price
+        FROM t_htma_sale
+        WHERE store_id = %s AND """ + date_cond + """
+        GROUP BY sku_code
+    """
+    stock_subquery = """
+        SELECT sku_code, stock_qty
+        FROM t_htma_stock
+        WHERE store_id = %s AND data_date = (
+            SELECT MAX(data_date) FROM t_htma_stock WHERE store_id = %s
+        )
+    """
+    base_params = [store_id] + list(date_params)
+    where_parts = ["1=1"]
+    filter_params = []
+
+    if min_price is not None and str(min_price).strip() != "":
+        try:
+            where_parts.append("s.avg_unit_price >= %s")
+            filter_params.append(float(min_price))
+        except (ValueError, TypeError):
+            pass
+    if max_price is not None and str(max_price).strip() != "":
+        try:
+            where_parts.append("s.avg_unit_price <= %s")
+            filter_params.append(float(max_price))
+        except (ValueError, TypeError):
+            pass
+    if brands:
+        brand_list = [b.strip() for b in (brands if isinstance(brands, list) else brands.split(",")) if b.strip()]
+        if brand_list:
+            placeholders = ",".join(["%s"] * len(brand_list))
+            where_parts.append("COALESCE(TRIM(p.brand_name), '') IN (" + placeholders + ")")
+            filter_params.extend(brand_list)
+    if suppliers:
+        sup_list = [s.strip() for s in (suppliers if isinstance(suppliers, list) else suppliers.split(",")) if s.strip()]
+        if sup_list:
+            placeholders = ",".join(["%s"] * len(sup_list))
+            where_parts.append("COALESCE(TRIM(p.supplier_name), '') IN (" + placeholders + ")")
+            filter_params.extend(sup_list)
+    if categories:
+        cat_list = [c.strip() for c in (categories if isinstance(categories, list) else categories.split(",")) if c.strip()]
+        if cat_list:
+            placeholders = ",".join(["%s"] * len(cat_list))
+            where_parts.append("COALESCE(TRIM(p.category_name), '') IN (" + placeholders + ")")
+            filter_params.extend(cat_list)
+    if stock_status == "in_stock":
+        where_parts.append("COALESCE(st.stock_qty, 0) > 0")
+    elif stock_status == "out_stock":
+        where_parts.append("COALESCE(st.stock_qty, 0) = 0")
+    elif stock_status == "low_stock":
+        where_parts.append("COALESCE(st.stock_qty, 0) < 10")
+
+    where_sql = " AND ".join(where_parts)
+    # 参数顺序：sale 子查询(base_params) + p.store_id + stock 子查询(store_id*2) + 筛选 + CASE 中 range_days*2 + LIMIT/OFFSET
+    all_params = base_params + [store_id] + [store_id, store_id] + filter_params
+    query_params = all_params + [range_days, range_days, page_size, offset]
+    count_params = base_params + [store_id] + [store_id, store_id] + filter_params
+
+    sql = """
+        SELECT
+            s.sku_code,
+            COALESCE(p.product_name, '') AS product_name,
+            COALESCE(p.brand_name, '') AS brand,
+            COALESCE(NULLIF(TRIM(p.category_name), ''), NULLIF(TRIM(s.category), ''), '') AS category,
+            COALESCE(p.supplier_name, '') AS supplier,
+            s.avg_unit_price,
+            s.total_qty,
+            s.total_sales,
+            COALESCE(st.stock_qty, 0) AS stock_qty,
+            CASE WHEN s.total_qty > 0 AND COALESCE(st.stock_qty, 0) > 0 AND %s > 0
+                 THEN ROUND(COALESCE(st.stock_qty, 0) / (s.total_qty / %s), 1)
+                 ELSE NULL END AS stock_turnover_days
+        FROM (""" + sale_subquery + """) s
+        LEFT JOIN t_htma_product_master p ON p.sku_code = s.sku_code AND p.store_id = %s
+        LEFT JOIN (""" + stock_subquery + """) st ON st.sku_code = s.sku_code
+        WHERE """ + where_sql + """
+        ORDER BY """ + sort_col + " " + order + """
+        LIMIT %s OFFSET %s
+    """
+    count_sql = """
+        SELECT COUNT(*) AS total
+        FROM (""" + sale_subquery + """) s
+        LEFT JOIN t_htma_product_master p ON p.sku_code = s.sku_code AND p.store_id = %s
+        LEFT JOIN (""" + stock_subquery + """) st ON st.sku_code = s.sku_code
+        WHERE """ + where_sql
+
+    cur = conn.cursor()
+    try:
+        cur.execute(count_sql, count_params)
+        total = (cur.fetchone() or {}).get("total") or 0
+        cur.execute(sql, query_params)
+        rows = cur.fetchall()
+        items = []
+        for r in rows:
+            items.append({
+                "sku_code": r.get("sku_code"),
+                "product_name": r.get("product_name") or "",
+                "brand": r.get("brand") or "",
+                "category": r.get("category") or "",
+                "supplier": r.get("supplier") or "",
+                "avg_unit_price": float(r["avg_unit_price"]) if r.get("avg_unit_price") is not None else None,
+                "total_qty": float(r["total_qty"]) if r.get("total_qty") is not None else 0,
+                "total_sales": float(r["total_sales"]) if r.get("total_sales") is not None else 0,
+                "stock_qty": float(r["stock_qty"]) if r.get("stock_qty") is not None else 0,
+                "stock_turnover_days": float(r["stock_turnover_days"]) if r.get("stock_turnover_days") is not None else None,
+            })
+        return {"total": total, "items": items}
+    finally:
+        cur.close()

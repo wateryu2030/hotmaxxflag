@@ -40,3 +40,4 @@ logs/
 
 # 嵌套仓库（可后续改为 submodule）
 JimuReport/
+*.backup

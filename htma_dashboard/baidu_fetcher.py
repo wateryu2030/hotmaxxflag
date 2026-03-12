@@ -42,6 +42,12 @@ ONEBOUND_PLATFORM = (os.environ.get("ONEBOUND_PLATFORM", "jd") or "jd").lower()
 # 申请：https://www.haojingke.com/open-api/pdd 注册后申请 apikey
 PDD_HOJINGKE_APIKEY = os.environ.get("PDD_HOJINGKE_APIKEY", "")
 
+# 百度优选开放平台 MCP（商品检索 spu_list）
+# 申请：https://openai.baidu.com/ 百度优选开放平台 → 工具权限 → 获取服务端 Token
+# MCP SSE: https://mcp-youxuan.baidu.com/mcp/sse?key={token}，工具名 spu_list，参数 keyWord, pageNum, pageSize
+BAIDU_YOUXUAN_TOKEN = os.environ.get("BAIDU_YOUXUAN_TOKEN", "")
+BAIDU_YOUXUAN_SSE_BASE = "https://mcp-youxuan.baidu.com"
+
 
 def _http_get(url: str, headers: Optional[dict] = None, timeout: int = 10) -> Optional[dict]:
     """发起 GET 请求，返回 JSON"""
@@ -64,6 +70,193 @@ def _http_post(url: str, data: Optional[bytes] = None, headers: Optional[dict] =
             return json.loads(r.read().decode())
     except Exception:
         return None
+
+
+def _mcp_youxuan_sse_endpoint(token: str, timeout: int = 10) -> Optional[str]:
+    """
+    连接百度优选 MCP SSE，解析 endpoint 事件得到 POST 地址。
+    返回可用于 tools/call 的完整 URL，失败返回 None。
+    """
+    if not token or not token.strip():
+        return None
+    base = BAIDU_YOUXUAN_SSE_BASE
+    sse_url = f"{base}/mcp/sse?key={urllib.parse.quote(token.strip())}"
+    try:
+        req = urllib.request.Request(sse_url, headers={"Accept": "text/event-stream"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            endpoint_data = None
+            event_type = None
+            for line in r:
+                line = line.decode("utf-8", errors="replace").strip()
+                if line.startswith("event:"):
+                    event_type = line[6:].strip()
+                elif line.startswith("data:") and event_type == "endpoint":
+                    endpoint_data = line[5:].strip()
+                    break
+            if not endpoint_data:
+                return None
+            if endpoint_data.startswith("http://") or endpoint_data.startswith("https://"):
+                return endpoint_data
+            base_url = base.rstrip("/")
+            if endpoint_data.startswith("/"):
+                return base_url + endpoint_data
+            return base_url + "/" + endpoint_data
+    except Exception:
+        return None
+
+
+def _mcp_youxuan_call_tool(token: str, tool_name: str, arguments: dict, timeout: int = 12) -> Optional[dict]:
+    """
+    百度优选 MCP：先取 endpoint，再 POST JSON-RPC tools/call。
+    返回 JSON-RPC result 或 None。
+    """
+    endpoint = _mcp_youxuan_sse_endpoint(token, timeout=timeout)
+    if not endpoint:
+        return None
+    payload = {
+        "jsonrpc": "2.0",
+        "id": "1",
+        "method": "tools/call",
+        "params": {"name": tool_name, "arguments": arguments},
+    }
+    body = json.dumps(payload).encode("utf-8")
+    try:
+        req = urllib.request.Request(
+            endpoint,
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            out = json.loads(r.read().decode())
+    except Exception:
+        return None
+    if "result" in out:
+        return out["result"]
+    return None
+
+
+def baidu_youxuan_price_fetcher(std_name: str) -> Optional[dict]:
+    """
+    百度优选开放平台 MCP - spu_list 商品检索，取最低价。
+    需配置 BAIDU_YOUXUAN_TOKEN（openai.baidu.com 百度优选工具权限服务端 Token）。
+    返回格式与其它 fetcher 一致：{min_price, platform, is_same_spec}。
+    """
+    if not BAIDU_YOUXUAN_TOKEN:
+        return None
+    keyword = (std_name or "").strip()[:50]
+    if not keyword:
+        return None
+    result = _mcp_youxuan_call_tool(
+        BAIDU_YOUXUAN_TOKEN,
+        "spu_list",
+        {"query": keyword},
+        timeout=12,
+    )
+    if not result:
+        return None
+    # MCP 返回 result 常见为 { "content": [ {"type":"text", "text": "..."} ] }，需解析 text 为 JSON
+    content = result.get("content") if isinstance(result, dict) else None
+    text = None
+    if isinstance(content, list) and content:
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "text":
+                text = part.get("text")
+                break
+    if not text:
+        text = result.get("text") if isinstance(result, dict) else None
+    if not text:
+        return None
+    try:
+        data = json.loads(text) if isinstance(text, str) else text
+    except (TypeError, ValueError):
+        return None
+    # 兼容多种结构：list 直接为商品列表，或 data/list/spuList 等
+    items = []
+    if isinstance(data, list):
+        items = data
+    elif isinstance(data, dict):
+        items = data.get("spuList") or data.get("list") or data.get("data") or data.get("items") or []
+    if not isinstance(items, list):
+        return None
+    prices = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        p = it.get("spuPrice") or it.get("price") or it.get("minPrice") or it.get("marketPrice") or it.get("currentPrice")
+        if p is None and isinstance(it.get("skuList"), list) and it["skuList"]:
+            p = it["skuList"][0].get("skuPrice") if isinstance(it["skuList"][0], dict) else None
+        if p is not None:
+            try:
+                prices.append(float(str(p).replace(",", "")))
+            except (TypeError, ValueError):
+                pass
+    if not prices:
+        return None
+    return {
+        "min_price": min(prices),
+        "platform": "百度优选",
+        "is_same_spec": True,
+    }
+
+
+def baidu_youxuan_search_items(keyword: str, page_size: int = 10) -> list:
+    """
+    百度优选 MCP spu_list 商品列表，返回 [{title, price, platform}, ...]。
+    供 search_products 在 OneBound 不可用时使用。
+    """
+    if not BAIDU_YOUXUAN_TOKEN:
+        return []
+    keyword = (keyword or "").strip()[:50]
+    if not keyword:
+        return []
+    result = _mcp_youxuan_call_tool(
+        BAIDU_YOUXUAN_TOKEN,
+        "spu_list",
+        {"query": keyword},
+        timeout=12,
+    )
+    if not result:
+        return []
+    content = result.get("content") if isinstance(result, dict) else None
+    text = None
+    if isinstance(content, list) and content:
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "text":
+                text = part.get("text")
+                break
+    if not text:
+        text = result.get("text") if isinstance(result, dict) else None
+    if not text:
+        return []
+    try:
+        data = json.loads(text) if isinstance(text, str) else text
+    except (TypeError, ValueError):
+        return []
+    items = []
+    if isinstance(data, list):
+        items = data
+    elif isinstance(data, dict):
+        items = data.get("spuList") or data.get("list") or data.get("data") or data.get("items") or []
+    if not isinstance(items, list):
+        return []
+    out = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        title = (it.get("productName") or it.get("title") or it.get("name") or it.get("spuName") or "").strip()
+        p = it.get("spuPrice") or it.get("price") or it.get("minPrice") or it.get("marketPrice") or it.get("currentPrice")
+        if p is None and isinstance(it.get("skuList"), list) and it["skuList"]:
+            sku0 = it["skuList"][0]
+            p = sku0.get("skuPrice") if isinstance(sku0, dict) else None
+        if p is None:
+            continue
+        try:
+            price = float(str(p).replace(",", ""))
+        except (TypeError, ValueError):
+            continue
+        out.append({"title": title or "", "price": price, "platform": "百度优选"})
+    return out
 
 
 def juhe_price_fetcher(std_name: str) -> Optional[dict]:
@@ -391,13 +584,17 @@ def pdd_haojingke_fetcher(std_name: str) -> Optional[dict]:
 
 def baidu_fetcher(std_name: str, barcode: Optional[str] = None) -> Optional[dict]:
     """
-    统一入口：按优先级尝试各数据源
-    1. OneBound 万邦（淘宝/京东，需开通）
-    2. 京东 蚂蚁星球（需在开发者中心完成京东联盟设置）
-    3. 拼多多 蚂蚁星球（免费，需 PDD_HOJINGKE_APIKEY）
-    4. 聚合数据 商品比价（曾维护中）
-    5. 百度 API 商城
+    统一入口：按优先级尝试各数据源（顺序如下）
+    1. 百度 Skill / 百度优选 MCP（需 BAIDU_YOUXUAN_TOKEN，优先）
+    2. OneBound 万邦（淘宝/京东，需开通）
+    3. 京东 蚂蚁星球（需在开发者中心完成京东联盟设置）
+    4. 拼多多 蚂蚁星球（免费，需 PDD_HOJINGKE_APIKEY）
+    5. 聚合数据 商品比价（曾维护中）
+    6. 百度 API 商城
     """
+    r = baidu_youxuan_price_fetcher(std_name)
+    if r:
+        return r
     r = onebound_price_fetcher(std_name)
     if r:
         return r
@@ -432,8 +629,11 @@ def item_fetcher(item: dict) -> Optional[dict]:
         r = baidu_apistore_barcode_fetcher(keyword or "商品", barcode)
         if r:
             return r
-    # 2) 名称+规格 关键词检索（各渠道）
+    # 2) 名称+规格 关键词检索（顺序：百度 Skill/百度优选 → OneBound → 蚂蚁星球 → 聚合）
     if keyword:
+        r = baidu_youxuan_price_fetcher(keyword)
+        if r:
+            return r
         r = onebound_price_fetcher(keyword)
         if r:
             return r
@@ -514,7 +714,7 @@ def get_configured_fetcher(dual_platform: bool = True) -> Optional[Callable[[dic
     返回已配置的 fetcher。dual_platform=True 时优先返回京东+淘宝双平台 fetcher。
     内部按「条码优先、名称+规格为辅」检索。
     """
-    if ONEBOUND_KEY and ONEBOUND_SECRET or PDD_HOJINGKE_APIKEY or JUHE_PRICE_KEY or BAIDU_APISTORE_KEY:
+    if ONEBOUND_KEY and ONEBOUND_SECRET or PDD_HOJINGKE_APIKEY or JUHE_PRICE_KEY or BAIDU_APISTORE_KEY or BAIDU_YOUXUAN_TOKEN:
         if dual_platform and (ONEBOUND_KEY and ONEBOUND_SECRET or PDD_HOJINGKE_APIKEY):
             return item_fetcher_jd_taobao
         return item_fetcher

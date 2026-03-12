@@ -2,8 +2,9 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
   <title>好特卖沈阳超级仓运营看板</title>
+  <link rel="stylesheet" href="/static/css/mobile.css">
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js" onerror="var s=document.createElement('script');s.src='https://unpkg.com/echarts@5.4.3/dist/echarts.min.js';s.onload=function(){window._echartsFallbackLoaded=true;};document.head.appendChild(s);"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -24,6 +25,10 @@
     .chart-box { background: #1e293b; border-radius: 6px; padding: 6px 8px; border: 1px solid #334155; height: 280px; }
     .chart-box.chart-box-trend { height: 300px; }
     .chart-box h3 { font-size: 0.85rem; margin-bottom: 4px; color: #94a3b8; }
+    .chart-box-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; gap: 0.5rem; }
+    .chart-box-title { margin: 0; font-size: inherit; }
+    .chart-box-toggle { display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer; font-size: 0.85rem; color: #94a3b8; white-space: nowrap; }
+    .chart-box-toggle input { width: 1em; height: 1em; margin: 0; }
     .chart-table-toggle { font-size: 0.75rem; font-weight: normal; margin-left: 6px; }
     .chart-table-toggle a { color: #64748b; text-decoration: none; }
     .chart-table-toggle a:hover { color: #94a3b8; }
@@ -134,6 +139,30 @@
     .btn-ai { display: flex; align-items: center; gap: 4px; padding: 6px 12px; border-radius: 6px; border: 1px solid #38bdf8; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #38bdf8; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
     .btn-view-report { color: #38bdf8; text-decoration: none; font-size: 0.8rem; }
     .btn-view-report:hover { text-decoration: underline; }
+    .report-history-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    .report-history-table th, .report-history-table td { padding: 6px 10px; text-align: left; border-bottom: 1px solid #334155; color: #e2e8f0; }
+    .report-history-table th { color: #94a3b8; font-weight: 600; background: #0f172a; }
+    .report-history-table tr:hover { background: #334155; }
+    .report-status-ok { color: #34d399; }
+    .report-status-fail { color: #f87171; }
+    .report-status-err { font-size: 0.75rem; color: #94a3b8; margin-left: 4px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: middle; }
+    .report-send-err { border-left: 3px solid #f87171 !important; }
+    /* 营销报告、AI 对话：浅色卡片，字体清晰可读 */
+    .section-inner { background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; color: #1e293b; }
+    .report-section-inner { padding: 10px 12px; margin-top: 6px; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; color: #1e293b; }
+    .report-section-inner h3 { font-size: 0.85rem; color: #475569; margin-bottom: 6px; }
+    .report-section-inner .table-wrap { background: #ffffff; border-radius: 6px; border: 1px solid #e2e8f0; padding: 0; margin-bottom: 8px; }
+    .report-section-inner .report-history-table th, .report-section-inner .report-history-table td { color: #1e293b; border-bottom-color: #e2e8f0; }
+    .report-section-inner .report-history-table th { background: #e2e8f0; color: #475569; }
+    .report-section-inner .report-history-table tr:hover { background: #e2e8f0; }
+    .report-section-inner .report-status-err { color: #64748b; }
+    .report-section-inner .report-status-ok { color: #0d9488; }
+    .report-section-inner .report-status-fail { color: #dc2626; }
+    .report-detail-inner { background: #ffffff !important; border: 1px solid #e2e8f0 !important; color: #1e293b !important; padding: 10px 12px !important; border-radius: 8px; }
+    .ai-chat-section-inner { background: #f1f5f9 !important; border: 1px solid #e2e8f0 !important; border-radius: 8px; padding: 10px 12px; color: #1e293b; }
+    .ai-chat-section-inner .chart-box, .ai-chat-section-inner [id^="aiChat"] { background: transparent; border: none; }
+    #aiChatMessages { background: #ffffff; border-radius: 6px; border: 1px solid #e2e8f0; padding: 8px 10px; color: #1e293b; }
+    #aiChatInput { background: #ffffff !important; border: 1px solid #e2e8f0 !important; color: #1e293b !important; }
     .btn-ai:hover { background: linear-gradient(135deg, #1e293b 0%, #334155 100%); color: #7dd3fc; border-color: #7dd3fc; }
     .btn-ai-icon { font-size: 1.1rem; }
     .insight-card { padding: 8px 10px; margin-bottom: 6px; border-radius: 6px; border-left: 4px solid #38bdf8; background: #1e293b; }
@@ -142,6 +171,9 @@
     .insight-card .title { font-weight: 600; color: #e2e8f0; margin-bottom: 4px; }
     .insight-card .desc { font-size: 0.9rem; color: #94a3b8; margin-bottom: 4px; }
     .insight-card .action { font-size: 0.85rem; color: #38bdf8; }
+    /* 消费洞察 / AI 智能分析区内数字字体与全局一致，避免过大 */
+    .insight-card .num, .insight-card strong, .insight-card table .num { font-size: 0.9rem; font-weight: 600; }
+    #pageInsight .kpi-card .value { font-size: 1rem; }
     .sticky-top { position: sticky; top: 0; z-index: 10; background: #0f172a; padding-bottom: 2px; }
     .nav-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; padding: 4px 0; flex-wrap: wrap; }
     .nav-row .export-btns { display: flex; gap: 6px; margin-left: auto; }
@@ -188,8 +220,35 @@
       .filter-bar-toggle-row { display: flex; align-items: center; gap: 6px; padding: 4px 0; min-height: 32px; }
       .filter-bar-toggle-row .period-summary { font-size: 0.8rem; flex: 1; min-width: 0; }
       .filter-bar-toggle-row .btn-filter { padding: 5px 10px; font-size: 0.8rem; }
+      .filter-bar-toggle-row .filter-toggle-btn { background: #38bdf8; color: #0f172a; padding: 8px 16px; font-size: 0.9rem; font-weight: 600; border-radius: 20px; border: none; }
+      .filter-bar-toggle-row .filter-toggle-btn:hover { background: #7dd3fc; color: #0f172a; }
+      .filter-bar .filter-bar-content-wrap { display: none !important; }
       .filter-bar-content { display: none; flex-direction: column; align-items: stretch; gap: 6px; padding: 6px 0; border-top: 1px solid #334155; margin-top: 2px; }
       .filter-bar-content.is-open { display: flex; }
+      .chart-tabs { display: flex; flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; gap: 6px; padding: 8px 0; }
+      .chart-tabs .tab-btn { flex: 0 0 auto; padding: 6px 14px; font-size: 0.8rem; border-radius: 20px; white-space: nowrap; }
+      .pie-chart-header.chart-box-header { flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.5rem; }
+      .pie-chart-header .chart-box-title { font-size: 0.9em; flex: 1; min-width: 0; }
+      .pie-chart-header .chart-box-toggle { font-size: 0.75em; gap: 0.3em; padding: 0.2em 0.4em; }
+      .pie-chart-header .chart-box-toggle input { width: 1em; height: 1em; min-width: 1em; min-height: 1em; }
+      .filter-drawer { position: fixed; inset: 0; z-index: 1100; visibility: hidden; pointer-events: none; }
+      .filter-drawer.open { visibility: visible; pointer-events: auto; }
+      .filter-drawer-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.4); opacity: 0; transition: opacity 0.2s; }
+      .filter-drawer.open .filter-drawer-backdrop { opacity: 1; }
+      .filter-drawer-panel { position: absolute; top: 0; left: 0; right: 0; bottom: auto; background: #1e293b; border: 1px solid #334155; border-top: none; border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); max-height: 82vh; display: flex; flex-direction: column; transform: translateY(-100%); transition: transform 0.25s ease; }
+      .filter-drawer.open .filter-drawer-panel { transform: translateY(0); }
+      .filter-drawer-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid #334155; font-weight: 600; color: #e2e8f0; font-size: 0.95rem; flex-shrink: 0; }
+      .filter-drawer-close { background: none; border: none; color: #94a3b8; font-size: 1.5rem; cursor: pointer; padding: 0 6px; line-height: 1; }
+      .filter-drawer-close:hover { color: #e2e8f0; }
+      .filter-drawer-body { padding: 14px 16px 24px; overflow-y: auto; flex: 1; min-height: 260px; -webkit-overflow-scrolling: touch; }
+      .filter-drawer-body .filter-bar-content { display: flex !important; flex-direction: column; align-items: stretch; gap: 10px; }
+      .filter-drawer-body .period-tabs { flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+      .filter-drawer-body .tab-btn { padding: 8px 14px; font-size: 0.85rem; min-height: 40px; }
+      .filter-drawer-body .date-range-inline { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+      .filter-drawer-body .date-range-inline input[type="date"] { min-height: 44px; }
+      .filter-drawer-body label { font-size: 0.85rem; min-width: 72px; }
+      .filter-drawer-body input[type="date"], .filter-drawer-body select { padding: 10px 12px; font-size: 16px; min-height: 44px; }
+      .filter-drawer-body .btn-query { width: 100%; margin-top: 14px; padding: 12px 16px; font-size: 0.95rem; }
       .filter-bar .period-tabs { flex-wrap: wrap; gap: 2px; }
       .filter-bar .tab-btn { padding: 4px 8px; font-size: 0.75rem; }
       .filter-bar .filter-sep { display: none; }
@@ -233,58 +292,63 @@
       .page-panel .pagination { flex-wrap: wrap; gap: 6px; }
       .page-panel .pagination button { padding: 8px 12px; }
       #categoryRankDetailWrap table, #invDetailWrap table, .inv-detail-wrap table { min-width: 480px; }
-      #categoryRankDetailWrap th:first-child, #categoryRankDetailWrap td:first-child { position: sticky; left: 0; background: #0f172a; z-index: 1; }
-      #invDetailWrap th:first-child, #invDetailWrap td:first-child { position: sticky; left: 0; background: #0f172a; z-index: 1; }
-      .inv-detail-wrap td { padding: 0; vertical-align: top; background: #1e293b; }
+      #categoryRankDetailWrap th:first-child, #categoryRankDetailWrap td:first-child { position: sticky; left: 0; background: #f1f5f9; z-index: 1; color: #1e293b; }
+      #invDetailWrap th:first-child, #invDetailWrap td:first-child { position: sticky; left: 0; background: #f1f5f9; z-index: 1; color: #1e293b; }
+      #invDetailWrap tbody tr { background: #fff; color: #1e293b; }
+      .inv-detail-wrap td { padding: 0; vertical-align: top; background: #f8fafc; }
       .inv-detail-wrap .inv-detail-inner { padding: 8px 12px 12px 32px; }
       .inv-detail-wrap table.inv-detail-table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
-      .inv-detail-wrap table.inv-detail-table th { text-align: left; padding: 6px 8px; color: #94a3b8; }
-      .inv-detail-wrap table.inv-detail-table td { padding: 6px 8px; }
-      .cat-rank-mid-wrap td { padding: 0; vertical-align: top; background: #1e293b; }
+      .inv-detail-wrap table.inv-detail-table th { text-align: left; padding: 6px 8px; color: #475569; background: #f1f5f9; }
+      .inv-detail-wrap table.inv-detail-table td { padding: 6px 8px; color: #1e293b; background: #fff; }
+      .cat-rank-mid-wrap td { padding: 0; vertical-align: top; background: #f8fafc; }
       .cat-rank-mid-wrap .category-mid-detail { padding: 8px 12px 12px 32px; }
-      .cat-rank-mid-wrap table.cat-mid-table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
-      .cat-rank-mid-wrap table.cat-mid-table th { text-align: left; padding: 6px 8px; color: #94a3b8; }
-      .cat-rank-mid-wrap table.cat-mid-table td { padding: 6px 8px; }
+      .cat-rank-mid-wrap table.cat-mid-table { width: 100%; border-collapse: collapse; font-size: 0.9em; background: #fff; }
+      .cat-rank-mid-wrap table.cat-mid-table th { text-align: left; padding: 6px 8px; color: #475569; background: #f1f5f9; }
+      .cat-rank-mid-wrap table.cat-mid-table td { padding: 6px 8px; color: #1e293b; background: #fff; }
       .cat-rank-mid-wrap .cat-mid-row { cursor: pointer; background: rgba(34,211,238,0.08); border-left: 4px solid #22d3ee; }
-      .cat-rank-mid-wrap .cat-mid-row:hover { background: #334155; }
+      .cat-rank-mid-wrap .cat-mid-row:hover { background: #e2e8f0; }
       .cat-rank-mid-wrap .cat-mid-row.expanded .expand-icon { transform: rotate(90deg); }
-      .cat-rank-mid-wrap .cat-mid-small-wrap td { padding: 0; background: #0f172a; }
+      .cat-rank-mid-wrap .cat-mid-small-wrap td { padding: 0; background: #f8fafc; }
       .cat-rank-mid-wrap .cat-mid-small-wrap .category-small-detail { padding: 6px 8px 8px 24px; font-size: 0.85em; }
-      .cat-rank-mid-wrap .cat-mid-small-wrap table { width: 100%; border-collapse: collapse; }
+      .cat-rank-mid-wrap .cat-mid-small-wrap table { width: 100%; border-collapse: collapse; background: #fff; }
+      .cat-rank-mid-wrap .cat-mid-small-wrap table th { background: #f1f5f9; color: #475569; }
+      .cat-rank-mid-wrap .cat-mid-small-wrap table td { background: #fff; color: #1e293b; }
       .cat-small-row, .cat-brand-row, .cat-product-row { cursor: pointer; }
-      .cat-small-row:hover, .cat-brand-row:hover, .cat-product-row:hover { background: #334155 !important; }
+      .cat-small-row:hover, .cat-brand-row:hover, .cat-product-row:hover { background: #e2e8f0 !important; }
       .cat-small-row.expanded .expand-icon, .cat-brand-row.expanded .expand-icon, .cat-product-row.expanded .expand-icon { transform: rotate(90deg); }
       .cat-brands-wrap .category-brands-detail, .cat-products-wrap .category-products-detail, .cat-sale-detail-wrap .category-sale-detail { padding: 6px 8px 8px 20px; font-size: 0.85em; }
-      .cat-brands-wrap table, .cat-products-wrap table, .cat-sale-detail-wrap table { width: 100%; border-collapse: collapse; }
-      .biz-brand-detail-wrap td { padding: 0; vertical-align: top; background: #1e293b; }
+      .cat-brands-wrap table, .cat-products-wrap table, .cat-sale-detail-wrap table { width: 100%; border-collapse: collapse; background: #fff; }
+      .cat-brands-wrap table th, .cat-products-wrap table th, .cat-sale-detail-wrap table th { background: #f1f5f9; color: #475569; }
+      .cat-brands-wrap table td, .cat-products-wrap table td, .cat-sale-detail-wrap table td { background: #fff; color: #1e293b; }
+      .biz-brand-detail-wrap td { padding: 0; vertical-align: top; background: #f8fafc; }
       .biz-brand-detail-wrap .biz-brand-detail-inner { padding: 8px 12px 12px 32px; }
-      .biz-brand-detail-wrap table.biz-brand-cat-table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
-      .biz-brand-detail-wrap table.biz-brand-cat-table th { text-align: left; padding: 6px 8px; color: #94a3b8; }
-      .biz-brand-detail-wrap table.biz-brand-cat-table td { padding: 6px 8px; }
+      .biz-brand-detail-wrap table.biz-brand-cat-table { width: 100%; border-collapse: collapse; font-size: 0.9em; background: #fff; }
+      .biz-brand-detail-wrap table.biz-brand-cat-table th { text-align: left; padding: 6px 8px; color: #475569; background: #f1f5f9; }
+      .biz-brand-detail-wrap table.biz-brand-cat-table td { padding: 6px 8px; color: #1e293b; background: #fff; }
       .biz-brand-row { cursor: pointer; }
-      .biz-brand-row:hover { background: #334155; }
+      .biz-brand-row:hover { background: #e2e8f0; }
       .biz-brand-row.expanded .expand-icon { transform: rotate(90deg); }
       .biz-brand-cat-row { cursor: pointer; background: rgba(52,211,153,0.08); border-left: 4px solid #34d399; }
       .biz-brand-cat-row:hover { background: #334155; }
       .biz-brand-cat-row.expanded .expand-icon { transform: rotate(90deg); }
-      .biz-supplier-detail-wrap td { padding: 0; vertical-align: top; background: #1e293b; }
+      .biz-supplier-detail-wrap td { padding: 0; vertical-align: top; background: #f8fafc; }
       .biz-supplier-detail-wrap .biz-supplier-detail-inner { padding: 8px 12px 12px 32px; }
-      .biz-supplier-detail-wrap table.biz-supplier-cat-table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
-      .biz-supplier-detail-wrap table.biz-supplier-cat-table th { text-align: left; padding: 6px 8px; color: #94a3b8; }
-      .biz-supplier-detail-wrap table.biz-supplier-cat-table td { padding: 6px 8px; }
+      .biz-supplier-detail-wrap table.biz-supplier-cat-table { width: 100%; border-collapse: collapse; font-size: 0.9em; background: #fff; }
+      .biz-supplier-detail-wrap table.biz-supplier-cat-table th { text-align: left; padding: 6px 8px; color: #475569; background: #f1f5f9; }
+      .biz-supplier-detail-wrap table.biz-supplier-cat-table td { padding: 6px 8px; color: #1e293b; background: #fff; }
       .biz-supplier-row { cursor: pointer; }
-      .biz-supplier-row:hover { background: #334155; }
+      .biz-supplier-row:hover { background: #e2e8f0; }
       .biz-supplier-row.expanded .expand-icon { transform: rotate(90deg); }
       .biz-supplier-cat-row { cursor: pointer; background: rgba(168,85,247,0.08); border-left: 4px solid #a855f7; }
       .biz-supplier-cat-row:hover { background: #334155; }
       .biz-supplier-cat-row.expanded .expand-icon { transform: rotate(90deg); }
-      .biz-price-band-detail-wrap td { padding: 0; vertical-align: top; background: #1e293b; }
+      .biz-price-band-detail-wrap td { padding: 0; vertical-align: top; background: #f8fafc; }
       .biz-price-band-detail-wrap .biz-price-band-detail-inner { padding: 8px 12px 12px 32px; }
-      .biz-price-band-detail-wrap table.biz-price-band-cat-table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
-      .biz-price-band-detail-wrap table.biz-price-band-cat-table th { text-align: left; padding: 6px 8px; color: #94a3b8; }
-      .biz-price-band-detail-wrap table.biz-price-band-cat-table td { padding: 6px 8px; }
+      .biz-price-band-detail-wrap table.biz-price-band-cat-table { width: 100%; border-collapse: collapse; font-size: 0.9em; background: #fff; }
+      .biz-price-band-detail-wrap table.biz-price-band-cat-table th { text-align: left; padding: 6px 8px; color: #475569; background: #f1f5f9; }
+      .biz-price-band-detail-wrap table.biz-price-band-cat-table td { padding: 6px 8px; color: #1e293b; background: #fff; }
       .biz-price-band-row { cursor: pointer; }
-      .biz-price-band-row:hover { background: #334155; }
+      .biz-price-band-row:hover { background: #e2e8f0; }
       .biz-price-band-row.expanded .expand-icon { transform: rotate(90deg); }
       .biz-price-band-cat-row { cursor: pointer; background: rgba(236,72,153,0.08); border-left: 4px solid #ec4899; }
       .biz-price-band-cat-row:hover { background: #334155; }
@@ -311,16 +375,40 @@
       .page-panel .table-wrap::before { content: '← 左右滑动查看更多'; display: block; font-size: 0.7rem; color: #64748b; margin-bottom: 4px; }
     }
   </style>
+  <link rel="stylesheet" href="/static/css/mobile.css">
 </head>
-<body>
+<body class="has-bottom-nav">
+  <div class="navbar" id="mainNavbar">
+    <div class="navbar-brand">宝赞商业BI@振鸿</div>
+    <div class="navbar-user">
+      <button type="button" class="navbar-toggle" id="navbarToggle" aria-label="菜单">☰</button>
+    </div>
+    <div class="navbar-menu" id="navbarMenu">
+      <a href="/">返回看板</a>
+      <a href="/import">数据导入</a>
+      <a href="/labor">人力成本</a>
+      <a href="/labor_analysis">人力分析</a>
+      <a href="/product_master">商品档案</a>
+      <a href="/profit_share">收益评估</a>
+      <a href="/login">登录</a>
+      <a href="/api/auth/logout">退出</a>
+    </div>
+  </div>
   <div class="sticky-top">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+  <div id="adminReminderBar" style="display:none; margin-bottom:6px; padding:6px 10px; background: rgba(251,191,36,0.15); border: 1px solid #fbbf24; border-radius: 8px; font-size: 0.85rem;">
+    <span id="adminReminderText">管理员</span> <a href="/approval" id="adminReminderApprovalLink" style="color:#38bdf8; margin-left:8px;">去审批</a> · <a href="/admin" style="color:#38bdf8;">提醒页</a>
+  </div>
+  <div class="mobile-top-bar" style="display:none;">
+    <span class="mobile-title">宝赞商业BI@振鸿</span>
+    <button type="button" class="btn-filter" id="btnFilterToggleMobile" aria-label="筛选">筛选</button>
+  </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;" id="desktopHeaderRow">
     <div>
       <h1>好特卖沈阳超级仓运营看板</h1>
       <p class="subtitle" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">临期折扣零售 · 数据来自 MySQL htma_dashboard · <a href="/import" id="linkImport" style="color:#38bdf8;">数据导入</a> · <a href="/labor" id="linkLabor" style="color:#38bdf8;">人力成本</a> · <a href="/labor_analysis" id="linkLaborAnalysis" style="color:#38bdf8;">人力分析</a> · <a href="/product_master" id="linkProductMaster" style="color:#38bdf8;">商品档案</a> · <a href="/profit_share" id="linkProfitShare" style="color:#38bdf8;">收益评估</a>（与 KPI 周期无关） · <a href="/login" style="color:#38bdf8;">登录</a> <span id="authUserBar"></span></p>
     </div>
     <div style="display:flex;gap:8px;">
-      <button id="btnAiInsight" class="btn-ai" title="基于当前数据生成智能分析建议">
+      <button id="btnAiInsight" class="btn-ai" title="按当前筛选周期与品类生成建议，结论带 1、2、3 数据出处">
         <span class="btn-ai-icon">✨</span> AI 分析建议
       </button>
       <button id="btnMarketingReport" class="btn-ai" title="生成进销存营销报告并发送给余为军">
@@ -330,10 +418,11 @@
   </div>
 
   <div class="filter-bar">
-    <div class="filter-bar-toggle-row">
-      <span class="period-summary" id="filterPeriodSummary">KPI 周期：近30天</span>
-      <button type="button" class="btn-filter" id="btnFilterToggle" aria-label="展开或收起筛选">筛选 ▼</button>
+    <div class="filter-bar-toggle-row mobile-filter-header">
+      <span class="period-summary current-period" id="filterPeriodSummary">周期：近30天</span>
+      <button type="button" class="btn-filter filter-toggle-btn" id="btnFilterToggle" aria-label="展开或收起筛选">筛选 ▼</button>
     </div>
+    <div class="filter-bar-content-wrap" id="filterBarContentWrap">
     <div class="filter-bar-content" id="filterBarContent">
     <div class="period-tabs">
       <span class="tab-label">KPI 周期：</span>
@@ -344,14 +433,13 @@
       <button class="tab-btn" data-period="day">今日</button>
     </div>
     <div class="date-range-inline" id="dateRangeInline" style="display:none;">
-      <label for="startDate" style="cursor:pointer;">起止日期：</label>
+      <label for="startDate" style="cursor:pointer;">起：</label>
       <input type="date" id="startDate" aria-label="起始日期" tabindex="0" title="点击选择或输入 YYYY-MM-DD" />
       <span style="color:#64748b;">至</span>
       <input type="date" id="endDate" aria-label="结束日期" tabindex="0" title="点击选择或输入 YYYY-MM-DD" />
     </div>
     <span class="filter-sep">|</span>
-    <span id="categoryRowLarge"><label>大类：</label>
-    <select id="categoryLargeSelect">
+    <span id="categoryRowLarge"><select id="categoryLargeSelect">
       <option value="">全部大类</option>
     </select></span>
     <span id="categoryRowMid" class="filter-cascade" style="display:none;"><label>中类：</label>
@@ -367,6 +455,18 @@
       <option value="">全部商品</option>
     </select></span>
     <button class="btn-query" id="btnQuery">查询</button>
+    </div>
+    </div>
+  </div>
+
+  <div class="filter-drawer" id="filterDrawer" aria-hidden="true">
+    <div class="filter-drawer-backdrop drawer-mask" id="filterDrawerBackdrop"></div>
+    <div class="filter-drawer-panel drawer-panel">
+      <div class="filter-drawer-header drawer-header">
+        <span>筛选条件</span>
+        <button type="button" class="filter-drawer-close drawer-close" id="filterDrawerClose" aria-label="关闭">✕</button>
+      </div>
+      <div class="filter-drawer-body drawer-body" id="filterDrawerBody"></div>
     </div>
   </div>
 
@@ -387,6 +487,31 @@
   </div>
   </div>
 
+  <nav class="bottom-nav" id="bottomNav" aria-label="主导航">
+    <button type="button" class="bottom-nav-item active" data-page="overview"><span class="icon">📊</span>概览</button>
+    <button type="button" class="bottom-nav-item" data-page="category"><span class="icon">📈</span>排行</button>
+    <button type="button" class="bottom-nav-item" data-page="detail"><span class="icon">📋</span>明细</button>
+    <button type="button" class="bottom-nav-item" data-page="inventory"><span class="icon">⚠️</span>库存</button>
+    <button type="button" class="bottom-nav-item" data-page="more"><span class="icon">⋯</span>更多</button>
+  </nav>
+
+  <div id="moreDrawer" class="more-drawer" aria-hidden="true">
+    <div class="more-drawer-backdrop" id="moreDrawerBackdrop"></div>
+    <div class="more-drawer-panel">
+      <div class="more-drawer-header">
+        <span>更多</span>
+        <button type="button" class="more-drawer-close" id="moreDrawerClose" aria-label="关闭">&times;</button>
+      </div>
+      <div class="more-drawer-body">
+        <button type="button" class="more-drawer-item" data-page="tax">🧮 税率计算</button>
+        <button type="button" class="more-drawer-item" data-page="biz">📌 经营分析</button>
+        <button type="button" class="more-drawer-item" data-page="insight">🔍 消费洞察</button>
+        <a class="more-drawer-item" href="#" id="moreExportProduct" download="htma_商品明细.csv">导出商品</a>
+        <a class="more-drawer-item" href="#" id="moreExportCategory" download="htma_品类明细.csv">导出品类</a>
+      </div>
+    </div>
+  </div>
+
   <div id="priceCompareModal" class="modal-overlay" style="display:none;">
     <div class="modal-box" style="width:720px;">
       <div class="modal-header">
@@ -394,12 +519,33 @@
         <button class="modal-close" id="priceCompareModalClose">&times;</button>
       </div>
       <div class="modal-body">
-        <p style="font-size:0.85rem;color:#94a3b8;margin-bottom:12px;">以下为平台商品（来自 t_htma_platform_products），按大类、中类、小类分类，含规格、条码。确认后将对标京东/拼多多等平台执行比价（约1-3分钟）。</p>
+        <p style="font-size:0.85rem;color:#94a3b8;margin-bottom:8px;">以下为平台商品，按大类、中类、小类分类。请勾选要比价的商品，<strong>仅对勾选项</strong>执行比价（约1-3分钟）。</p>
+        <div id="priceCompareCapability" class="price-compare-capability" style="display:none;margin-bottom:12px;padding:10px 12px;background:rgba(30,58,138,0.15);border:1px solid #334155;border-radius:8px;font-size:0.8rem;color:#94a3b8;"></div>
+        <div style="margin-bottom:10px;">
+          <button type="button" class="tab-btn btn-query-inline" id="priceCompareSelectAll">全选</button>
+          <button type="button" class="tab-btn btn-query-inline" id="priceCompareSelectNone">取消全选</button>
+          <span id="priceCompareSelectedCount" style="font-size:0.85rem;color:#94a3b8;margin-left:12px;">已选 0 个</span>
+        </div>
         <div id="priceCompareProductList"></div>
       </div>
       <div class="modal-footer">
         <button class="tab-btn" id="priceCompareModalCancel">取消</button>
         <button class="btn-query" id="priceCompareExecute">确认执行比价</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="priceCompareDetailModal" class="modal-overlay" style="display:none;">
+    <div class="modal-box" style="width:680px;">
+      <div class="modal-header">
+        <h2 id="priceCompareDetailTitle">比价详情 · 价格趋势</h2>
+        <button type="button" class="modal-close" id="priceCompareDetailClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="priceCompareDetailLatest" class="table-wrap" style="margin-bottom:12px;"></div>
+        <h4 class="label" style="margin-bottom:6px;">价格趋势</h4>
+        <div id="priceCompareTrendChart" style="width:100%;height:220px;"></div>
+        <p id="priceCompareDetailEmpty" style="display:none;color:#64748b;font-size:0.85rem;">暂无历史比价数据，请先执行批量比价脚本。</p>
       </div>
     </div>
   </div>
@@ -412,28 +558,31 @@
         <span class="btn-ai-icon">📊</span> 比价
       </button>
     </div>
-    <div class="section" style="margin-top:8px;">
-      <h2>✨ AI 智能分析建议</h2>
+    <div class="section card" style="margin-top:8px;">
+      <h2>✨ AI 智能分析（数据驱动）</h2>
+      <p class="section-desc">基于当前筛选周期与品类，展示高毛利品类、销售集中度、低库存预警、毛利率趋势、动销、退货、周转与数据质量等可执行指标。</p>
+      <div id="aiEnhancedFilterBar" class="filter-bar" style="margin-bottom:8px;"></div>
       <div id="aiInsightContent"></div>
     </div>
     <div class="section" style="margin-top:8px;">
       <h2>📤 营销报告（发送给余为军，结果已存 MySQL）</h2>
       <div style="margin-bottom:8px;">
         <button id="btnGenReport" class="btn-query" style="padding:6px 14px;">生成并发送营销报告</button>
+        <div id="reportSendError" class="report-send-err" style="display:none;margin-top:6px;padding:6px 10px;background:rgba(248,113,113,0.15);border:1px solid #334155;border-radius:6px;font-size:0.8rem;color:#fca5a5;"></div>
       </div>
-      <div id="reportHistoryWrap">
-        <h3 style="font-size:0.85rem;color:#94a3b8;margin-bottom:4px;">历史报告</h3>
+      <div id="reportHistoryWrap" class="section-inner report-section-inner">
+        <h3>历史报告</h3>
         <div id="reportHistoryList" class="table-wrap" style="max-height:200px;overflow-y:auto;"></div>
-        <div id="reportDetailWrap" style="display:none;margin-top:8px;padding:8px;background:#0f172a;border-radius:6px;white-space:pre-wrap;font-size:0.8rem;max-height:300px;overflow-y:auto;"></div>
+        <div id="reportDetailWrap" class="report-detail-inner" style="display:none;margin-top:8px;white-space:pre-wrap;font-size:0.8rem;max-height:300px;overflow-y:auto;"></div>
       </div>
     </div>
     <div class="section" style="margin-top:8px;">
       <h2>💬 AI 对话（可操作洞察）</h2>
       <p style="font-size:0.8rem;color:#94a3b8;margin-bottom:8px;">针对报告提问，获取可执行建议。可问：销售突破500万营销怎么做？毛利提高到200万要哪些动作？哪些货品性价比高？负毛利怎么诊断？断货优先级？移动异业合作怎么落地？</p>
-      <div id="aiChatWrap" style="background:#0f172a;border-radius:8px;padding:8px;border:1px solid #334155;">
+      <div id="aiChatWrap" class="section-inner ai-chat-section-inner">
         <div id="aiChatMessages" style="max-height:180px;overflow-y:auto;min-height:60px;font-size:0.85rem;white-space:pre-wrap;margin-bottom:8px;"></div>
         <div style="display:flex;gap:8px;">
-          <input type="text" id="aiChatInput" placeholder="输入您的问题，如：负毛利怎么验证？" style="flex:1;padding:8px 12px;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#e2e8f0;font-size:0.9rem;" />
+          <input type="text" id="aiChatInput" placeholder="输入您的问题，如：负毛利怎么验证？" style="flex:1;padding:8px 12px;border-radius:6px;font-size:0.9rem;" />
           <button id="btnAiChatSend" class="btn-query" style="padding:8px 16px;">发送</button>
         </div>
       </div>
@@ -468,9 +617,9 @@
 
   <div class="chart-row">
     <div class="chart-box chart-box-trend">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-        <h3 style="margin:0;">品类销售额占比</h3>
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:0.85rem;color:#94a3b8;">
+      <div class="chart-box-header pie-chart-header">
+        <h3 class="chart-box-title">品类销售额占比</h3>
+        <label class="chart-box-toggle" for="pieShowData">
           <input type="checkbox" id="pieShowData" />
           <span>显示具体数据</span>
         </label>
@@ -604,6 +753,7 @@
       <button type="button" class="tab-btn insight-tab" data-insight-tab="brand">品牌与供应商</button>
       <button type="button" class="tab-btn insight-tab" data-insight-tab="price">价格与经销</button>
       <button type="button" class="tab-btn insight-tab" data-insight-tab="more">更多分析</button>
+      <button type="button" class="tab-btn insight-tab" data-insight-tab="advanced">高级查询</button>
     </div>
     <div id="insightTabOverview" class="insight-tab-panel active" data-insight-tab="overview">
     <div class="kpi-row" style="margin-bottom:12px;" id="insightKpiRow">
@@ -710,6 +860,64 @@
     </div>
     <h3 class="label" style="margin-top:12px;">退货率（按品类，有退货的品类）</h3>
     <div class="table-wrap"><table data-insight-table="returnByCat"><thead><tr><th class="insight-no">序号</th><th class="sortable" data-sort-key="category">品类</th><th class="num sortable" data-sort-key="sale_amount">销售额</th><th class="num sortable" data-sort-key="return_amount">退货额</th><th class="num sortable" data-sort-key="return_rate_pct">退货率%</th></tr></thead><tbody id="insightReturnByCatBody"></tbody></table></div>
+    </div>
+    <div id="insightTabAdvanced" class="insight-tab-panel" data-insight-tab="advanced">
+      <h3 class="label" style="margin-top:0;">高级查询 · 大额商品/智能筛选</h3>
+      <p class="section-desc">按价格区间、品牌、供应商、品类、库存状态筛选，数据周期与顶部 KPI 周期一致。</p>
+      <div id="advancedSearchPanel" class="section" style="margin-bottom:12px;padding:10px 12px;background:#1e293b;border:1px solid #334155;border-radius:8px;">
+        <div class="filter-bar" style="flex-wrap:wrap;gap:8px;">
+          <div class="filter-row" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <label style="color:#94a3b8;font-size:0.85rem;">价格区间(元)：</label>
+            <input type="number" id="advancedMinPrice" placeholder="最低价" min="0" step="0.01" style="width:90px;padding:6px 8px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;" />
+            <span style="color:#64748b;">~</span>
+            <input type="number" id="advancedMaxPrice" placeholder="最高价" min="0" step="0.01" style="width:90px;padding:6px 8px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;" />
+          </div>
+          <div class="filter-row" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <label style="color:#94a3b8;font-size:0.85rem;">品牌：</label>
+            <select id="advancedBrandSelect" multiple style="height:80px;min-width:120px;padding:4px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:0.8rem;"></select>
+          </div>
+          <div class="filter-row" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <label style="color:#94a3b8;font-size:0.85rem;">供应商：</label>
+            <select id="advancedSupplierSelect" multiple style="height:80px;min-width:120px;padding:4px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:0.8rem;"></select>
+          </div>
+          <div class="filter-row" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <label style="color:#94a3b8;font-size:0.85rem;">品类：</label>
+            <select id="advancedCategorySelect" multiple style="height:80px;min-width:120px;padding:4px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:0.8rem;"></select>
+          </div>
+          <div class="filter-row" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <label style="color:#94a3b8;font-size:0.85rem;">库存状态：</label>
+            <select id="advancedStockStatus" style="padding:6px 10px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:0.85rem;">
+              <option value="">全部</option>
+              <option value="in_stock">有库存</option>
+              <option value="out_stock">无库存</option>
+              <option value="low_stock">低库存(&lt;10)</option>
+            </select>
+          </div>
+          <div class="filter-row" style="display:flex;align-items:center;gap:8px;">
+            <button type="button" id="advancedSearchBtn" class="btn-query" style="padding:8px 16px;">查询</button>
+            <button type="button" id="advancedExportBtn" class="btn-export" style="padding:8px 16px;cursor:pointer;">导出</button>
+          </div>
+        </div>
+      </div>
+      <div class="table-wrap section scroll-table" style="overflow-x:auto;">
+        <table id="advancedResultTable" style="min-width:800px;">
+          <thead><tr>
+            <th class="sortable-th advanced-sort" data-sort="sku_code">SKU</th>
+            <th>品名</th>
+            <th>品牌</th>
+            <th>品类</th>
+            <th>供应商</th>
+            <th class="num sortable-th advanced-sort" data-sort="avg_price">平均单价(元)</th>
+            <th class="num sortable-th advanced-sort" data-sort="total_qty">销量</th>
+            <th class="num sortable-th advanced-sort" data-sort="sales_amount">销售额(元)</th>
+            <th class="num sortable-th advanced-sort" data-sort="stock_qty">库存</th>
+            <th class="num">周转天数</th>
+            <th>比价信息</th>
+          </tr></thead>
+          <tbody id="advancedResultBody"></tbody>
+        </table>
+      </div>
+      <div id="advancedPagination" class="pagination" style="margin-top:8px;"></div>
     </div>
   </div>
   </div>
@@ -1264,6 +1472,28 @@
           if (linkProductMaster && !canProductMaster) linkProductMaster.style.display = 'none';
           if (linkProfitShare && !canProfitShare) linkProfitShare.style.display = 'none';
           // 预留：后续可根据 canProfit 控制经营分析/AI 报告等入口
+        }
+      } catch (e) {}
+      loadAdminReminder();
+    }
+    async function loadAdminReminder() {
+      var bar = document.getElementById('adminReminderBar');
+      var textEl = document.getElementById('adminReminderText');
+      var approvalLink = document.getElementById('adminReminderApprovalLink');
+      if (!bar || !textEl) return;
+      try {
+        var r = await fetch(API + '/api/auth/pending_count');
+        if (!r.ok) return; // 404 等：接口未部署或需重启看板，不展示管理员条
+        var d = await r.json();
+        if (!d.success || !d.is_super_admin) return;
+        bar.style.display = 'block';
+        var n = d.pending_count || 0;
+        if (n > 0) {
+          textEl.textContent = '管理员：您有 ' + n + ' 条企业外用户访问申请待审批';
+          if (approvalLink) approvalLink.textContent = '去审批 (' + n + ')';
+        } else {
+          textEl.textContent = '管理员：暂无待审批';
+          if (approvalLink) approvalLink.textContent = '审批页';
         }
       } catch (e) {}
     }
@@ -2225,6 +2455,9 @@
           document.querySelectorAll('.insight-tab-panel').forEach(function(p) {
             p.classList.toggle('active', p.getAttribute('data-insight-tab') === tab);
           });
+          if (tab === 'advanced' && typeof loadAdvancedSearchOptions === 'function' && !window._advancedOptionsLoaded) {
+            loadAdvancedSearchOptions().then(function() { window._advancedOptionsLoaded = true; });
+          }
           setTimeout(resizeInsightCharts, 100);
         });
       });
@@ -2338,6 +2571,178 @@
           var g = granBtn.getAttribute('data-gran') || 'week';
           loadConsumerInsightTrend(g);
         }
+      });
+    })();
+
+    (function setupAdvancedSearch() {
+      var advancedPage = 1;
+      var advancedSortBy = 'sales_amount';
+      var advancedSortOrder = 'desc';
+      var advancedPageSize = 20;
+
+      function advancedSearchParams() {
+        var p = { period: currentPeriod || 'recent30', page: advancedPage, page_size: advancedPageSize, sort_by: advancedSortBy, sort_order: advancedSortOrder };
+        if (currentStartDate) p.start_date = currentStartDate;
+        if (currentEndDate) p.end_date = currentEndDate;
+        var minP = document.getElementById('advancedMinPrice');
+        var maxP = document.getElementById('advancedMaxPrice');
+        if (minP && minP.value && !isNaN(parseFloat(minP.value))) p.min_price = parseFloat(minP.value);
+        if (maxP && maxP.value && !isNaN(parseFloat(maxP.value))) p.max_price = parseFloat(maxP.value);
+        var brandSel = document.getElementById('advancedBrandSelect');
+        if (brandSel && brandSel.selectedOptions && brandSel.selectedOptions.length) p.brands = [].map.call(brandSel.selectedOptions, function(o) { return o.value; }).join(',');
+        var supSel = document.getElementById('advancedSupplierSelect');
+        if (supSel && supSel.selectedOptions && supSel.selectedOptions.length) p.suppliers = [].map.call(supSel.selectedOptions, function(o) { return o.value; }).join(',');
+        var catSel = document.getElementById('advancedCategorySelect');
+        if (catSel && catSel.selectedOptions && catSel.selectedOptions.length) p.categories = [].map.call(catSel.selectedOptions, function(o) { return o.value; }).join(',');
+        var stockEl = document.getElementById('advancedStockStatus');
+        if (stockEl && stockEl.value) p.stock_status = stockEl.value;
+        return p;
+      }
+
+      window.loadAdvancedSearchOptions = function() {
+        return fetch(API + '/api/consumer_insight/advanced_search_options', { credentials: 'include' })
+          .then(function(r) { return r.json(); })
+          .then(function(d) {
+            var brands = (d.brands || []);
+            var suppliers = (d.suppliers || []);
+            var categories = (d.categories || []);
+            var brandSel = document.getElementById('advancedBrandSelect');
+            var supSel = document.getElementById('advancedSupplierSelect');
+            var catSel = document.getElementById('advancedCategorySelect');
+            if (brandSel) { brandSel.innerHTML = brands.map(function(v) { return '<option value="' + (v || '').replace(/"/g, '&quot;') + '">' + (v || '').replace(/</g, '&lt;') + '</option>'; }).join(''); }
+            if (supSel) { supSel.innerHTML = suppliers.map(function(v) { return '<option value="' + (v || '').replace(/"/g, '&quot;') + '">' + (v || '').replace(/</g, '&lt;') + '</option>'; }).join(''); }
+            if (catSel) { catSel.innerHTML = categories.map(function(v) { return '<option value="' + (v || '').replace(/"/g, '&quot;') + '">' + (v || '').replace(/</g, '&lt;') + '</option>'; }).join(''); }
+          });
+      };
+
+      function fmtNum(n) { return n != null && !isNaN(n) ? Number(n).toLocaleString('zh-CN', { maximumFractionDigits: 2 }) : '-'; }
+
+      window.runAdvancedSearch = function(pageOne) {
+        if (pageOne) advancedPage = 1;
+        var params = advancedSearchParams();
+        var qs = Object.keys(params).map(function(k) { return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]); }).join('&');
+        var tbody = document.getElementById('advancedResultBody');
+        var paginationEl = document.getElementById('advancedPagination');
+        if (tbody) tbody.innerHTML = '<tr><td colspan="11" class="loading" style="padding:24px;color:#94a3b8;">查询中...</td></tr>';
+        fetch(API + '/api/consumer_insight/advanced_search?' + qs, { credentials: 'include' })
+          .then(function(r) { return r.json(); })
+          .then(function(res) {
+            var data = res.data || {};
+            var items = data.items || [];
+            var total = data.total || 0;
+            var page = data.page || 1;
+            var pageSize = data.page_size || 20;
+            if (tbody) {
+              if (items.length === 0) tbody.innerHTML = '<tr><td colspan="11" class="loading" style="padding:24px;color:#94a3b8;">无符合条件的数据</td></tr>';
+              else tbody.innerHTML = items.map(function(x) {
+                var pc = x.price_compare || {};
+                var tags = [];
+                ['taobao','jd','vip','pdd'].forEach(function(p) {
+                  if (pc[p] && pc[p].price != null) tags.push('<span class="platform-tag" style="display:inline-block;margin:2px 4px 2px 0;padding:2px 6px;border-radius:4px;background:#334155;color:#94a3b8;font-size:0.75rem;">' + (p === 'taobao' ? '淘宝' : p === 'jd' ? '京东' : p === 'vip' ? '唯品会' : '拼多多') + ' ¥' + fmtNum(pc[p].price) + '</span>');
+                });
+                var compareCell = tags.length ? tags.join('') + ' <a href="#" class="price-compare-history-link" data-sku="' + (x.sku_code || '').replace(/"/g, '&quot;') + '" style="font-size:0.75rem;color:#38bdf8;margin-left:4px;">📊 历史</a>' : '<span style="color:#64748b;font-size:0.8rem;">-</span>';
+                return '<tr><td>' + (x.sku_code || '').replace(/</g, '&lt;') + '</td><td>' + (x.product_name || '').replace(/</g, '&lt;') + '</td><td>' + (x.brand || '').replace(/</g, '&lt;') + '</td><td>' + (x.category || '').replace(/</g, '&lt;') + '</td><td>' + (x.supplier || '').replace(/</g, '&lt;') + '</td><td class="num">' + fmtNum(x.avg_unit_price) + '</td><td class="num">' + fmtNum(x.total_qty) + '</td><td class="num">' + fmtNum(x.total_sales) + '</td><td class="num">' + fmtNum(x.stock_qty) + '</td><td class="num">' + fmtNum(x.stock_turnover_days) + '</td><td class="price-compare-cell">' + compareCell + '</td></tr>';
+              }).join('');
+              tbody.querySelectorAll('.price-compare-history-link').forEach(function(a) {
+                a.addEventListener('click', function(e) { e.preventDefault(); if (window.showPriceDetail) window.showPriceDetail(a.getAttribute('data-sku')); });
+              });
+            }
+            var totalPages = Math.max(1, Math.ceil(total / pageSize));
+            if (paginationEl) {
+              var html = '<span style="color:#94a3b8;">共 ' + total + ' 条</span> ';
+              if (page > 1) html += '<button type="button" data-adv-page="' + (page - 1) + '">上一页</button> ';
+              html += '<span style="margin:0 8px;">第 ' + page + ' / ' + totalPages + ' 页</span> ';
+              if (page < totalPages) html += '<button type="button" data-adv-page="' + (page + 1) + '">下一页</button>';
+              paginationEl.innerHTML = html;
+              paginationEl.querySelectorAll('button[data-adv-page]').forEach(function(btn) {
+                btn.addEventListener('click', function() { advancedPage = parseInt(btn.getAttribute('data-adv-page'), 10); runAdvancedSearch(false); });
+              });
+            }
+          })
+          .catch(function() { if (tbody) tbody.innerHTML = '<tr><td colspan="11" class="error" style="padding:24px;">请求失败</td></tr>'; });
+      };
+
+      var searchBtn = document.getElementById('advancedSearchBtn');
+      if (searchBtn) searchBtn.addEventListener('click', function() { runAdvancedSearch(true); });
+      document.querySelectorAll('.advanced-sort').forEach(function(th) {
+        th.addEventListener('click', function() {
+          var sort = th.getAttribute('data-sort');
+          if (!sort) return;
+          advancedSortOrder = (advancedSortBy === sort && advancedSortOrder === 'desc') ? 'asc' : 'desc';
+          advancedSortBy = sort;
+          runAdvancedSearch(false);
+        });
+      });
+      var exportBtn = document.getElementById('advancedExportBtn');
+      if (exportBtn) exportBtn.addEventListener('click', function() {
+        var params = advancedSearchParams();
+        params.page = 1;
+        params.page_size = 5000;
+        var qs = Object.keys(params).map(function(k) { return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]); }).join('&');
+        window.open(API + '/api/consumer_insight/advanced_search?' + qs + '&export=1', '_blank');
+      });
+
+      window.showPriceDetail = function(skuCode) {
+        if (!skuCode) return;
+        var modal = document.getElementById('priceCompareDetailModal');
+        var titleEl = document.getElementById('priceCompareDetailTitle');
+        var latestEl = document.getElementById('priceCompareDetailLatest');
+        var chartEl = document.getElementById('priceCompareTrendChart');
+        var emptyEl = document.getElementById('priceCompareDetailEmpty');
+        if (!modal || !latestEl) return;
+        titleEl.textContent = '比价详情 · 加载中...';
+        latestEl.innerHTML = '';
+        emptyEl.style.display = 'none';
+        if (chartEl) chartEl.innerHTML = '';
+        modal.style.display = 'flex';
+        fetch(API + '/api/price_compare/history?sku_code=' + encodeURIComponent(skuCode) + '&days=30', { credentials: 'include' })
+          .then(function(r) { return r.json(); })
+          .then(function(d) {
+            var name = (d.product_name || skuCode || '').replace(/</g, '&lt;');
+            titleEl.textContent = '比价详情 · ' + (name || skuCode);
+            var latest = d.latest || {};
+            if (Object.keys(latest).length) {
+              var rows = [];
+              var platformNames = { taobao: '淘宝', jd: '京东', vip: '唯品会', pdd: '拼多多' };
+              for (var p in latest) {
+                var v = latest[p];
+                rows.push('<tr><td>' + (platformNames[p] || p) + '</td><td class="num">' + (v.price != null ? '¥' + Number(v.price).toLocaleString() : '-') + '</td><td class="num">' + (v.original_price != null ? '¥' + Number(v.original_price).toLocaleString() : '-') + '</td><td>' + (v.promotion || '-').replace(/</g, '&lt;') + '</td><td class="num">' + (v.good_rate != null ? v.good_rate + '%' : '-') + '</td><td style="font-size:0.8rem;color:#64748b;">' + (v.capture_date || '-') + '</td></tr>');
+              }
+              latestEl.innerHTML = '<table><thead><tr><th>平台</th><th class="num">当前价</th><th class="num">原价</th><th>促销</th><th class="num">好评率</th><th>抓取时间</th></tr></thead><tbody>' + rows.join('') + '</tbody></table>';
+            } else {
+              latestEl.innerHTML = '<p style="color:#64748b;font-size:0.85rem;">暂无最新比价</p>';
+            }
+            var history = d.history || [];
+            if (history.length && typeof echarts !== 'undefined' && chartEl) {
+              var byPlatform = {};
+              history.forEach(function(h) {
+                var p = h.platform || 'other';
+                if (!byPlatform[p]) byPlatform[p] = [];
+                byPlatform[p].push([h.capture_date, h.price]);
+              });
+              var series = [];
+              var platformNames = { taobao: '淘宝', jd: '京东', vip: '唯品会', pdd: '拼多多' };
+              var colors = { taobao: '#ff6700', jd: '#e4393c', vip: '#df2d2d', pdd: '#e02e24' };
+              Object.keys(byPlatform).forEach(function(p) {
+                series.push({ name: platformNames[p] || p, type: 'line', data: byPlatform[p], itemStyle: { color: colors[p] } });
+              });
+              var chart = echarts.init(chartEl);
+              chart.setOption({ tooltip: { trigger: 'axis' }, legend: { data: series.map(function(s) { return s.name; }), bottom: 0 }, grid: { left: '3%', right: '4%', bottom: '15%', top: 10, containLabel: true }, xAxis: { type: 'time' }, yAxis: { type: 'value', name: '价格(元)' }, series: series });
+            } else {
+              emptyEl.style.display = 'block';
+            }
+          })
+          .catch(function() {
+            titleEl.textContent = '比价详情 · 请求失败';
+            latestEl.innerHTML = '<p style="color:#f87171;">加载失败</p>';
+            emptyEl.style.display = 'block';
+          });
+      };
+      document.getElementById('priceCompareDetailClose').addEventListener('click', function() {
+        document.getElementById('priceCompareDetailModal').style.display = 'none';
+      });
+      document.getElementById('priceCompareDetailModal').addEventListener('click', function(e) {
+        if (e.target === this) this.style.display = 'none';
       });
     })();
 
@@ -3409,28 +3814,105 @@
       Promise.all([loadKpi(), loadPie(), loadBar(), loadCategoryRank(), loadProfitDetail(), loadTrendAnalysis(), loadDowChart()]);
     }
 
+    function enhancedInsightParams() {
+      var period = (currentPeriod || 'recent30').toString();
+      var days = 30;
+      if (period === 'recent7') days = 7;
+      else if (period === 'today') days = 1;
+      else if (period === 'this_week') days = 7;
+      else if (period === 'this_month') days = 30;
+      else if (period === 'recent30') days = 30;
+      var cat = (currentCategoryLargeCode || '').trim() || '';
+      return 'period=' + encodeURIComponent(days) + (cat ? '&category=' + encodeURIComponent(cat) : '');
+    }
+
+    function renderEnhancedCards(data) {
+      if (!data || data.error) return '<p class="loading">暂无增强分析数据</p>';
+      var html = [];
+      var d = data;
+      if (d.high_margin_cats && d.high_margin_cats.length) {
+        var rows = d.high_margin_cats.slice(0, 5).map(function(r) {
+          return '<tr><td>' + (r.name || '').replace(/</g,'&lt;') + '</td><td class="num">' + (r.margin_pct != null ? r.margin_pct + '%' : '-') + '</td><td class="num">' + fmtMoney(r.sale_amount) + '</td><td class="num">' + fmtMoney(r.profit_amount) + '</td></tr>';
+        }).join('');
+        html.push('<div class="insight-card success"><div class="title">高毛利优势品类</div><div class="desc">毛利率≥35% 且销售额>5000 的 Top5</div><div class="table-wrap"><table><thead><tr><th>品类</th><th class="num">毛利率</th><th class="num">销售额</th><th class="num">毛利额</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>');
+      }
+      if (d.sales_concentration) {
+        var sc = d.sales_concentration;
+        html.push('<div class="insight-card info"><div class="title">销售集中度分析</div><div class="desc">前 <strong>' + (sc.core_cats_80 || 0) + '</strong> 个品类贡献约80%销售额，共 <strong>' + (sc.total_cats || 0) + '</strong> 个品类。</div><div class="action">可聚焦头部品类做精细化运营</div></div>');
+      }
+      if (d.low_stock_alert && (d.low_stock_alert.total_low > 0 || d.low_stock_alert.with_sale_risk > 0)) {
+        var la = d.low_stock_alert;
+        html.push('<div class="insight-card warning"><div class="title">低库存预警</div><div class="desc">库存&lt;50 的 SKU 共 <strong>' + (la.total_low || 0) + '</strong> 个，其中近30天有动销（断货风险）<strong>' + (la.with_sale_risk || 0) + '</strong> 个。</div><div class="action">建议及时补货，优先保障畅销品</div></div>');
+      }
+      if (d.margin_trend) {
+        var mt = d.margin_trend;
+        var trendText = mt.trend === 'up' ? '环比上升' : (mt.trend === 'down' ? '环比下降' : '基本稳定');
+        var vs = mt.vs_last_month != null ? (mt.vs_last_month >= 0 ? '+' : '') + mt.vs_last_month + '%' : '';
+        html.push('<div class="insight-card ' + (mt.trend === 'up' ? 'success' : mt.trend === 'down' ? 'warning' : 'info') + '"><div class="title">毛利率表现</div><div class="desc">近90天平均 ' + (mt.avg_margin_90 != null ? mt.avg_margin_90 + '%' : '-') + '，近30天平均 ' + (mt.avg_margin_30 != null ? mt.avg_margin_30 + '%' : '-') + (vs ? '，环比 ' + vs : '') + '，' + trendText + '。</div></div>');
+      }
+      if (d.sell_through) {
+        var st = d.sell_through;
+        html.push('<div class="insight-card info"><div class="title">动销表现</div><div class="desc">动销 SKU <strong>' + (st.active_sku || 0) + '</strong> / 总 SKU <strong>' + (st.total_sku || 0) + '</strong>，动销率 ' + (st.rate_pct != null ? st.rate_pct + '%' : '-') + '；近30天无销售 <strong>' + (st.stale_sku || 0) + '</strong> 个。</div></div>');
+      }
+      if (d.return_top3 && (d.return_top3.return_rate_pct > 0 || (d.return_top3.top3 && d.return_top3.top3.length))) {
+        var rt = d.return_top3;
+        var top3Html = (rt.top3 && rt.top3.length) ? rt.top3.map(function(r) { return (r.category || '').replace(/</g,'&lt;') + ' ' + (r.return_amount != null ? fmtMoney(r.return_amount) : '') + ' (' + (r.pct != null ? r.pct : 0) + '%)'; }).join('；') : '';
+        html.push('<div class="insight-card info"><div class="title">退货与退换</div><div class="desc">近30天退货率 <strong>' + (rt.return_rate_pct != null ? rt.return_rate_pct + '%' : '-') + '</strong>，退货额 ' + fmtMoney(rt.return_amount) + '。Top3 品类：' + (top3Html || '-') + '</div></div>');
+      }
+      if (d.turnover && (d.turnover.turnover_days != null || d.turnover.stock_amount > 0)) {
+        var to = d.turnover;
+        html.push('<div class="insight-card ' + (to.turnover_days != null && to.turnover_days > 60 ? 'warning' : 'info') + '"><div class="title">库存周转</div><div class="desc">按近30天销速估算周转天数 <strong>' + (to.turnover_days != null ? to.turnover_days + ' 天' : '-') + '</strong>，库存总额 ' + fmtMoney(to.stock_amount) + '。</div><div class="action">' + (to.turnover_days != null && to.turnover_days > 60 ? '建议控制进货节奏、加快周转' : '') + '</div></div>');
+      }
+      if (d.data_quality && (d.data_quality.missing_cost > 0 || d.data_quality.missing_price > 0 || d.data_quality.multi_category > 0)) {
+        var dq = d.data_quality;
+        html.push('<div class="insight-card warning"><div class="title">数据质量</div><div class="desc">成本缺失 <strong>' + (dq.missing_cost || 0) + '</strong> 条，售价缺失 <strong>' + (dq.missing_price || 0) + '</strong> 条，同 SKU 多品类 <strong>' + (dq.multi_category || 0) + '</strong> 条。</div><div class="action">建议在经营分析-数据质量中补全</div></div>');
+      }
+      if (d.price_compare_alerts && d.price_compare_alerts.length) {
+        d.price_compare_alerts.forEach(function(a) {
+          var type = (a.type === 'warning' ? 'warning' : 'info');
+          html.push('<div class="insight-card ' + type + '"><div class="title">' + (a.title || '比价提醒').replace(/</g,'&lt;') + '</div><div class="desc">' + (a.desc || '').replace(/</g,'&lt;') + '</div><div class="action">' + (a.action || '').replace(/</g,'&lt;') + '</div></div>');
+        });
+      }
+      return html.length ? html.join('') : '<p class="loading">当前条件下暂无分析指标，请调整筛选或导入数据</p>';
+    }
+
     async function loadAiInsight() {
       const btn = document.getElementById('btnAiInsight');
       const section = document.getElementById('aiInsightSection');
       const content = document.getElementById('aiInsightContent');
+      const filterBar = document.getElementById('aiEnhancedFilterBar');
       if (!btn || !section || !content) return;
       btn.disabled = true;
       btn.innerHTML = '<span class="btn-ai-icon">⏳</span> 分析中...';
+      if (filterBar) filterBar.innerHTML = '<span class="tab-label">当前筛选：</span><span id="aiFilterSummary">近30天 · 全部大类</span> <button type="button" class="tab-btn btn-query-inline" id="aiInsightRefresh">刷新</button>';
       try {
-        const r = await fetch(API + '/api/insights?' + queryParams());
+        const q = enhancedInsightParams();
+        const r = await fetch(API + '/api/enhanced_insights?' + q);
         const d = await r.json();
-        const insights = d.insights || [];
-        section.style.display = insights.length ? 'block' : 'none';
-        content.innerHTML = insights.length === 0
-          ? '<p class="loading">暂无分析建议，请先导入数据</p>'
-          : insights.map(i => `<div class="insight-card ${i.type || 'info'}">
-            <div class="title">${(i.title || '').replace(/</g,'&lt;')}</div>
-            <div class="desc">${(i.desc || '').replace(/</g,'&lt;')}</div>
-            <div class="action">${(i.action || '').replace(/</g,'&lt;')}</div>
-          </div>`).join('');
+        section.style.display = 'block';
+        if (d && d.success && d.data) {
+          content.innerHTML = renderEnhancedCards(d.data);
+          if (document.getElementById('aiInsightRefresh')) {
+            document.getElementById('aiInsightRefresh').onclick = function() { loadAiInsight(); };
+          }
+        } else {
+          const legacyR = await fetch(API + '/api/structured_report?' + queryParams());
+          const legacyD = await legacyR.json();
+          let insights = [];
+          if (legacyD && legacyD.code === 0 && legacyD.data && legacyD.data.summary && Array.isArray(legacyD.data.summary.insights)) {
+            insights = legacyD.data.summary.insights;
+          }
+          content.innerHTML = insights.length === 0
+            ? '<p class="loading">暂无分析建议，请先导入数据或调整筛选条件</p>'
+            : insights.map(function(i) {
+                var sources = (i.sources && Array.isArray(i.sources) && i.sources.length) ? i.sources : [];
+                var sourcesHtml = sources.length ? '<div class="insight-sources" style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(148,163,184,0.2);font-size:0.75rem;color:#94a3b8;">' + sources.map(function(s) { return (s + '').replace(/</g,'&lt;'); }).join('<br/>') + '</div>' : '';
+                return '<div class="insight-card ' + (i.type || 'info') + '"><div class="title">' + (i.title || '').replace(/</g,'&lt;') + '</div><div class="desc">' + (i.desc || '').replace(/</g,'&lt;') + '</div><div class="action">' + (i.action || '').replace(/</g,'&lt;') + '</div>' + sourcesHtml + '</div>';
+              }).join('');
+        }
         section.scrollIntoView({ behavior: 'smooth', block: 'start' });
       } catch (e) {
-        content.innerHTML = '<p class="error">加载失败: ' + (e.message || '网络错误') + '。请确认服务已启动（npm run htma:run）</p>';
+        content.innerHTML = '<p class="error">加载失败: ' + (e.message || '网络错误').replace(/</g,'&lt;') + '。请确认服务已启动。</p>';
         section.style.display = 'block';
       }
       btn.disabled = false;
@@ -3446,20 +3928,24 @@
         if (!r.ok) throw new Error(data?.error || '加载失败');
         const items = Array.isArray(data) ? data : (data?.items || []);
         listEl.innerHTML = items.length === 0
-          ? '<p class="loading" style="padding:12px;color:#64748b;">暂无历史报告，点击上方按钮生成</p>'
-          : '<table><thead><tr><th>日期</th><th>时间</th><th>接收人</th><th>状态</th><th></th></tr></thead><tbody>' +
-            items.map(x => `<tr>
+          ? '<p class="loading" style="padding:12px;color:#94a3b8;">暂无历史报告，点击上方按钮生成</p>'
+          : '<table class="report-history-table"><thead><tr><th>日期</th><th>时间</th><th>接收人</th><th>状态</th><th></th></tr></thead><tbody>' +
+            items.map(x => {
+              const err = (x.send_error || '').replace(/</g,'&lt;').slice(0,80);
+              const statusHtml = x.send_status ? '<span class="report-status-ok">✓已发送</span>' : ('<span class="report-status-fail" title="' + err + '">✗失败</span>' + (err ? ' <span class="report-status-err" title="' + err + '">' + err + '</span>' : ''));
+              return `<tr>
               <td>${x.report_date || '-'}</td>
               <td>${(x.report_time || '').slice(11,19)}</td>
               <td>${(x.feishu_at_user_name || '-').replace(/</g,'&lt;')}</td>
-              <td>${x.send_status ? '✓已发送' : '✗失败'}</td>
+              <td>${statusHtml}</td>
               <td><a href="#" class="btn-view-report" data-id="${x.id}">查看</a></td>
-            </tr>`).join('') + '</tbody></table>';
+            </tr>`;
+            }).join('') + '</tbody></table>';
         listEl.querySelectorAll('.btn-view-report').forEach(a => {
           a.addEventListener('click', (e) => { e.preventDefault(); loadReportDetail(parseInt(a.dataset.id)); });
         });
       } catch (e) {
-        listEl.innerHTML = '<p class="error" style="padding:12px;">加载失败，请先执行 scripts/06_create_report_log.sql 创建表</p>';
+        listEl.innerHTML = '<p class="loading" style="padding:12px;color:#94a3b8;">暂无历史报告或表结构需升级（执行 scripts/06_create_report_log.sql）</p>';
       }
     }
 
@@ -3482,11 +3968,18 @@
       if (!btn) return;
       btn.disabled = true;
       btn.textContent = '生成中...';
+      const errEl = document.getElementById('reportSendError');
+      if (errEl) errEl.style.display = 'none';
       try {
         const r = await fetch(API + '/api/marketing_report?send=1');
         const d = await r.json();
         if (d.success) {
           btn.textContent = d.feishu_ok ? '✓ 已发送并保存' : '已保存（飞书发送失败）';
+          if (!d.feishu_ok && d.feishu_error && errEl) {
+            errEl.textContent = '飞书发送失败: ' + d.feishu_error;
+            errEl.style.display = 'block';
+          }
+          if (d.feishu_ok && errEl) errEl.style.display = 'none';
           loadReportHistory();
           const detailWrap = document.getElementById('reportDetailWrap');
           if (detailWrap) { detailWrap.style.display = 'block'; detailWrap.textContent = d.report || ''; }
@@ -3540,14 +4033,21 @@
     async function onPriceCompareClick() {
       const modal = document.getElementById('priceCompareModal');
       const listEl = document.getElementById('priceCompareProductList');
+      const capEl = document.getElementById('priceCompareCapability');
       if (!modal || !listEl) return;
       showAiSection();
       modal.style.display = 'flex';
       listEl.innerHTML = '<p class="loading" style="padding:24px;">加载商品列表...</p>';
+      if (capEl) capEl.style.display = 'none';
       try {
-        const r = await fetch(API + '/api/price_compare_products?days=30&limit=300');
-        const d = await r.json();
+        const [productsRes, capabilityRes] = await Promise.all([
+          fetch(API + '/api/price_compare_products?days=30&limit=300'),
+          fetch(API + '/api/price_compare/capability')
+        ]);
+        const d = await productsRes.json();
         if (!d.success) throw new Error(d.error || '加载失败');
+        var cap = null;
+        try { cap = await capabilityRes.json(); } catch (e) {}
         const groups = d.groups || {};
         let html = '';
         for (const [large, midMap] of Object.entries(groups)) {
@@ -3556,9 +4056,10 @@
             html += '<div class="cat-mid">' + (mid || '未分类').replace(/</g,'&lt;') + '</div>';
             for (const [small, items] of Object.entries(smallMap)) {
               html += '<div class="cat-small">' + (small || '未分类').replace(/</g,'&lt;') + '</div>';
-              html += '<table><thead><tr><th>品名</th><th>规格</th><th>条码</th><th>售价</th><th>销量</th></tr></thead><tbody>';
+              html += '<table><thead><tr><th style="width:36px;"><input type="checkbox" class="price-compare-check-all" title="本小类全选" /></th><th>品名</th><th>规格</th><th>条码</th><th>售价</th><th>销量</th></tr></thead><tbody>';
               for (const it of items) {
-                html += '<tr><td>' + (it.raw_name || '').replace(/</g,'&lt;').slice(0,20) + '</td><td>' + (it.spec || '-').replace(/</g,'&lt;') + '</td><td>' + (it.barcode || '-').replace(/</g,'&lt;') + '</td><td class="num">' + (it.unit_price || 0) + '</td><td class="num">' + (it.sale_qty || 0) + '</td></tr>';
+                var sku = (it.sku_code || '').replace(/</g,'&lt;');
+                html += '<tr><td><input type="checkbox" class="price-compare-check" data-sku="' + sku + '" /></td><td>' + (it.raw_name || '').replace(/</g,'&lt;').slice(0,20) + '</td><td>' + (it.spec || '-').replace(/</g,'&lt;') + '</td><td>' + (it.barcode || '-').replace(/</g,'&lt;') + '</td><td class="num">' + (it.unit_price || 0) + '</td><td class="num">' + (it.sale_qty || 0) + '</td></tr>';
               }
               html += '</tbody></table>';
             }
@@ -3566,10 +4067,57 @@
           html += '</div>';
         }
         listEl.innerHTML = html || '<p class="loading" style="padding:24px;">暂无符合条件商品</p>';
-        listEl.innerHTML += '<p style="font-size:0.8rem;color:#64748b;margin-top:12px;">共 ' + (d.total || 0) + ' 个商品</p>';
+        listEl.innerHTML += '<p style="font-size:0.8rem;color:#64748b;margin-top:12px;">共 ' + (d.total || 0) + ' 个商品，请勾选要比价的商品后点击「确认执行比价」</p>';
+        if (capEl && cap && (cap.supported_platforms || cap.data_format_note)) {
+          function renderCapability(c) {
+            var h = '<strong>Runner 多平台支持</strong>：' + (c.supported_platforms && c.supported_platforms.length ? c.supported_platforms.join('、') : '京东、淘宝、拼多多、唯品会、百度、百度优选');
+            if (c.data_format_note) h += '。<br/><strong>数据格式</strong>：' + (c.data_format_note || '').replace(/</g,'&lt;');
+            if (c.current_source) h += '<br/><span style="color:#67e8a9;">当前数据来源</span>：' + (c.current_source === 'baidu_skill' ? '百度 Skill（clawhub run/网关）' : c.current_source === 'baidu_youxuan_mcp' ? '百度优选 MCP（回退）' : c.current_source);
+            else h += '<br/><a href="#" class="price-compare-check-source" style="color:#7dd3fc;">检测当前数据来源</a>（约 10–25 秒）';
+            h += '<br/><span style="font-size:0.75rem;color:#64748b;">若需京东/淘宝分平台比价：在项目根执行 <code>bash scripts/setup_full_openclaw_baidu_skill.sh</code>，按提示完成 OpenClaw 与百度 Skill 配置。</span>';
+            return h;
+          }
+          capEl.innerHTML = renderCapability(cap);
+          capEl.style.display = 'block';
+          capEl.querySelector('.price-compare-check-source') && capEl.querySelector('.price-compare-check-source').addEventListener('click', function(e) {
+            e.preventDefault();
+            var link = this;
+            link.textContent = '检测中…';
+            link.style.pointerEvents = 'none';
+            fetch(API + '/api/price_compare/capability?check_runner=1').then(function(r) { return r.json(); }).then(function(c) {
+              cap.supported_platforms = c.supported_platforms || cap.supported_platforms;
+              cap.data_format_note = c.data_format_note || cap.data_format_note;
+              cap.current_source = c.current_source;
+              capEl.innerHTML = renderCapability(cap);
+            }).catch(function() {
+              link.textContent = '检测失败，重试';
+              link.style.pointerEvents = 'auto';
+            });
+          });
+        }
+        updatePriceCompareSelectedCount();
+        listEl.querySelectorAll('.price-compare-check').forEach(function(cb) {
+          cb.addEventListener('change', updatePriceCompareSelectedCount);
+        });
+        listEl.querySelectorAll('.price-compare-check-all').forEach(function(cb) {
+          cb.addEventListener('change', function() {
+            var table = cb.closest('table');
+            if (!table) return;
+            table.querySelectorAll('.price-compare-check').forEach(function(c) { c.checked = cb.checked; });
+            updatePriceCompareSelectedCount();
+          });
+        });
       } catch (e) {
         listEl.innerHTML = '<p class="error">加载失败: ' + (e.message || '').replace(/</g,'&lt;') + '</p>';
       }
+    }
+
+    function updatePriceCompareSelectedCount() {
+      const cntEl = document.getElementById('priceCompareSelectedCount');
+      if (!cntEl) return;
+      const listEl = document.getElementById('priceCompareProductList');
+      const checked = listEl ? listEl.querySelectorAll('.price-compare-check:checked').length : 0;
+      cntEl.textContent = '已选 ' + checked + ' 个';
     }
 
     function closePriceCompareModal() {
@@ -3580,13 +4128,19 @@
     async function executePriceCompare() {
       const btn = document.getElementById('priceCompareExecute');
       if (!btn) return;
+      const listEl = document.getElementById('priceCompareProductList');
+      const selected = listEl ? Array.from(listEl.querySelectorAll('.price-compare-check:checked')).map(function(c) { return c.getAttribute('data-sku'); }).filter(Boolean) : [];
+      if (selected.length === 0) {
+        alert('请至少勾选一个要比价的商品后再执行。');
+        return;
+      }
       btn.disabled = true;
       btn.textContent = '执行中（约1-3分钟）...';
       try {
         const r = await fetch(API + '/api/price_compare', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ days: 30 })
+          body: JSON.stringify({ days: 30, sku_codes: selected })
         });
         const d = await r.json();
         if (d.success) {
@@ -3598,15 +4152,44 @@
             if (d.all_exclusive_hint || d.fetcher_error) {
               html += '<div class="section" style="background:#451a03;color:#fcd34d;padding:10px 12px;border-radius:8px;margin-bottom:10px;font-size:0.85rem;">';
               html += '<strong>商品比较环节说明：</strong>当前未获取到竞品价格（京东/淘宝），全部显示为「独家款」。';
-              if (d.fetcher_error) html += '<br/>接口预检：' + (d.fetcher_error || '').replace(/</g,'&lt;');
-              html += '<br/>请检查 .env 中 ONEBOUND_KEY/ONEBOUND_SECRET 或 PDD_HOJINGKE_APIKEY，以及万邦/蚂蚁星球控制台是否已开通对应接口。';
+              var plat = (d.fetcher_platform || '').trim();
+              if (plat.indexOf('百度') !== -1) {
+                html += '<br/>当前使用<strong>百度 Skill</strong>比价（仅网关或 clawhub run，无其它数据源）。若仍全部为独家款，请确认：1) OpenClaw 网关已启动且已执行 <code>bash scripts/setup_openclaw_baidu_tools.sh</code> 并重启网关；或 2) 本机 PATH 中含 <code>clawhub</code> 且已安装百度比价 Skill（如 baidu-preferred）。详见 docs/百度Skill比价环境说明.md。';
+              } else if (plat === '未配置' || !plat) {
+                html += '<br/>当前未接入可用竞品接口（或万邦 Key 已过期）。请优先使用<strong>百度 Skill</strong>：在 OpenClaw 仪表盘安装并启用 <code>baidu-preferred</code>（见 docs/百度Skill比价环境说明.md）；或配置有效的 ONEBOUND_KEY/万邦控制台。';
+              } else {
+                if (d.fetcher_error) html += '<br/>接口预检：' + (d.fetcher_error || '').replace(/</g,'&lt;');
+                html += '<br/>请检查 .env 中 ONEBOUND_KEY/ONEBOUND_SECRET 或 PDD_HOJINGKE_APIKEY，以及万邦/蚂蚁星球控制台是否已开通对应接口。';
+                html += '<br/>或改用<strong>百度 Skill</strong>：在 OpenClaw 仪表盘安装并启用 <code>baidu-preferred</code>（见 docs/百度Skill比价环境说明.md）。';
+              }
               html += '</div>';
+            }
+            // 本次数据来源与返回平台（若接口返回则展示）
+            const priceSources = d.price_sources || [];
+            const platformsReturned = d.platforms_returned || [];
+            const supportedPlatforms = d.supported_platforms || [];
+            const dataFormatNote = d.data_format_note || '';
+            if (priceSources.length > 0 || platformsReturned.length > 0) {
+              html += '<p style="font-size:0.8rem;color:#94a3b8;margin-bottom:6px;">';
+              if (priceSources.length > 0) {
+                var srcLabels = priceSources.map(function(s){ return s === 'baidu_skill' ? '百度 Skill（clawhub run/网关）' : s === 'baidu_youxuan_mcp' ? '百度优选 MCP' : s; });
+                html += '<strong>本次数据来源</strong>：' + srcLabels.join('、') + '。';
+              }
+              if (platformsReturned.length > 0) html += ' <strong>本次返回平台</strong>：' + platformsReturned.join('、') + '。';
+              html += '</p>';
+            }
+            if (supportedPlatforms.length > 0 || dataFormatNote) {
+              html += '<p style="font-size:0.75rem;color:#64748b;margin-bottom:8px;">';
+              if (supportedPlatforms.length > 0) html += 'Runner 支持平台：' + supportedPlatforms.join('、') + '。';
+              if (dataFormatNote) html += ' 数据格式：' + dataFormatNote.replace(/</g,'&lt;').slice(0, 120) + (dataFormatNote.length > 120 ? '…' : '');
+              html += '</p>';
             }
             // 确保 items 存在且为数组
             const items = Array.isArray(d.items) ? d.items : [];
             if (items.length > 0) {
               html += '<p style="font-size:0.8rem;color:#94a3b8;margin-bottom:8px;">好特卖超级仓商品 vs 京东/淘宝价格（共 ' + items.length + ' 条，已实体化保存）</p>';
-              html += '<div class="section scroll-table" style="margin-bottom:10px;"><div class="table-wrap" style="max-height:360px;overflow:auto;"><table><thead><tr><th>品名</th><th>规格</th><th class="num">好特卖售价</th><th class="num">京东最低</th><th class="num">淘宝最低</th><th class="num">竞品最低</th><th>来源</th><th class="num">优势%</th></tr></thead><tbody>';
+              var hasPriceSource = items.some(function(it){ return it.price_source; });
+              html += '<div class="section scroll-table" style="margin-bottom:10px;"><div class="table-wrap" style="max-height:360px;overflow:auto;"><table><thead><tr><th>品名</th><th>规格</th><th class="num">好特卖售价</th><th class="num">京东最低</th><th class="num">淘宝最低</th><th class="num">竞品最低</th><th>来源</th>' + (hasPriceSource ? '<th>数据来源</th>' : '') + '<th class="num">优势%</th></tr></thead><tbody>';
               for (const it of items) {
                 const name = (it.raw_name || '').replace(/</g,'&lt;').slice(0,24);
                 const spec = (it.spec || '-').replace(/</g,'&lt;').slice(0,12);
@@ -3615,8 +4198,9 @@
                 const tb = it.taobao_min_price != null ? Number(it.taobao_min_price).toFixed(2) : '-';
                 const comp = it.competitor_min != null ? Number(it.competitor_min).toFixed(2) : '-';
                 const plat = (it.platform || '-').replace(/</g,'&lt;').slice(0,14);
+                var srcCell = hasPriceSource ? '<td style="font-size:0.75rem;">' + (it.price_source === 'baidu_skill' ? '百度Skill' : it.price_source === 'baidu_youxuan_mcp' ? '百度MCP' : (it.price_source || '-')) + '</td>' : '';
                 const adv = it.advantage_pct != null ? it.advantage_pct + '%' : '-';
-                html += '<tr><td>' + name + '</td><td>' + spec + '</td><td class="num">' + ht + '</td><td class="num">' + jd + '</td><td class="num">' + tb + '</td><td class="num">' + comp + '</td><td>' + plat + '</td><td class="num">' + adv + '</td></tr>';
+                html += '<tr><td>' + name + '</td><td>' + spec + '</td><td class="num">' + ht + '</td><td class="num">' + jd + '</td><td class="num">' + tb + '</td><td class="num">' + comp + '</td><td>' + plat + '</td>' + srcCell + '<td class="num">' + adv + '</td></tr>';
               }
               html += '</tbody></table></div></div>';
             } else {
@@ -3641,6 +4225,16 @@
       document.getElementById('priceCompareModalCancel')?.addEventListener('click', closePriceCompareModal);
       document.getElementById('priceCompareExecute')?.addEventListener('click', executePriceCompare);
       document.getElementById('priceCompareModal')?.addEventListener('click', (e) => { if (e.target.id === 'priceCompareModal') closePriceCompareModal(); });
+      document.getElementById('priceCompareSelectAll')?.addEventListener('click', function() {
+        document.querySelectorAll('#priceCompareProductList .price-compare-check').forEach(function(c) { c.checked = true; });
+        document.querySelectorAll('#priceCompareProductList .price-compare-check-all').forEach(function(c) { c.checked = true; });
+        updatePriceCompareSelectedCount();
+      });
+      document.getElementById('priceCompareSelectNone')?.addEventListener('click', function() {
+        document.querySelectorAll('#priceCompareProductList .price-compare-check').forEach(function(c) { c.checked = false; });
+        document.querySelectorAll('#priceCompareProductList .price-compare-check-all').forEach(function(c) { c.checked = false; });
+        updatePriceCompareSelectedCount();
+      });
     })();
 
     async function onMarketingReportClick() {
@@ -3779,16 +4373,18 @@
     function updateFilterPeriodSummary() {
         const el = document.getElementById('filterPeriodSummary');
         if (!el) return;
+        var prefix = window.matchMedia('(max-width: 768px)').matches ? '周期：' : 'KPI 周期：';
         const labels = { day: '今日', week: '本周', month: '本月', recent30: '近30天', custom: '自定义' };
         const isCustom = (currentStartDate && currentEndDate) || currentPeriod === 'custom';
         if (isCustom && currentStartDate && currentEndDate) {
-          el.textContent = 'KPI 周期：' + currentStartDate + ' ~ ' + currentEndDate;
+          el.textContent = prefix + currentStartDate + ' ~ ' + currentEndDate;
         } else {
-          var txt = 'KPI 周期：' + (labels[currentPeriod] || currentPeriod);
+          var txt = prefix + (labels[currentPeriod] || currentPeriod);
           var toggleRow = document.querySelector('.filter-bar-toggle-row');
           var filterContent = document.getElementById('filterBarContent');
           var collapseMode = toggleRow && (toggleRow.offsetWidth > 0 && toggleRow.offsetHeight > 0) && filterContent && !filterContent.classList.contains('is-open');
-          if (collapseMode) txt += ' · 点「筛选」可选自定义';
+          var isMobile = window.matchMedia('(max-width: 768px)').matches;
+          if (collapseMode && !isMobile) txt += ' · 点「筛选」可选自定义';
           el.textContent = txt;
         }
       }
@@ -3850,6 +4446,7 @@
         }
         applyFilter();
         updatePeriodTabActive();
+        if (typeof isMobileFilter === 'function' && isMobileFilter() && filterDrawer && filterDrawer.classList.contains('open')) closeFilterDrawer();
       });
       function syncCustomDateFromInputs() {
         var startIn = document.getElementById('startDate');
@@ -3878,10 +4475,37 @@
       document.getElementById('endDate')?.addEventListener('input', syncCustomDateFromInputs);
       const filterContent = document.getElementById('filterBarContent');
       const btnFilterToggle = document.getElementById('btnFilterToggle');
+      const filterDrawer = document.getElementById('filterDrawer');
+      const filterDrawerBody = document.getElementById('filterDrawerBody');
+      const filterBarContentWrap = document.getElementById('filterBarContentWrap');
+      function isMobileFilter() { return window.matchMedia('(max-width: 768px)').matches; }
+      function openFilterDrawer() {
+        if (!filterDrawer || !filterDrawerBody || !filterContent || !filterBarContentWrap) return;
+        filterDrawerBody.appendChild(filterContent);
+        filterDrawer.classList.add('open', 'active');
+        filterDrawer.setAttribute('aria-hidden', 'false');
+        if (btnFilterToggle) btnFilterToggle.textContent = '筛选 ▲';
+      }
+      function closeFilterDrawer() {
+        if (!filterDrawer || !filterDrawerBody || !filterContent || !filterBarContentWrap) return;
+        filterDrawer.classList.remove('open', 'active');
+        filterDrawer.setAttribute('aria-hidden', 'true');
+        filterBarContentWrap.appendChild(filterContent);
+        if (btnFilterToggle) btnFilterToggle.textContent = '筛选 ▼';
+      }
+      if (filterDrawer) {
+        document.getElementById('filterDrawerBackdrop')?.addEventListener('click', closeFilterDrawer);
+        document.getElementById('filterDrawerClose')?.addEventListener('click', closeFilterDrawer);
+      }
       if (filterContent && btnFilterToggle) {
         btnFilterToggle.addEventListener('click', () => {
-          filterContent.classList.toggle('is-open');
-          btnFilterToggle.textContent = filterContent.classList.contains('is-open') ? '筛选 ▲' : '筛选 ▼';
+          if (isMobileFilter()) {
+            if (filterDrawer && filterDrawer.classList.contains('open')) closeFilterDrawer();
+            else openFilterDrawer();
+          } else {
+            filterContent.classList.toggle('is-open');
+            btnFilterToggle.textContent = filterContent.classList.contains('is-open') ? '筛选 ▲' : '筛选 ▼';
+          }
         });
       }
       document.getElementById('btnAiInsight').addEventListener('click', loadAiInsight);
@@ -3902,6 +4526,13 @@
         document.querySelectorAll('.page-panel').forEach(p => p.classList.remove('active'));
         const panel = document.querySelector('.page-panel[data-page="' + page + '"]');
         if (panel) panel.classList.add('active');
+        var bottomNav = document.getElementById('bottomNav');
+        if (bottomNav) {
+          bottomNav.querySelectorAll('.bottom-nav-item').forEach(function(b) { b.classList.remove('active'); });
+          var bnPage = (page === 'tax' || page === 'biz' || page === 'insight') ? 'more' : page;
+          var bnItem = bottomNav.querySelector('.bottom-nav-item[data-page="' + bnPage + '"]');
+          if (bnItem) bnItem.classList.add('active');
+        }
         if (page === 'tax') loadTaxBurdenSummary();
         if (page === 'biz') { loadBizDataStatus(); showBizBlock('return_gift'); loadReturnGiftSummary(); }
         if (page === 'insight') { loadConsumerInsight(); setTimeout(resizeInsightCharts, 200); }
@@ -3942,9 +4573,66 @@
             }
             window.history.replaceState({}, '', u.pathname + '?' + u.searchParams.toString());
           } catch (_) {}
-          switchToPage(page);
+            switchToPage(page);
         });
       });
+      var bottomNav = document.getElementById('bottomNav');
+      if (bottomNav) {
+        bottomNav.querySelectorAll('.bottom-nav-item').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            var page = btn.dataset.page;
+            if (page === 'more') {
+              var drawer = document.getElementById('moreDrawer');
+              if (drawer) {
+                var ep = document.getElementById('btnExportProduct');
+                var ec = document.getElementById('btnExportCategory');
+                if (ep) document.getElementById('moreExportProduct').setAttribute('href', ep.href || '#');
+                if (ec) document.getElementById('moreExportCategory').setAttribute('href', ec.href || '#');
+                drawer.classList.add('open');
+                drawer.setAttribute('aria-hidden', 'false');
+              }
+            } else {
+              try {
+                var u = new URL(window.location.href);
+                u.searchParams.set('page', page);
+                if (page === 'insight') {
+                  currentInsightCategory = '';
+                  currentInsightBrand = '';
+                  currentInsightProductName = '';
+                  u.searchParams.delete('category');
+                  u.searchParams.delete('brand');
+                  u.searchParams.delete('product_name');
+                }
+                window.history.replaceState({}, '', u.pathname + '?' + u.searchParams.toString());
+              } catch (_) {}
+              switchToPage(page);
+            }
+          });
+        });
+      }
+      var btnFilterToggleMobile = document.getElementById('btnFilterToggleMobile');
+      if (btnFilterToggleMobile) {
+        btnFilterToggleMobile.addEventListener('click', function() {
+          document.getElementById('btnFilterToggle').click();
+        });
+      }
+      var moreDrawer = document.getElementById('moreDrawer');
+      if (moreDrawer) {
+        function closeMoreDrawer() {
+          moreDrawer.classList.remove('open');
+          moreDrawer.setAttribute('aria-hidden', 'true');
+        }
+        document.getElementById('moreDrawerBackdrop').addEventListener('click', closeMoreDrawer);
+        document.getElementById('moreDrawerClose').addEventListener('click', closeMoreDrawer);
+        moreDrawer.querySelectorAll('.more-drawer-item[data-page]').forEach(function(item) {
+          item.addEventListener('click', function() {
+            switchToPage(item.dataset.page);
+            closeMoreDrawer();
+          });
+        });
+        document.getElementById('moreExportProduct').addEventListener('click', function() { closeMoreDrawer(); });
+        document.getElementById('moreExportCategory').addEventListener('click', function() { closeMoreDrawer(); });
+      }
       (function() {
         try {
           var q = new URLSearchParams(window.location.search);
@@ -4129,6 +4817,13 @@
         });
       });
     })();
+  </script>
+  <script>
+  document.addEventListener('DOMContentLoaded', function() {
+    var t = document.getElementById('navbarToggle');
+    var m = document.getElementById('navbarMenu');
+    if (t && m) t.addEventListener('click', function() { m.classList.toggle('active'); });
+  });
   </script>
 </body>
 </html>

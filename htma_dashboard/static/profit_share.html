@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
   <title>收益评估 - 好特卖运营看板</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -70,14 +70,23 @@
     .date-range-inline label { cursor: pointer; color: #94a3b8; font-size: 0.9rem; }
     .date-range-inline input[type="date"] { padding: 8px 12px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; }
   </style>
+  <link rel="stylesheet" href="/static/css/mobile.css">
 </head>
 <body>
-  <h1>收益评估（加盟商分账）</h1>
-  <div class="nav">
-    <a href="/">← 返回看板</a>
-    <a href="/import">数据导入</a>
-    <span id="authUserBar" style="margin-left:12px;color:#94a3b8;"></span>
+  <div class="navbar">
+    <div class="navbar-brand">好特卖运营看板</div>
+    <div class="navbar-user">
+      <span id="authUserBar" style="margin-right:8px;color:inherit;"></span>
+      <button type="button" class="navbar-toggle" id="navbarToggle" aria-label="菜单">☰</button>
+    </div>
+    <div class="navbar-menu" id="navbarMenu">
+      <a href="/">← 返回看板</a>
+      <a href="/import">数据导入</a>
+      <a href="/profit_share">收益评估</a>
+      <a href="/api/auth/logout">退出</a>
+    </div>
   </div>
+  <h1>收益评估（加盟商分账）</h1>
   <div id="noPerm">您暂无收益评估模块权限，请联系管理员。</div>
   <div id="mainWrap">
     <div class="tabs">
@@ -99,7 +108,7 @@
       <div class="date-range-inline" id="psDateRangeInline">
         <label for="psStartDate">起止日期：</label>
         <input type="date" id="psStartDate" aria-label="起始日期" title="点击选择或输入 YYYY-MM-DD" />
-        <span style="color:#64748b;">至</span>
+        <span class="text-muted">至</span>
         <input type="date" id="psEndDate" aria-label="结束日期" title="点击选择或输入 YYYY-MM-DD" />
       </div>
       <div class="form-row" style="margin-top:14px;">
@@ -110,18 +119,22 @@
         <h2>计算周期</h2>
         <p id="calcPeriodLabel" class="rule-bar" style="margin-bottom:12px;"></p>
         <h2 style="margin-top:16px;">一、数据概览（选定时间段内销售额与毛利）</h2>
+        <div class="table-responsive">
         <table class="result-table" style="margin-bottom:20px;">
           <thead><tr><th>项目</th><th class="num">销售额（元）</th><th class="num">毛利额（元）</th></tr></thead>
           <tbody id="calcOverviewBody"></tbody>
         </table>
+        </div>
         <h2 style="margin-top:16px;">二、分账结果（总销售额扣除销售成本后，加盟商分 75% / 平台分 25%）</h2>
+        <div class="table-responsive">
         <table class="result-table" style="margin-bottom:20px;">
           <thead><tr><th>项目</th><th class="num">金额（元）</th></tr></thead>
           <tbody id="calcSettleBody"></tbody>
         </table>
+        </div>
         <h2 style="margin-top:16px;">按品类明细（参与计算部分）</h2>
         <p class="tip" style="margin-bottom:8px;">先展示大类，点击行展开中类；点击列标题可排序。</p>
-        <div style="overflow-x:auto;">
+        <div class="table-responsive" style="overflow-x:auto;">
           <table class="result-table" id="calcDetailTable">
             <thead><tr>
               <th style="width:28px;"></th>
@@ -140,7 +153,7 @@
         <input type="month" id="historyMonthFilter" />
         <button class="btn btn-secondary" id="btnLoadHistory">查询</button>
       </div>
-      <div class="history-list">
+      <div class="history-list table-responsive">
         <table>
           <thead><tr><th>计算周期</th><th class="num">总销售额</th><th class="num">加盟商结算</th><th class="num">平台金额</th><th>操作</th></tr></thead>
           <tbody id="historyBody"></tbody>
@@ -666,6 +679,11 @@
       loadCurrentRule();
       loadHistory();
     })();
+    document.addEventListener('DOMContentLoaded', function() {
+      var t = document.getElementById('navbarToggle');
+      var m = document.getElementById('navbarMenu');
+      if (t && m) t.addEventListener('click', function() { m.classList.toggle('active'); });
+    });
   </script>
 </body>
 </html>

@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+  <title>超级管理员 - 好特卖运营看板</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 16px;
+      padding: 40px;
+      max-width: 440px;
+      width: 100%;
+      text-align: center;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      color: #0f172a;
+      background: #38bdf8;
+      margin-bottom: 16px;
+    }
+    h1 { font-size: 1.35rem; margin-bottom: 8px; color: #f8fafc; }
+    .sub { color: #94a3b8; font-size: 0.95rem; line-height: 1.6; margin-bottom: 28px; }
+    .alert {
+      background: rgba(251, 191, 36, 0.15);
+      border: 1px solid #fbbf24;
+      border-radius: 12px;
+      padding: 16px 20px;
+      margin-bottom: 24px;
+      text-align: left;
+      color: #fcd34d;
+    }
+    .alert.zero {
+      background: rgba(100, 116, 139, 0.2);
+      border-color: #475569;
+      color: #94a3b8;
+    }
+    .alert strong { font-size: 1.1rem; color: #f8fafc; }
+    .btns { display: flex; flex-direction: column; gap: 12px; }
+    .btn {
+      display: inline-block;
+      padding: 14px 24px;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      text-decoration: none;
+      text-align: center;
+      cursor: pointer;
+      border: none;
+    }
+    .btn-primary { background: #38bdf8; color: #0f172a; }
+    .btn-primary:hover { background: #7dd3fc; }
+    .btn-secondary { background: #334155; color: #e2e8f0; }
+    .btn-secondary:hover { background: #475569; }
+    .err { color: #f87171; margin-top: 12px; font-size: 0.9rem; }
+  </style>
+  <link rel="stylesheet" href="/static/css/mobile.css">
+</head>
+<body>
+  <div class="card">
+    <span class="badge">超级管理员</span>
+    <h1>管理员提醒</h1>
+    <p class="sub">企业外用户访问申请需您审批通过后，对应用户方可登录看板。</p>
+    <div id="alert" class="alert">
+      <span id="alertText">加载中…</span>
+    </div>
+    <div class="btns">
+      <a id="btnApproval" href="/approval" class="btn btn-primary">去审批</a>
+      <a href="/" class="btn btn-secondary">进入看板</a>
+    </div>
+    <p id="err" class="err" style="display:none;"></p>
+  </div>
+  <script>
+    (function(){
+      var alertEl = document.getElementById('alert');
+      var alertText = document.getElementById('alertText');
+      var btnApproval = document.getElementById('btnApproval');
+      var errEl = document.getElementById('err');
+      fetch('/api/auth/pending_count').then(function(r){
+        if (!r.ok) {
+          errEl.style.display = 'block';
+          errEl.textContent = r.status === 404 ? '接口未就绪，请重启看板服务' : 'HTTP ' + r.status;
+          alertText.textContent = '获取待审批数量失败';
+          return Promise.reject(new Error('pending_count ' + r.status));
+        }
+        return r.json();
+      }).then(function(d){
+        if (!d || !d.success) {
+          errEl.style.display = 'block';
+          errEl.textContent = (d && d.message) || '获取失败';
+          alertText.textContent = '获取待审批数量失败';
+          return;
+        }
+        var n = d.pending_count || 0;
+        if (n > 0) {
+          alertEl.classList.remove('zero');
+          alertText.innerHTML = '您有 <strong>' + n + '</strong> 条企业外用户访问申请待审批，请及时处理。';
+          btnApproval.textContent = '去审批 (' + n + ')';
+        } else {
+          alertEl.classList.add('zero');
+          alertText.textContent = '暂无待审批申请。有新申请时飞书会 @ 您提醒。';
+          btnApproval.textContent = '审批页';
+        }
+      }).catch(function(e){
+        errEl.style.display = 'block';
+        errEl.textContent = e.message || '请求失败';
+        alertText.textContent = '加载失败';
+      });
+    })();
+  </script>
+</body>
+</html>

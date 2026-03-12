@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
   <title>分店商品档案 · 数据分析</title>
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
   <script src="/static/js/charts.js"></script>
@@ -14,11 +14,12 @@
     a { color: #38bdf8; text-decoration: none; }
     a:hover { text-decoration: underline; }
     .kpi-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; margin-bottom: 16px; }
-    .kpi-card { background: linear-gradient(135deg, #1e293b 0%, #334155 100%); border-radius: 8px; padding: 10px 12px; border: 1px solid #334155; }
+    .kpi-card { background: linear-gradient(135deg, #1e293b 0%, #334155 100%); border-radius: 8px; padding: 10px 12px; border: 1px solid #334155; font-family: inherit; }
     .kpi-card .label { font-size: 0.72rem; color: #94a3b8; margin-bottom: 4px; }
-    .kpi-card .value { font-size: 1.15rem; font-weight: 700; color: #38bdf8; }
+    .kpi-card .value { font-size: 1rem; font-weight: 600; color: #e2e8f0; font-variant-numeric: tabular-nums; }
+    .kpi-card .kpi-note { font-size: 0.65rem; color: #64748b; margin-top: 4px; line-height: 1.3; }
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
-    .box { background: #1e293b; border-radius: 8px; padding: 12px; margin-bottom: 12px; border: 1px solid #334155; }
+    .box { background: #1e293b; border-radius: 6px; padding: 12px 10px; margin-bottom: 12px; border: 1px solid #334155; }
     .box h3 { font-size: 0.9rem; color: #94a3b8; margin-bottom: 8px; }
     .chart { width: 100%; height: 260px; }
     table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
@@ -30,12 +31,32 @@
     .warn { color: #fbbf24; }
     .dq-table td:nth-child(2), .dq-table td:nth-child(3) { text-align: right; }
     .pm-drill-row { cursor: pointer; }
-    .pm-drill-row:hover { background: #334155; }
+    .pm-drill-row:hover { background: #334155; color: #f1f5f9; }
+    .pm-drill-row.pm-selected { background: #e2e8f0; color: #1e293b; border-left: 4px solid #38bdf8; }
+    .pm-drill-row.pm-selected td { color: #1e293b; }
+    .pm-cat-level { margin-left: 0; }
+    .pm-cat-level .pm-cat-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    .pm-cat-level .pm-cat-table th { text-align: left; padding: 6px 10px; color: #94a3b8; background: #1e293b; }
+    .pm-cat-level .pm-cat-table td { padding: 6px 10px; border-bottom: 1px solid #334155; }
+    .pm-cat-level .pm-cat-row { cursor: pointer; }
+    .pm-cat-level .pm-cat-row:hover { background: #334155; color: #f1f5f9; }
+    .pm-cat-level .pm-cat-row.pm-selected { background: #e2e8f0; color: #1e293b; }
+    .pm-cat-level .pm-cat-row .expand-icon { display: inline-block; margin-right: 6px; transition: transform 0.2s; }
+    .pm-cat-level .pm-cat-row.expanded .expand-icon { transform: rotate(90deg); }
+    .pm-cat-level .pm-cat-nested { padding: 8px 0 8px 24px; border-left: 2px solid #334155; }
     .pm-drill-panel { margin-bottom: 12px; padding: 10px; background: #1e293b; border-radius: 8px; border: 1px solid #334155; }
     .pm-breadcrumb { margin-bottom: 8px; font-size: 0.85rem; color: #94a3b8; }
     .pm-breadcrumb a { color: #38bdf8; }
     .pm-breadcrumb a:hover { text-decoration: underline; }
+    .pm-flat-toggle { margin-bottom: 8px; }
+    .pm-toggle-btn { padding: 6px 12px; background: #334155; color: #94a3b8; border: 1px solid #475569; border-radius: 6px; cursor: pointer; font-size: 0.8rem; }
+    .pm-toggle-btn:hover { background: #475569; color: #e2e8f0; }
+    .pm-panel-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-top: 8px; }
+    .pm-panel-brand-large-row, .pm-panel-mid-row, .pm-panel-small-row { cursor: pointer; }
+    .pm-panel-brand-large-row:hover, .pm-panel-mid-row:hover, .pm-panel-small-row:hover { background: #334155; }
+    .pm-cat-table-scroll { min-width: 480px; }
   </style>
+  <link rel="stylesheet" href="/static/css/mobile.css">
 </head>
 <body>
   <h1>📦 分店商品档案 · 数据分析</h1>
@@ -52,23 +73,29 @@
   const API = window.location.origin;
   function fmtNum(v) { return v == null || v === '' ? '-' : (Number(v) >= 10000 ? (Number(v)/10000).toFixed(1) + '万' : Number(v).toLocaleString()); }
   function fmtMoney(v) { return v == null || v === '' ? '-' : Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function priceStr(v) { if (v == null || v === '' || (typeof v === 'number' && isNaN(v))) return '-'; return fmtMoney(v); }
 
   function renderKpi(ov) {
     if (!ov) return '';
+    var skuNote = '档案表 DISTINCT 货号';
+    if (ov.sale_sku_count_30d != null && ov.sale_sku_count_30d !== '') skuNote += '；近30天动销 ' + fmtNum(ov.sale_sku_count_30d) + '，可对比验证';
     var items = [
-      ['总SKU数', ov.total_sku],
+      ['总SKU数', ov.total_sku, skuNote],
       ['正常', ov.normal_count],
       ['新品', ov.new_count],
       ['停售', ov.stop_count],
-      ['平均零售价', ov.avg_retail != null ? fmtMoney(ov.avg_retail) : '-'],
-      ['最高零售价', ov.max_retail != null ? fmtMoney(ov.max_retail) : '-'],
-      ['最低零售价', ov.min_retail != null ? fmtMoney(ov.min_retail) : '-'],
+      ['平均零售价', priceStr(ov.avg_retail)],
+      ['最高零售价', priceStr(ov.max_retail)],
+      ['最低零售价', priceStr(ov.min_retail)],
       ['品牌数', ov.brand_count],
       ['供应商数', ov.supplier_count]
     ];
     if (ov.member_price_count != null && ov.member_price_count > 0) items.push(['有会员价', ov.member_price_count]);
     if (ov.member_discount_count != null && ov.member_discount_count > 0) items.push(['会员折扣', ov.member_discount_count]);
-    return '<div class="kpi-row">' + items.map(function(x) { return '<div class="kpi-card"><div class="label">' + x[0] + '</div><div class="value">' + fmtNum(x[1]) + '</div></div>'; }).join('') + '</div>';
+    return '<div class="kpi-row">' + items.map(function(x) {
+      var note = x[2] ? '<div class="kpi-note">' + x[2] + '</div>' : '';
+      return '<div class="kpi-card"><div class="label">' + x[0] + '</div><div class="value">' + fmtNum(x[1]) + '</div>' + note + '</div>';
+    }).join('') + '</div>';
   }
 
   function tableStatus(rows) {
@@ -76,10 +103,31 @@
     return '<table><thead><tr><th>状态</th><th class="num">SKU数</th><th class="num">占比%</th><th class="num">平均零售价</th><th class="num">品牌数</th></tr></thead><tbody>' +
       rows.map(function(r) { return '<tr><td>' + (r.name || '').replace(/</g,'&lt;') + '</td><td class="num">' + fmtNum(r.count) + '</td><td class="num">' + (r.pct != null ? r.pct : '') + '</td><td class="num">' + (r.avg_retail != null ? fmtMoney(r.avg_retail) : '-') + '</td><td class="num">' + fmtNum(r.brand_count) + '</td></tr>'; }).join('') + '</tbody></table>';
   }
+  var PM_CAT_COLS = 7;
+  function tableCategoryLevel(rows) {
+    if (!rows || !rows.length) return '<p class="sub">无数据（需有销售数据的品类）</p>';
+    return '<table class="pm-cat-table pm-cat-table-scroll"><thead><tr><th style="width:28px;"></th><th>大类</th><th class="num">SKU数</th><th class="num">平均零售价</th><th class="num">最高/最低</th><th class="num">销量</th><th class="num">销售额</th></tr></thead><tbody>' +
+      rows.map(function(r) {
+        var code = (r.large_code || r.large_name || '').replace(/"/g,'&quot;');
+        var name = (r.large_name || r.large_code || '未分类').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+        var priceRange = (priceStr(r.max_retail_price) !== '-' || priceStr(r.min_retail_price) !== '-') ? (priceStr(r.min_retail_price) + ' / ' + priceStr(r.max_retail_price)) : '-';
+        return '<tr class="pm-cat-row" data-level="large" data-large-code="' + code + '" data-large-name="' + name + '" title="点击展开中类"><td><span class="expand-icon">▶</span></td><td>' + (r.large_name || r.large_code || '').replace(/</g,'&lt;') + '</td><td class="num">' + fmtNum(r.sku_count) + '</td><td class="num">' + priceStr(r.avg_retail_price) + '</td><td class="num">' + priceRange + '</td><td class="num">' + fmtNum(r.sales_quantity) + '</td><td class="num">' + priceStr(r.sales_amount) + '</td></tr>';
+      }).join('') + '</tbody></table>';
+  }
+  var FLAT_CATEGORY_PREVIEW = 10;
   function tableCategory(rows) {
     if (!rows || !rows.length) return '<p class="sub">无数据</p>';
-    return '<table><thead><tr><th>品类</th><th class="num">SKU数</th><th class="num">占比%</th><th class="num">平均零售价</th><th class="num">销量</th><th class="num">销售额</th><th class="num">品牌数</th><th class="num">供应商数</th></tr></thead><tbody>' +
-      rows.map(function(r) { return '<tr class="pm-drill-row" data-type="category" data-name="' + (r.name || '').replace(/"/g,'&quot;').replace(/</g,'&lt;') + '" title="点击下钻查看该品类下的品牌"><td>' + (r.name || '').replace(/</g,'&lt;') + '</td><td class="num">' + fmtNum(r.count) + '</td><td class="num">' + (r.pct != null ? r.pct : '') + '</td><td class="num">' + (r.avg_retail != null ? fmtMoney(r.avg_retail) : '-') + '</td><td class="num">' + (r.sale_qty != null ? fmtNum(r.sale_qty) : '-') + '</td><td class="num">' + (r.sale_amount != null ? fmtMoney(r.sale_amount) : '-') + '</td><td class="num">' + fmtNum(r.brand_count) + '</td><td class="num">' + fmtNum(r.supplier_count) + '</td></tr>'; }).join('') + '</tbody></table>';
+    var total = rows.length;
+    var preview = rows.slice(0, FLAT_CATEGORY_PREVIEW);
+    var rest = rows.slice(FLAT_CATEGORY_PREVIEW);
+    function rowHtml(r) {
+      return '<tr class="pm-drill-row" data-type="category" data-name="' + (r.name || '').replace(/"/g,'&quot;').replace(/</g,'&lt;') + '" title="点击下钻查看该品类下的品牌"><td>' + (r.name || '').replace(/</g,'&lt;') + '</td><td class="num">' + fmtNum(r.count) + '</td><td class="num">' + (r.pct != null ? r.pct : '') + '</td><td class="num">' + (r.avg_retail != null ? fmtMoney(r.avg_retail) : '-') + '</td><td class="num">' + (r.sale_qty != null ? fmtNum(r.sale_qty) : '-') + '</td><td class="num">' + (r.sale_amount != null ? fmtMoney(r.sale_amount) : '-') + '</td><td class="num">' + fmtNum(r.brand_count) + '</td><td class="num">' + fmtNum(r.supplier_count) + '</td></tr>';
+    }
+    var tbl = '<table class="pm-flat-cat-table"><thead><tr><th>品类</th><th class="num">SKU数</th><th class="num">占比%</th><th class="num">平均零售价</th><th class="num">销量</th><th class="num">销售额</th><th class="num">品牌数</th><th class="num">供应商数</th></tr></thead><tbody id="pmFlatCatPreview">' +
+      preview.map(rowHtml).join('') + '</tbody>' +
+      (rest.length ? '<tbody id="pmFlatCatRest" style="display:none;">' + rest.map(rowHtml).join('') + '</tbody>' : '') + '</table>';
+    var toggle = rest.length ? '<p class="pm-flat-toggle"><button type="button" id="pmToggleFlatCat" class="pm-toggle-btn" data-total="' + total + '">展开显示全部（共 ' + total + ' 个品类）</button></p>' : '';
+    return '<div class="pm-flat-category-wrap">' + toggle + tbl + '</div>';
   }
   function tableBrand(rows) {
     if (!rows || !rows.length) return '<p class="sub">无数据</p>';
@@ -155,8 +203,9 @@
     var html = renderKpi(ov);
     html += '<div class="grid2"><div class="box"><h3>按商品状态</h3><div id="chartStatus" class="chart"></div>' + tableStatus(d.by_status) + '</div>';
     html += '<div class="box"><h3>按经销方式</h3><div id="chartDist" class="chart"></div>' + tableDist(d.by_distribution) + '</div></div>';
+    html += '<div class="box"><h3>按品类（逐级下钻：大类→中类→小类→品牌→商品）</h3><p class="sub" style="margin-bottom:8px;">仅含近30天有销售的大类，点击▶展开中类、小类、品牌与商品。</p><div id="pmCategoryLevelWrap" class="pm-cat-level">' + tableCategoryLevel(d.by_category_large) + '</div></div>';
     html += '<div class="box"><h3>品类 Top10 SKU数</h3><div id="chartCategory" class="chart"></div></div>';
-    html += '<div class="box"><h3>按品类（类别）</h3>' + tableCategory(d.by_category) + '</div>';
+    html += '<div class="box"><h3>按档案类别（平铺，可展开）</h3><p class="sub" style="margin-bottom:8px;">档案表品类字段；默认显示前' + FLAT_CATEGORY_PREVIEW + '条，可展开全部。</p>' + tableCategory(d.by_category) + '</div>';
     html += '<div class="box"><h3>品牌 Top20 SKU数</h3><div id="chartBrand" class="chart"></div></div>';
     html += '<div class="box"><h3>按品牌</h3>' + tableBrand(d.by_brand) + '</div>';
     html += '<div class="box"><h3>价格带分布</h3><div id="chartPriceBand" class="chart"></div>' + tablePriceBand(d.by_price_band) + '</div>';
@@ -190,6 +239,9 @@
 
   var drillCategory = '';
   var drillBrand = '';
+  var drillLargeCode = '';
+  var drillMidCode = '';
+  var drillSmallCode = '';
 
   function showDrillPanel(show) {
     var el = document.getElementById('pmDrillPanel');
@@ -199,42 +251,257 @@
     var bc = document.getElementById('pmBreadcrumb');
     var content = document.getElementById('pmDrillContent');
     if (!bc || !content) return;
-    if (!drillCategory && !drillBrand) {
+    if (!drillCategory && !drillBrand && !drillSmallCode) {
       showDrillPanel(false);
       return;
     }
     var segs = ['<a href="javascript:void(0)" id="pmClearDrill">商品档案</a>'];
-    if (drillCategory) segs.push('<span>' + drillCategory.replace(/</g,'&lt;') + '</span>');
     if (drillBrand) segs.push('<span>' + drillBrand.replace(/</g,'&lt;') + '</span>');
+    if (drillCategory) segs.push('<span>' + drillCategory.replace(/</g,'&lt;') + '</span>');
+    if (drillLargeCode && drillBrand) segs.push('<span>' + drillLargeCode.replace(/</g,'&lt;') + '</span>');
+    if (drillMidCode && drillBrand) segs.push('<span>' + drillMidCode.replace(/</g,'&lt;') + '</span>');
+    if (drillSmallCode && drillBrand) segs.push('<span>' + drillSmallCode.replace(/</g,'&lt;') + '</span>');
     bc.innerHTML = segs.join(' &gt; ') + ' <a href="javascript:void(0)" id="pmClearDrill2" style="margin-left:8px;">清除下钻</a>';
     content.innerHTML = '<div class="loading">加载中...</div>';
     showDrillPanel(true);
-    var url = API + '/api/product_master_drill?';
-    if (drillCategory) url += 'category=' + encodeURIComponent(drillCategory) + '&';
-    if (drillBrand) url += 'brand=' + encodeURIComponent(drillBrand) + '&';
-    fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
-      .then(function(r) { return r.json(); })
-      .then(function(d) {
-        if (!d.success) { content.innerHTML = '<div class="error">' + (d.message || '加载失败').replace(/</g,'&lt;') + '</div>'; return; }
-        if (d.drill_type === 'brands') {
-          var rows = (d.brands || []).map(function(r) {
-            return '<tr class="pm-drill-row" data-type="brand" data-name="' + (r.name||'').replace(/"/g,'&quot;').replace(/</g,'&lt;') + '" title="点击查看 SKU 销售明细"><td>' + (r.name||'').replace(/</g,'&lt;') + '</td><td class="num">' + fmtNum(r.sku_count) + '</td><td class="num">' + (r.avg_retail != null ? fmtMoney(r.avg_retail) : '-') + '</td><td class="num">' + fmtNum(r.sale_qty) + '</td><td class="num">' + fmtMoney(r.sale_amount) + '</td></tr>';
+
+    if (drillBrand && !drillLargeCode && !drillCategory) {
+      fetch(API + '/api/product_master/brand_large_categories?brand=' + encodeURIComponent(drillBrand), { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (!d.success) { content.innerHTML = '<div class="error">' + (d.message || '加载失败').replace(/</g,'&lt;') + '</div>'; return; }
+          var items = d.items || [];
+          if (!items.length) { content.innerHTML = '<p class="sub">该品牌下暂无大类数据</p>'; return; }
+          var rows = items.map(function(r) {
+            var code = (r.code||r.name||'').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+            return '<tr class="pm-panel-brand-large-row" data-large-code="' + code + '" title="点击查看该大类下 SKU"><td>' + (r.name||'').replace(/</g,'&lt;') + '</td><td class="num">' + fmtNum(r.sku_count) + '</td><td class="num">' + priceStr(r.avg_retail_price) + '</td><td class="num">' + fmtNum(r.sales_quantity) + '</td><td class="num">' + priceStr(r.sales_amount) + '</td></tr>';
           }).join('');
-          content.innerHTML = '<p class="sub">品类「' + (drillCategory||'').replace(/</g,'&lt;') + '」下的品牌（近30天销售）</p><table><thead><tr><th>品牌</th><th class="num">SKU数</th><th class="num">平均零售价</th><th class="num">销量</th><th class="num">销售额</th></tr></thead><tbody>' + rows + '</tbody></table>';
-        } else {
-          var skuRows = (d.skus || []).map(function(r) {
-            return '<tr><td>' + (r.sku_code||'-').replace(/</g,'&lt;') + '</td><td>' + (r.product_name||'-').replace(/</g,'&lt;') + '</td><td class="num">' + (r.retail_price != null ? fmtMoney(r.retail_price) : '-') + '</td><td class="num">' + (r.member_price != null ? fmtMoney(r.member_price) : '-') + '</td><td>' + (r.member_discount||'-') + '</td><td class="num">' + fmtNum(r.sale_qty) + '</td><td class="num">' + fmtMoney(r.sale_amount) + '</td><td class="num">' + fmtMoney(r.gross_profit) + '</td></tr>';
+          content.innerHTML = '<p class="sub">品牌「' + drillBrand.replace(/</g,'&lt;') + '」下的大类分布</p><div class="pm-panel-table-wrap"><table><thead><tr><th>大类</th><th class="num">SKU数</th><th class="num">平均零售价</th><th class="num">销量</th><th class="num">销售额</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+        })
+        .catch(function(e) { content.innerHTML = '<div class="error">请求失败: ' + (e.message||'').replace(/</g,'&lt;') + '</div>'; });
+      return;
+    }
+
+    if (drillBrand && drillLargeCode && drillMidCode && drillSmallCode) {
+      var skuUrl = API + '/api/product_master/drill_skus?brand=' + encodeURIComponent(drillBrand) + '&large_code=' + encodeURIComponent(drillLargeCode) + '&mid_code=' + encodeURIComponent(drillMidCode) + '&small_code=' + encodeURIComponent(drillSmallCode) + '&page_size=100';
+      fetch(skuUrl, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (!d.success) { content.innerHTML = '<div class="error">' + (d.message || '加载失败').replace(/</g,'&lt;') + '</div>'; return; }
+          var skus = d.items || [];
+          if (!skus.length) { content.innerHTML = '<p class="sub">该条件下暂无 SKU 数据</p>'; return; }
+          var skuRows = skus.map(function(r) {
+            return '<tr><td>' + (r.sku_code||'-').replace(/</g,'&lt;') + '</td><td>' + (r.product_name||'-').replace(/</g,'&lt;') + '</td><td class="num">' + priceStr(r.retail_price) + '</td><td class="num">' + priceStr(r.wholesale_price) + '</td><td class="num">' + priceStr(r.list_price) + '</td><td class="num">' + priceStr(r.member_price) + '</td><td class="num">' + fmtNum(r.sale_qty) + '</td><td class="num">' + priceStr(r.sale_amount) + '</td><td class="num">' + priceStr(r.gross_profit) + '</td></tr>';
           }).join('');
-          content.innerHTML = '<p class="sub">品牌「' + (drillBrand||'').replace(/</g,'&lt;') + '」SKU 销售明细（近30天）</p><table><thead><tr><th>货号</th><th>品名</th><th class="num">零售价</th><th class="num">会员价</th><th>会员折扣</th><th class="num">销量</th><th class="num">销售额</th><th class="num">毛利</th></tr></thead><tbody>' + skuRows + '</tbody></table>';
-        }
-      })
-      .catch(function(e) { content.innerHTML = '<div class="error">请求失败: ' + (e.message||'').replace(/</g,'&lt;') + '</div>'; });
+          content.innerHTML = '<p class="sub">品牌「' + drillBrand.replace(/</g,'&lt;') + '」· 大类「' + drillLargeCode.replace(/</g,'&lt;') + '」· 中类「' + drillMidCode.replace(/</g,'&lt;') + '」· 小类「' + drillSmallCode.replace(/</g,'&lt;') + '」SKU 明细（近30天）</p><div class="pm-panel-table-wrap"><table><thead><tr><th>货号</th><th>品名</th><th class="num">零售价</th><th class="num">批发价</th><th class="num">划线价</th><th class="num">会员价</th><th class="num">销量</th><th class="num">销售额</th><th class="num">毛利</th></tr></thead><tbody>' + skuRows + '</tbody></table></div>';
+        })
+        .catch(function(e) { content.innerHTML = '<div class="error">请求失败: ' + (e.message||'').replace(/</g,'&lt;') + '</div>'; });
+      return;
+    }
+
+    if (drillBrand && drillLargeCode && drillMidCode && !drillSmallCode) {
+      fetch(API + '/api/product_master/brand_small_categories?brand=' + encodeURIComponent(drillBrand) + '&large_code=' + encodeURIComponent(drillLargeCode) + '&mid_code=' + encodeURIComponent(drillMidCode), { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (!d.success) { content.innerHTML = '<div class="error">' + (d.message || '加载失败').replace(/</g,'&lt;') + '</div>'; return; }
+          var items = d.items || [];
+          if (!items.length) { content.innerHTML = '<p class="sub">该中类下暂无小类数据</p>'; return; }
+          var rows = items.map(function(r) {
+            var code = (r.code||r.name||'').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+            var priceRange = (priceStr(r.max_retail_price) !== '-' || priceStr(r.min_retail_price) !== '-') ? (priceStr(r.min_retail_price) + ' / ' + priceStr(r.max_retail_price)) : '-';
+            return '<tr class="pm-panel-small-row" data-small-code="' + code + '" title="点击查看该小类下 SKU"><td>' + (r.name||'').replace(/</g,'&lt;') + '</td><td class="num">' + fmtNum(r.sku_count) + '</td><td class="num">' + priceStr(r.avg_retail_price) + '</td><td class="num">' + priceRange + '</td><td class="num">' + fmtNum(r.sales_quantity) + '</td><td class="num">' + priceStr(r.sales_amount) + '</td></tr>';
+          }).join('');
+          content.innerHTML = '<p class="sub">品牌「' + drillBrand.replace(/</g,'&lt;') + '」· 大类「' + drillLargeCode.replace(/</g,'&lt;') + '」· 中类「' + drillMidCode.replace(/</g,'&lt;') + '」下的小类</p><div class="pm-panel-table-wrap"><table><thead><tr><th>小类</th><th class="num">SKU数</th><th class="num">平均零售价</th><th class="num">最高/最低</th><th class="num">销量</th><th class="num">销售额</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+        })
+        .catch(function(e) { content.innerHTML = '<div class="error">请求失败: ' + (e.message||'').replace(/</g,'&lt;') + '</div>'; });
+      return;
+    }
+
+    if (drillBrand && drillLargeCode && !drillMidCode) {
+      fetch(API + '/api/product_master/brand_mid_categories?brand=' + encodeURIComponent(drillBrand) + '&large_code=' + encodeURIComponent(drillLargeCode), { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (!d.success) { content.innerHTML = '<div class="error">' + (d.message || '加载失败').replace(/</g,'&lt;') + '</div>'; return; }
+          var items = d.items || [];
+          if (!items.length) { content.innerHTML = '<p class="sub">该大类下暂无中类数据</p>'; return; }
+          var rows = items.map(function(r) {
+            var code = (r.code||r.name||'').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+            var priceRange = (priceStr(r.max_retail_price) !== '-' || priceStr(r.min_retail_price) !== '-') ? (priceStr(r.min_retail_price) + ' / ' + priceStr(r.max_retail_price)) : '-';
+            return '<tr class="pm-panel-mid-row" data-mid-code="' + code + '" title="点击查看该中类下小类"><td>' + (r.name||'').replace(/</g,'&lt;') + '</td><td class="num">' + fmtNum(r.sku_count) + '</td><td class="num">' + priceStr(r.avg_retail_price) + '</td><td class="num">' + priceRange + '</td><td class="num">' + fmtNum(r.sales_quantity) + '</td><td class="num">' + priceStr(r.sales_amount) + '</td></tr>';
+          }).join('');
+          content.innerHTML = '<p class="sub">品牌「' + drillBrand.replace(/</g,'&lt;') + '」· 大类「' + drillLargeCode.replace(/</g,'&lt;') + '」下的中类</p><div class="pm-panel-table-wrap"><table><thead><tr><th>中类</th><th class="num">SKU数</th><th class="num">平均零售价</th><th class="num">最高/最低</th><th class="num">销量</th><th class="num">销售额</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+        })
+        .catch(function(e) { content.innerHTML = '<div class="error">请求失败: ' + (e.message||'').replace(/</g,'&lt;') + '</div>'; });
+      return;
+    }
+
+    if (drillCategory && drillSmallCode && !drillBrand) {
+      fetch(API + '/api/product_master/drill_brands?large_code=' + encodeURIComponent(drillLargeCode) + '&mid_code=' + encodeURIComponent(drillMidCode) + '&small_code=' + encodeURIComponent(drillSmallCode), { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (!d.success) { content.innerHTML = '<div class="error">' + (d.message || '加载失败').replace(/</g,'&lt;') + '</div>'; return; }
+          var items = d.items || [];
+          if (!items.length) { content.innerHTML = '<p class="sub">该小类下暂无品牌数据</p>'; return; }
+          var rows = items.map(function(r) {
+            var name = (r.name||r.code||'').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+            return '<tr class="pm-drill-row pm-panel-brand-row" data-type="brand" data-name="' + name + '" title="点击查看 SKU 明细"><td>' + (r.name||'').replace(/</g,'&lt;') + '</td><td class="num">' + fmtNum(r.sku_count) + '</td><td class="num">' + priceStr(r.avg_retail_price) + '</td><td class="num">' + priceStr(r.avg_wholesale_price) + '</td><td class="num">' + priceStr(r.avg_list_price) + '</td><td class="num">' + fmtNum(r.sales_quantity) + '</td><td class="num">' + priceStr(r.sales_amount) + '</td></tr>';
+          }).join('');
+          content.innerHTML = '<p class="sub">品类「' + (drillCategory||'').replace(/</g,'&lt;') + '」下的品牌</p><div class="pm-panel-table-wrap"><table><thead><tr><th>品牌</th><th class="num">SKU数</th><th class="num">平均零售价</th><th class="num">平均批发价</th><th class="num">平均划线价</th><th class="num">销量</th><th class="num">销售额</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+        })
+        .catch(function(e) { content.innerHTML = '<div class="error">请求失败: ' + (e.message||'').replace(/</g,'&lt;') + '</div>'; });
+      return;
+    }
+
+    if (drillBrand && (drillCategory || drillSmallCode)) {
+      var skuUrl = API + '/api/product_master/drill_skus?brand=' + encodeURIComponent(drillBrand) + '&large_code=' + encodeURIComponent(drillLargeCode) + '&mid_code=' + encodeURIComponent(drillMidCode) + '&small_code=' + encodeURIComponent(drillSmallCode) + '&page_size=100';
+      fetch(skuUrl, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (!d.success) { content.innerHTML = '<div class="error">' + (d.message || '加载失败').replace(/</g,'&lt;') + '</div>'; return; }
+          var skus = d.items || [];
+          if (!skus.length) { content.innerHTML = '<p class="sub">该条件下暂无 SKU 数据</p>'; return; }
+          var skuRows = skus.map(function(r) {
+            return '<tr><td>' + (r.sku_code||'-').replace(/</g,'&lt;') + '</td><td>' + (r.product_name||'-').replace(/</g,'&lt;') + '</td><td class="num">' + priceStr(r.retail_price) + '</td><td class="num">' + priceStr(r.wholesale_price) + '</td><td class="num">' + priceStr(r.list_price) + '</td><td class="num">' + priceStr(r.member_price) + '</td><td class="num">' + fmtNum(r.sale_qty) + '</td><td class="num">' + priceStr(r.sale_amount) + '</td><td class="num">' + priceStr(r.gross_profit) + '</td></tr>';
+          }).join('');
+          content.innerHTML = '<p class="sub">品类「' + (drillCategory||'').replace(/</g,'&lt;') + '」· 品牌「' + drillBrand.replace(/</g,'&lt;') + '」SKU 明细</p><div class="pm-panel-table-wrap"><table><thead><tr><th>货号</th><th>品名</th><th class="num">零售价</th><th class="num">批发价</th><th class="num">划线价</th><th class="num">会员价</th><th class="num">销量</th><th class="num">销售额</th><th class="num">毛利</th></tr></thead><tbody>' + skuRows + '</tbody></table></div>';
+        })
+        .catch(function(e) { content.innerHTML = '<div class="error">请求失败: ' + (e.message||'').replace(/</g,'&lt;') + '</div>'; });
+      return;
+    }
   }
   document.addEventListener('click', function(e) {
+    var toggleFlat = e.target.id === 'pmToggleFlatCat' || (e.target.tagName === 'BUTTON' && e.target.id === 'pmToggleFlatCat');
+    if (toggleFlat || e.target.closest('#pmToggleFlatCat')) {
+      var rest = document.getElementById('pmFlatCatRest');
+      var btn = document.getElementById('pmToggleFlatCat');
+      if (rest && btn) {
+        var show = rest.style.display !== 'table-row-group' && rest.style.display !== '';
+        rest.style.display = show ? 'table-row-group' : 'none';
+        var n = btn.getAttribute('data-total') || '';
+        btn.textContent = show ? '收起' : '展开显示全部（共 ' + n + ' 个品类）';
+      }
+      return;
+    }
     var clearBtn = e.target.id === 'pmClearDrill' || e.target.id === 'pmClearDrill2' || e.target.closest('#pmClearDrill') || e.target.closest('#pmClearDrill2');
-    if (clearBtn) { drillCategory = ''; drillBrand = ''; showDrillPanel(false); return; }
+    if (clearBtn) {
+      drillCategory = ''; drillBrand = ''; drillLargeCode = ''; drillMidCode = ''; drillSmallCode = '';
+      document.querySelectorAll('.pm-drill-row.pm-selected').forEach(function(r) { r.classList.remove('pm-selected'); });
+      showDrillPanel(false);
+      return;
+    }
+    var brandLargeRow = e.target.closest('.pm-panel-brand-large-row');
+    if (brandLargeRow) {
+      var lc = (brandLargeRow.getAttribute('data-large-code') || '').replace(/&quot;/g,'"').replace(/&lt;/g,'<');
+      if (lc) { drillLargeCode = lc; drillMidCode = ''; drillSmallCode = ''; loadDrill(); }
+      return;
+    }
+    var panelMidRow = e.target.closest('.pm-panel-mid-row');
+    if (panelMidRow) {
+      var mc = (panelMidRow.getAttribute('data-mid-code') || '').replace(/&quot;/g,'"').replace(/&lt;/g,'<');
+      if (mc) { drillMidCode = mc; drillSmallCode = ''; loadDrill(); }
+      return;
+    }
+    var panelSmallRow = e.target.closest('.pm-panel-small-row');
+    if (panelSmallRow) {
+      var sc = (panelSmallRow.getAttribute('data-small-code') || '').replace(/&quot;/g,'"').replace(/&lt;/g,'<');
+      if (sc) { drillSmallCode = sc; loadDrill(); }
+      return;
+    }
+    var catRow = e.target.closest('.pm-cat-row');
+    if (catRow) {
+      var level = catRow.getAttribute('data-level');
+      var largeCode = (catRow.getAttribute('data-large-code') || '').replace(/&quot;/g,'"');
+      var largeName = (catRow.getAttribute('data-large-name') || '').replace(/&lt;/g,'<');
+      var midCode = (catRow.getAttribute('data-mid-code') || '').replace(/&quot;/g,'"');
+      var midName = (catRow.getAttribute('data-mid-name') || '').replace(/&lt;/g,'<');
+      var smallCode = (catRow.getAttribute('data-small-code') || '').replace(/&quot;/g,'"');
+      var smallName = (catRow.getAttribute('data-small-name') || '').replace(/&lt;/g,'<');
+      var brandName = (catRow.getAttribute('data-brand') || '').replace(/&quot;/g,'"').replace(/&lt;/g,'<');
+      var next = catRow.nextElementSibling;
+      var isNestedWrap = next && next.classList && next.classList.contains('pm-cat-nested-wrap');
+      if (isNestedWrap) {
+        catRow.classList.remove('expanded');
+        next.remove();
+        return;
+      }
+      catRow.classList.add('expanded');
+      if (level === 'large') {
+        var loadingTr = document.createElement('tr');
+        loadingTr.className = 'pm-cat-nested-wrap';
+        loadingTr.innerHTML = '<td colspan="' + PM_CAT_COLS + '"><div class="pm-cat-nested"><p class="sub">加载中...</p></div></td>';
+        catRow.after(loadingTr);
+        fetch(API + '/api/product_master/drill_mid_categories?large_code=' + encodeURIComponent(largeCode), { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+          .then(function(r) { return r.json(); })
+          .then(function(d) {
+            loadingTr.remove();
+            if (!d.success || !d.items || !d.items.length) {
+              var tr = document.createElement('tr');
+              tr.className = 'pm-cat-nested-wrap';
+              tr.innerHTML = '<td colspan="' + PM_CAT_COLS + '"><div class="pm-cat-nested"><p class="sub">暂无中类数据</p></div></td>';
+              catRow.after(tr);
+              return;
+            }
+            var body = d.items.map(function(m) {
+              var priceRange = (priceStr(m.max_retail_price) !== '-' || priceStr(m.min_retail_price) !== '-') ? (priceStr(m.min_retail_price) + ' / ' + priceStr(m.max_retail_price)) : '-';
+              return '<tr class="pm-cat-row" data-level="mid" data-large-code="' + (largeCode||'').replace(/"/g,'&quot;') + '" data-large-name="' + (largeName||'').replace(/</g,'&lt;') + '" data-mid-code="' + (m.code||m.mid_code||'').replace(/"/g,'&quot;') + '" data-mid-name="' + (m.name||m.mid_name||'').replace(/</g,'&lt;') + '"><td><span class="expand-icon">▶</span></td><td>' + (m.name||m.mid_name||'').replace(/</g,'&lt;') + '</td><td class="num">' + fmtNum(m.sku_count) + '</td><td class="num">' + priceStr(m.avg_retail_price) + '</td><td class="num">' + priceRange + '</td><td class="num">' + fmtNum(m.sales_quantity) + '</td><td class="num">' + priceStr(m.sales_amount) + '</td></tr>';
+            }).join('');
+            var tr = document.createElement('tr');
+            tr.className = 'pm-cat-nested-wrap';
+            tr.innerHTML = '<td colspan="' + PM_CAT_COLS + '"><div class="pm-cat-nested"><table class="pm-cat-table"><thead><tr><th style="width:28px;"></th><th>中类</th><th class="num">SKU数</th><th class="num">平均零售价</th><th class="num">最高/最低</th><th class="num">销量</th><th class="num">销售额</th></tr></thead><tbody>' + body + '</tbody></table></div></td>';
+            catRow.after(tr);
+          })
+          .catch(function() { loadingTr.remove(); catRow.classList.remove('expanded'); });
+        return;
+      }
+      if (level === 'mid') {
+        var loadingTr = document.createElement('tr');
+        loadingTr.className = 'pm-cat-nested-wrap';
+        loadingTr.innerHTML = '<td colspan="' + PM_CAT_COLS + '"><div class="pm-cat-nested"><p class="sub">加载中...</p></div></td>';
+        catRow.after(loadingTr);
+        fetch(API + '/api/product_master/drill_small_categories?large_code=' + encodeURIComponent(largeCode) + '&mid_code=' + encodeURIComponent(midCode), { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+          .then(function(r) { return r.json(); })
+          .then(function(d) {
+            loadingTr.remove();
+            if (!d.success || !d.items || !d.items.length) {
+              var tr = document.createElement('tr');
+              tr.className = 'pm-cat-nested-wrap';
+              tr.innerHTML = '<td colspan="' + PM_CAT_COLS + '"><div class="pm-cat-nested"><p class="sub">暂无小类数据</p></div></td>';
+              catRow.after(tr);
+              return;
+            }
+            var body = d.items.map(function(s) {
+              var priceRange = (priceStr(s.max_retail_price) !== '-' || priceStr(s.min_retail_price) !== '-') ? (priceStr(s.min_retail_price) + ' / ' + priceStr(s.max_retail_price)) : '-';
+              var code = (s.code||s.small_code||'').replace(/"/g,'&quot;');
+              var name = (s.name||s.small_name||'').replace(/</g,'&lt;');
+              return '<tr class="pm-cat-row" data-level="small" data-large-code="' + (largeCode||'').replace(/"/g,'&quot;') + '" data-large-name="' + (largeName||'').replace(/</g,'&lt;') + '" data-mid-code="' + (midCode||'').replace(/"/g,'&quot;') + '" data-mid-name="' + (midName||'').replace(/</g,'&lt;') + '" data-small-code="' + code + '" data-small-name="' + name + '"><td><span class="expand-icon">▶</span></td><td>' + name + '</td><td class="num">' + fmtNum(s.sku_count) + '</td><td class="num">' + priceStr(s.avg_retail_price) + '</td><td class="num">' + priceRange + '</td><td class="num">' + fmtNum(s.sales_quantity) + '</td><td class="num">' + priceStr(s.sales_amount) + '</td></tr>';
+            }).join('');
+            var tr = document.createElement('tr');
+            tr.className = 'pm-cat-nested-wrap';
+            tr.innerHTML = '<td colspan="' + PM_CAT_COLS + '"><div class="pm-cat-nested"><table class="pm-cat-table"><thead><tr><th style="width:28px;"></th><th>小类</th><th class="num">SKU数</th><th class="num">平均零售价</th><th class="num">最高/最低</th><th class="num">销量</th><th class="num">销售额</th></tr></thead><tbody>' + body + '</tbody></table></div></td>';
+            catRow.after(tr);
+          })
+          .catch(function() { loadingTr.remove(); catRow.classList.remove('expanded'); });
+        return;
+      }
+      if (level === 'small') {
+        drillCategory = largeName + ' > ' + midName + ' > ' + smallName;
+        drillBrand = '';
+        drillLargeCode = largeCode;
+        drillMidCode = midCode;
+        drillSmallCode = smallCode || smallName;
+        loadDrill();
+        return;
+      }
+      if (level === 'brand') {
+        drillBrand = brandName;
+        loadDrill();
+        return;
+      }
+    }
     var row = e.target.closest('.pm-drill-row');
     if (!row) return;
+    document.querySelectorAll('.pm-drill-row.pm-selected').forEach(function(r) { r.classList.remove('pm-selected'); });
+    row.classList.add('pm-selected');
     var type = row.getAttribute('data-type');
     var name = (row.getAttribute('data-name') || '').replace(/&quot;/g,'"').replace(/&lt;/g,'<');
     if (type === 'category') { drillCategory = name; drillBrand = ''; }

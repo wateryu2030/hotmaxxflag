@@ -193,7 +193,7 @@
 |------|------|------|
 | `/api/categories`（与看板共用） | GET | 人力配置页拉取大类（level=large）、中类（level=mid&category_large_code=xxx），返回 [{code, name}]，按代码匹配 |
 | `/api/labor_analysis/labor_positions` | GET | 拉取所有人力成本汇总岗位（以组长表为准，组长优先排序，供人力岗位名下拉） |
-| `/api/labor_analysis/mapping` | GET/POST | 获取/保存 销售类目–人力岗位 映射配置 |
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | `/api/labor_analysis/mapping` | GET/POST | 获取/保存 销售类目–人力岗位 映射配置 |
 | `/api/labor_analysis/overview` | GET | 参数：start_date, end_date；返回经营/管理总成本、总人数、销售、毛利、人效、投入产出比 |
 | `/api/labor_analysis/by_category` | GET | 参数：start_date, end_date；返回各经营类目的人力成本、人数、销售、毛利、人效及明细结构 |
 | `/api/labor_analysis/management` | GET | 参数：start_date, end_date；返回管理人力按岗位拆分及每岗位可下沉到人名的明细、总成本/人数及与全店人效 |
@@ -209,7 +209,7 @@
 - **映射**：新建 `t_htma_labor_category_mapping`（或等价配置表）。  
 - 现有「人力成本」Tab 仍保留，继续做按月、按岗位的导入与查看；「人力分析」专注**与销售结合、按时间段与人效的分析**。
 
----
+---cd
 
 ## 九、实施顺序建议
 

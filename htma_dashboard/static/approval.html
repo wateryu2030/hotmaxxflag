@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
   <title>访问审批 - 好特卖运营看板</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -18,14 +18,17 @@
     .empty { color: #64748b; padding: 24px; text-align: center; }
     .err { color: #f87171; margin-top: 12px; }
   </style>
+  <link rel="stylesheet" href="/static/css/mobile.css">
 </head>
 <body>
   <h1>企业外用户访问审批</h1>
-  <p style="color:#94a3b8;margin-bottom:16px;">仅超级管理员可见。审批通过后，对应用户可登录访问 htma.greatagain.com.cn。</p>
+  <p class="text-muted" style="margin-bottom:16px;">仅超级管理员可见。审批通过后，对应用户可登录访问 htma.greatagain.com.cn。<a href="/admin" style="color:#38bdf8;margin-left:8px;">返回管理员提醒页</a></p>
+  <div class="table-responsive">
   <table>
     <thead><tr><th>姓名</th><th>open_id</th><th>申请时间</th><th>操作</th></tr></thead>
     <tbody id="list"></tbody>
   </table>
+  </div>
   <p id="err" class="err" style="display:none;"></p>
   <script>
     (function(){

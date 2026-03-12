@@ -1,0 +1,17 @@
+{
+  "id": "baidu-price-tools",
+  "name": "Baidu Price Tools",
+  "version": "1.0.0",
+  "description": "百度比价工具",
+  "entry": "baidu-price-tools.js",
+  "type": "commonjs",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "projectRoot": {
+        "type": "string",
+        "description": "项目根目录"
+      }
+    }
+  }
+}

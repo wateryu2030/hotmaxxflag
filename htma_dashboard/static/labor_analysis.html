@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
   <title>人力分析 - 好特卖运营看板</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -42,12 +42,23 @@
     .metric-badge.bad { background: #450a0a; color: #fecaca; }
     .metric-badge.neutral { background: #0f172a; color: #e2e8f0; border: 1px solid #334155; }
   </style>
+  <link rel="stylesheet" href="/static/css/mobile.css">
 </head>
 <body>
-  <div class="nav">
-    <a href="/">← 返回看板</a>
-    <a href="/labor">人力成本</a>
-    <a href="#" id="linkConfig">类目–人力映射配置</a>
+  <div class="navbar">
+    <div class="navbar-brand">好特卖运营看板</div>
+    <div class="navbar-user">
+      <button type="button" class="navbar-toggle" id="navbarToggle" aria-label="菜单">☰</button>
+    </div>
+    <div class="navbar-menu" id="navbarMenu">
+      <a href="/">← 返回看板</a>
+      <a href="/import">数据导入</a>
+      <a href="/labor">人力成本</a>
+      <a href="/labor_analysis">人力分析</a>
+      <a href="/profit_share">收益评估</a>
+      <a href="#" id="linkConfig">类目–人力映射配置</a>
+      <a href="/api/auth/logout">退出</a>
+    </div>
   </div>
 
   <div class="box">
@@ -58,6 +69,7 @@
       <label class="label">结束日期</label>
       <input type="date" id="endDate" />
       <button type="button" class="btn" id="btnQuery">查询</button>
+      <button type="button" class="btn btn-secondary" id="btnOpenConfig" style="margin-left:8px;" title="配置类目与人力岗位的对应关系">类目–人力映射配置</button>
     </div>
     <p class="label" style="margin-top:8px;">选择日期区间后，系统将按月人力数据按天数比例分摊到该区间，并与该区间销售数据匹配计算人效。人数为全量（不去重）。</p>
   </div>
@@ -362,6 +374,15 @@
   qs('linkConfig').onclick = function (e) {
     e.preventDefault();
     qs('configPanel').classList.toggle('show');
+    if (qs('configPanel').classList.contains('show')) {
+      qs('configPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+  qs('btnOpenConfig').onclick = function () {
+    qs('configPanel').classList.toggle('show');
+    if (qs('configPanel').classList.contains('show')) {
+      qs('configPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   };
 
   var laborCategories = [];
@@ -677,6 +698,13 @@
   // 首次加载可自动查一次
   runQuery();
 })();
+  </script>
+  <script>
+  document.addEventListener('DOMContentLoaded', function() {
+    var t = document.getElementById('navbarToggle');
+    var m = document.getElementById('navbarMenu');
+    if (t && m) t.addEventListener('click', function() { m.classList.toggle('active'); });
+  });
   </script>
 </body>
 </html>

@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
   <title>数据导入 - 好特卖运营看板</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -28,13 +28,23 @@
     .data-status-bar { padding: 8px 12px; background: #1e293b; border-radius: 6px; margin-bottom: 16px; font-size: 0.85rem; color: #94a3b8; border: 1px solid #334155; }
     .data-status-bar strong { color: #e2e8f0; }
   </style>
+  <link rel="stylesheet" href="/static/css/mobile.css">
 </head>
 <body>
-  <h1>数据导入</h1>
-  <div class="nav">
-    <a href="/">← 返回看板</a>
-    <span id="authUserBar" style="margin-left:12px;color:#94a3b8;"></span>
+  <div class="navbar">
+    <div class="navbar-brand">好特卖运营看板</div>
+    <div class="navbar-user">
+      <span id="authUserBar" style="margin-right:8px;color:inherit;"></span>
+      <button type="button" class="navbar-toggle" id="navbarToggle" aria-label="菜单">☰</button>
+    </div>
+    <div class="navbar-menu" id="navbarMenu">
+      <a href="/">← 返回看板</a>
+      <a href="/import">数据导入</a>
+      <a href="/profit_share">收益评估</a>
+      <a href="/api/auth/logout">退出</a>
+    </div>
   </div>
+  <h1>数据导入</h1>
   <div class="data-status-bar" id="dataStatusBar">
     <span id="dataStatusText">数据加载中...</span>
   </div>
@@ -44,7 +54,8 @@
       <strong>说明：</strong>只要通过当前网址（如 htma.greatagain.com.cn 或本机 127.0.0.1:5002）打开本页，上传的数据<strong>一律导入到该网址对应服务器的数据库</strong>，与您使用的电脑无关。外网访问时导入到跑看板的那台机器，不会导入到您本机。<br/>
       <strong>全列导入：</strong>销售/库存导入会将 Excel 中<strong>所有可识别列</strong>写入 MySQL（按表头或标准列位），缺列或空单元格以 NULL/0 写入，保证数据完整供经营分析使用。
     </p>
-    <h2>上传 Excel 文件（覆盖原有数据）</h2>
+    <h2>上传 Excel 文件（销售/库存/品类/毛利/税率）</h2>
+    <p class="tip" style="margin-bottom:8px;color:#94a3b8;"><strong>本区块仅写入销售、库存、品类、毛利、税率表，不影响人力成本与商品档案。</strong></p>
     <form id="importForm">
       <div class="file-row">
         <label>销售日报</label>
@@ -63,17 +74,17 @@
       <div class="file-row">
         <label>品类附表</label>
         <input type="file" name="category" accept=".xls,.xlsx" />
-        <span style="color:#64748b;font-size:0.85rem;">（大类编、大类名称、中类编、中类名称、小类编、小类名称）</span>
+        <span class="text-muted" style="font-size:0.85rem;">（大类编、大类名称、中类编、中类名称、小类编、小类名称）</span>
       </div>
       <div class="file-row">
         <label>毛利汇总</label>
         <input type="file" name="profit" accept=".xls,.xlsx" />
-        <span style="color:#64748b;font-size:0.85rem;">（大类名称、类别名称、销售金额、参考进价金额）</span>
+        <span class="text-muted" style="font-size:0.85rem;">（大类名称、类别名称、销售金额、参考进价金额）</span>
       </div>
       <div class="file-row">
         <label>税率负担表</label>
         <input type="file" name="tax_burden" accept=".xls,.xlsx" />
-        <span style="color:#64748b;font-size:0.85rem;">（编码、名称、毛利率、前台显示、微小店状态、税收分类编码、税率；同编码覆盖，新编码新增）</span>
+        <span class="text-muted" style="font-size:0.85rem;">（编码、名称、毛利率、前台显示、微小店状态、税收分类编码、税率；同编码覆盖，新编码新增）</span>
       </div>
       <div class="file-row" style="margin-top:16px;">
         <label>列映射（默认金额/进价为单价，销售额=金额×数量）：</label>
@@ -83,8 +94,8 @@
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" name="swap_amount_cost" value="1" /> 金额/进价列对调</label>
         </div>
       </div>
-      <p class="tip">文件名需包含对应关键词。至少上传一个文件。导入前会清空对应表，再写入新数据。</p>
-      <p class="tip" style="color:#fbbf24;">① 外网若「Failed to fetch」可一次只传一个文件。② <strong>销售日报与销售汇总请同一次一起上传</strong>（否则第二次会清空第一次）；同传时相同日期+货号会覆盖不累加，避免销售额翻倍。③ 库存金额列已支持千分位。</p>
+      <p class="tip">文件名需包含对应关键词。至少上传一个文件。<strong>销售/库存为增量写入（同主键覆盖），不清空全表；品类附表会清空并重建品类维表（不影响销售/库存/人力）。</strong>各区块仅处理本模块数据，互不影响。</p>
+      <p class="tip warn">① 外网若「Failed to fetch」可一次只传一个文件。② <strong>销售日报与销售汇总请同一次一起上传</strong>（同传时相同日期+货号会覆盖不累加，避免销售额翻倍）。③ 库存金额列已支持千分位。④ 上传品类附表前会提示：将清空并重建品类维表。</p>
       <button type="submit" class="btn" id="submitBtn">开始导入</button>
       <button type="button" class="btn btn-secondary" id="btnImportFromDownloads" style="margin-left:8px;" title="从服务器配置的下载目录自动导入 Excel（含去重与刷新）">从下载目录自动导入</button>
       <button type="button" class="btn btn-secondary" id="btnRepairSwap" style="margin-left:8px;">修复：对调金额/成本</button>
@@ -96,11 +107,12 @@
 
     <div class="section">
     <h2>人力成本导入（组长表 + 全职表 + 兼职/小时工/保洁/管理岗）</h2>
+    <p class="tip" style="margin-bottom:8px;color:#94a3b8;"><strong>本区块仅写入人力成本相关表，不影响销售/库存/商品档案。</strong></p>
     <p class="tip" style="margin-bottom:12px;">Excel 支持单 sheet 或多 sheet，系统<strong>自动识别</strong>类目（组长/职能、全职、兼职、小时工、保洁、管理岗）并<strong>自动清洗</strong>岗位名、归类写入。表头含「岗位/职务/属性」「合计薪资/费用总额/费用合计」等即可；导入后在看板「人力成本」按全口径与类目拆分查看。与脚本 <code>scripts/import_labor_excel_and_analyze.py</code> 使用同一套导入逻辑。</p>
     <form id="laborCostForm">
       <div class="file-row">
         <label>报表月份</label>
-        <input type="text" name="report_month" id="laborReportMonth" placeholder="2026-01" value="2026-01" style="width:100px;padding:8px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;" />
+        <input type="text" name="report_month" id="laborReportMonth" placeholder="2026-01" value="2026-01" style="width:100px;padding:8px;" />
         <span class="tip">格式 YYYY-MM；与 Excel 内容一致（12 月表→2025-12，1 月表→2026-01）</span>
       </div>
       <div class="file-row">
@@ -114,15 +126,15 @@
     <form id="laborCostImageForm" style="margin-top:12px;">
       <div class="file-row">
         <label>报表月份</label>
-        <input type="text" id="laborImageReportMonth" placeholder="2026-01" value="2026-01" style="width:100px;padding:8px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;" />
+        <input type="text" id="laborImageReportMonth" placeholder="2026-01" value="2026-01" style="width:100px;padding:8px;" />
       </div>
       <div class="file-row">
         <label>表类型</label>
-        <select id="laborImagePositionType" style="padding:8px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;">
+        <select id="laborImagePositionType" style="padding:8px;">
           <option value="leader">组长表</option>
           <option value="fulltime">组员表</option>
         </select>
-        <span style="color:#64748b;font-size:0.85rem;">与附图一一对应，组长表/组员表各传一次</span>
+        <span class="text-muted" style="font-size:0.85rem;">与附图一一对应，组长表/组员表各传一次</span>
       </div>
       <div class="file-row">
         <label>附表截图/照片</label>
@@ -135,6 +147,7 @@
 
   <div class="section">
     <h2>分店商品档案导入</h2>
+    <p class="tip" style="margin-bottom:8px;color:#94a3b8;"><strong>本区块仅写入商品档案表，不影响销售/库存/人力。</strong></p>
     <p class="tip" style="margin-bottom:12px;">上传「分店商品档案_YYYYMMDD_*.xlsx」全量 Excel，导入到 t_htma_product_master 表；同门店+货号会覆盖更新。导入后在「商品档案」页查看按状态/品类/品牌/经销方式/价格带的分析。</p>
     <form id="productMasterForm">
       <div class="file-row">
@@ -153,6 +166,10 @@
       const form = e.target;
       const btn = document.getElementById('submitBtn');
       const resultEl = document.getElementById('result');
+      var categoryEl = form.elements['category'];
+      if (categoryEl && categoryEl.files && categoryEl.files.length) {
+        if (!confirm('上传品类附表将清空并重建品类维表（不影响销售/库存/人力）。是否继续？')) return;
+      }
       btn.disabled = true;
       resultEl.style.display = 'block';
       resultEl.className = 'result';
@@ -543,6 +560,13 @@
       resultEl.style.display = 'block';
       btn.disabled = false;
     };
+  </script>
+  <script>
+  document.addEventListener('DOMContentLoaded', function() {
+    var t = document.getElementById('navbarToggle');
+    var m = document.getElementById('navbarMenu');
+    if (t && m) t.addEventListener('click', function() { m.classList.toggle('active'); });
+  });
   </script>
 </body>
 </html>

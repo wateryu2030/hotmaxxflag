@@ -1,0 +1,119 @@
+/**
+ * OpenClaw plugin: 向网关 /tools/invoke 暴露 get_price_comparison 与 search_products。
+ * 通过调用项目内 scripts/openclaw_baidu_tools_runner.py 实现，不依赖网关自身。
+ */
+const { spawn } = require("node:child_process");
+const { createReadStream } = require("node:fs");
+const path = require("node:path");
+const { pathToFileURL } = require("node:url");
+
+function getProjectRoot(config) {
+  const c = config?.plugins?.["baidu-price-tools"] ?? config?.plugins?.baiduPriceTools;
+  if (c?.projectRoot && typeof c.projectRoot === "string") return c.projectRoot.trim();
+  const env = process.env.HTMA_PROJECT_ROOT || process.env.OPENCLAW_BAIDU_PROJECT_ROOT;
+  if (env && typeof env === "string") return env.trim();
+  return null;
+}
+
+function runPython(projectRoot, action, query, timeoutMs = 20000) {
+  return new Promise((resolve, reject) => {
+    const script = path.join(projectRoot, "scripts", "openclaw_baidu_tools_runner.py");
+    const py = spawn(
+      "python3",
+      [script, action, query],
+      {
+        cwd: projectRoot,
+        env: { ...process.env, PYTHONPATH: projectRoot },
+        timeout: timeoutMs,
+      }
+    );
+    let out = "";
+    let err = "";
+    py.stdout.setEncoding("utf8").on("data", (ch) => { out += ch; });
+    py.stderr.setEncoding("utf8").on("data", (ch) => { err += ch; });
+    py.on("error", (e) => reject(new Error(`Failed to start python3: ${e.message}`)));
+    py.on("close", (code) => {
+      try {
+        const line = out.trim().split("\n").pop() || "{}";
+        const parsed = JSON.parse(line);
+        if (code !== 0 && parsed.error && !parsed.data && !parsed.products) {
+          reject(new Error(parsed.error || err || `exit ${code}`));
+        } else {
+          resolve(parsed);
+        }
+      } catch (e) {
+        reject(new Error(err || out || `exit ${code}`));
+      }
+    });
+  });
+}
+
+const plugin = {
+  id: "baidu-price-tools",
+  name: "Baidu Price Tools",
+  description: "get_price_comparison and search_products for gateway /tools/invoke",
+  register(api) {
+    const projectRoot = getProjectRoot(api.config);
+    if (!projectRoot) {
+      api.logger.warn(
+        "[baidu-price-tools] No project root. Set plugins.baidu-price-tools.projectRoot in openclaw.json or HTMA_PROJECT_ROOT / OPENCLAW_BAIDU_PROJECT_ROOT"
+      );
+    }
+
+    api.registerTool({
+      name: "get_price_comparison",
+      label: "Get Price Comparison",
+      description: "Compare product price across JD/Taobao etc. (via project Python runner)",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Product name or keyword" },
+          action: { type: "string", description: "Optional action" },
+        },
+      },
+      async execute(_toolCallId, params) {
+        if (!projectRoot) {
+          return { error: "baidu-price-tools: project root not configured" };
+        }
+        const query = (params?.query ?? params?.q ?? "").trim() || "";
+        if (!query) return { error: "query required" };
+        try {
+          const result = await runPython(projectRoot, "get_price_comparison", query);
+          if (result.error && !result.data) return result;
+          return result.data ? { data: result.data } : result;
+        } catch (e) {
+          return { error: e.message || String(e) };
+        }
+      },
+    });
+
+    api.registerTool({
+      name: "search_products",
+      label: "Search Products",
+      description: "Search products and return list (via project Python runner)",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Search keyword" },
+          action: { type: "string", description: "Optional action" },
+        },
+      },
+      async execute(_toolCallId, params) {
+        if (!projectRoot) {
+          return { error: "baidu-price-tools: project root not configured" };
+        }
+        const query = (params?.query ?? params?.q ?? "").trim() || "";
+        if (!query) return { products: [] };
+        try {
+          const result = await runPython(projectRoot, "search_products", query);
+          if (result.products) return result;
+          return { products: [] };
+        } catch (e) {
+          return { products: [], error: e.message || String(e) };
+        }
+      },
+    });
+  },
+};
+
+module.exports = plugin;

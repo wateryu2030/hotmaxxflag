@@ -45,14 +45,25 @@ def _http_post(url, body, headers=None):
 
 
 def send_feishu(text, at_user_id=None, at_user_name=None, title=None):
-    """发送飞书（富文本 @ 人）。与 feishu_util.send_feishu 行为一致。"""
-    if not FEISHU_WEBHOOK or not text:
-        return False, "未配置 FEISHU_WEBHOOK_URL 或内容为空"
+    """发送飞书（富文本 @ 人）。与 feishu_util.send_feishu 行为一致。未配置 FEISHU_WEBHOOK_URL 时使用 feishu_util 内置默认 webhook。"""
+    if not (text or "").strip():
+        return False, "内容为空"
+    _send = None
     try:
         from .feishu_util import send_feishu as _send
-        return _send(text, at_user_id=at_user_id or FEISHU_AT_USER_ID, at_user_name=at_user_name or FEISHU_AT_USER_NAME, title=title)
-    except Exception as e:
-        return False, str(e)
+    except Exception:
+        # 无父包时（如 python app.py）相对导入会报 no known parent package，改为用本目录绝对导入
+        import sys
+        _dir = os.path.dirname(os.path.abspath(__file__))
+        if _dir not in sys.path:
+            sys.path.insert(0, _dir)
+        try:
+            from feishu_util import send_feishu as _send
+        except Exception as e:
+            return False, "无法加载 feishu_util: " + str(e)
+    if not _send:
+        return False, "无法加载 feishu_util，请确认 .env 中已配置 FEISHU_WEBHOOK_URL"
+    return _send(text, at_user_id=at_user_id or FEISHU_AT_USER_ID, at_user_name=at_user_name or FEISHU_AT_USER_NAME, title=title)
 
 
 def send_wecom(text, mentioned_list=None):
@@ -100,10 +111,8 @@ def notify_all(text, title=None, feishu_at_user_id=None, feishu_at_user_name=Non
     results_dict 形如 {"feishu": (ok, err), "wecom": (ok, err), "dingtalk": (ok, err)}
     """
     results = {}
-    if FEISHU_WEBHOOK:
-        results["feishu"] = send_feishu(text, at_user_id=feishu_at_user_id, at_user_name=feishu_at_user_name, title=title)
-    else:
-        results["feishu"] = (False, "未配置 FEISHU_WEBHOOK_URL")
+    # 始终尝试飞书（未配置 FEISHU_WEBHOOK_URL 时由 feishu_util 使用其默认 webhook）
+    results["feishu"] = send_feishu(text, at_user_id=feishu_at_user_id, at_user_name=feishu_at_user_name, title=title)
     if WECOM_WEBHOOK:
         results["wecom"] = send_wecom(text)
     else:

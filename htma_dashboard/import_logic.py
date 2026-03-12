@@ -79,10 +79,10 @@ def _extract_report_date(df_or_path):
     return None
 
 
-# 销售/毛利/库存 Excel 中视为「汇总行」的货号或品类，导入时跳过，避免重复计入
-SALE_SUMMARY_ROW_KEYWORDS = frozenset({"总计", "合计", "小计", "求和项", "汇总", "合计行", "总计行", "小计行", "货号"})
+# 销售/毛利/库存 Excel 中视为「汇总行」的货号或品类，导入时跳过，避免重复计入（含「汇总数据」等导出统计行）
+SALE_SUMMARY_ROW_KEYWORDS = frozenset({"总计", "合计", "小计", "求和项", "汇总", "合计行", "总计行", "小计行", "货号", "汇总数据"})
 # 任一字段「包含」以下词即视为汇总行（导出的统计结果，非明细）
-SUMMARY_SUBSTRINGS = ("合计", "总计", "小计", "汇总", "求和项", "合计行", "总计行", "小计行")
+SUMMARY_SUBSTRINGS = ("合计", "总计", "小计", "汇总", "求和项", "合计行", "总计行", "小计行", "汇总数据")
 
 
 def _is_summary_like(s):
@@ -97,24 +97,28 @@ def _is_summary_like(s):
 
 
 def _is_sale_summary_row(row, cols):
-    """判断是否为汇总行（总计/合计/小计等），这类行不应作为明细导入，否则会重复计算"""
+    """判断是否为汇总行（总计/合计/小计/汇总数据等），这类行不应作为明细导入，否则会重复计算"""
     sku = _row_val(row, cols.get("sku", cols.get("sku_code", 2)))
     cat = _row_val(row, cols.get("category", 9))
+    pn = _row_val(row, cols.get("product_name", 3))
     sku_s = (str(sku or "").strip())[:64]
     cat_s = (str(cat or "").strip())[:64]
+    pn_s = (str(pn or "").strip())[:128]
     if sku_s and sku_s in SALE_SUMMARY_ROW_KEYWORDS:
         return True
     if cat_s and cat_s in SALE_SUMMARY_ROW_KEYWORDS:
         return True
     if _is_summary_like(sku_s) or _is_summary_like(cat_s):
         return True
-    # 品名列含合计/总计/小计 也视为汇总行
-    pn = _row_val(row, cols.get("product_name", 3))
-    if _is_summary_like(pn or ""):
+    if _is_summary_like(pn_s):
         return True
     # 部分导出在货号列写「求和项:销售金额」等
     if sku_s and ("求和项" in sku_s or "总计" in sku_s or "合计" in sku_s):
         return True
+    # 货号为 0/000000 且品类或品名含合计/小计/汇总：多为导出中的「合计行」，跳过
+    if sku_s and sku_s.replace("0", "") == "" and len(sku_s) <= 10:
+        if _is_summary_like(cat_s) or _is_summary_like(pn_s):
+            return True
     return False
 
 
@@ -472,7 +476,7 @@ STOCK_NEW_COLS = {
 
 
 def import_sale_daily(excel_path, conn, overwrite_on_duplicate=False):
-    """销售日报表：支持表头检测。overwrite_on_duplicate=True 时同(日期,货号)覆盖不累加（与汇总同传时防翻倍）。"""
+    """销售日报表：支持表头检测。仅写入 t_htma_sale（增量/覆盖），不触碰库存/人力/品类/商品档案。overwrite_on_duplicate=True 时同(日期,货号)覆盖不累加（与汇总同传时防翻倍）。"""
     ensure_sale_table_columns(conn)
     df = _read_excel_safe(excel_path)
     df = _trim_leading_junk_rows(df, ("货号", "销售金额", "商品编码", "销售日期", "销售数量", "品号", "商品号", "商品名称", "订单日期", "销售汇总"))
@@ -682,8 +686,8 @@ def _import_sale_full(row, dt, sku, sale_amount, cost, gross, cur, cols, full_ma
             raise
 
 
-def import_sale_summary(excel_path, conn, overwrite_on_duplicate=False):
-    """销售汇总表：支持表头检测。overwrite_on_duplicate=True 时同(日期,货号)覆盖不累加（与日报同传时防销售额翻倍）。"""
+def import_sale_summary(excel_path, conn, overwrite_on_duplicate=True):
+    """销售汇总表：支持表头检测。仅写入 t_htma_sale。默认 overwrite_on_duplicate=True：同(日期,货号)覆盖不累加，避免与日报重复导入或单独导入时在已有数据上累加导致翻倍（如 3 月 7 日重复）。"""
     ensure_sale_table_columns(conn)
     df = _read_excel_safe(excel_path)
     df = _trim_leading_junk_rows(df, ("货号", "销售金额", "商品编码", "销售日期", "销售数量", "品号", "商品号", "商品名称", "订单日期", "销售汇总"))
@@ -1030,7 +1034,7 @@ def _import_stock_full(row, data_date, cur, cols, full_map):
 
 
 def import_stock(excel_path, conn):
-    """实时库存表：支持表头检测，完整导入。同一货号多行（多仓库/库位）会按货号汇总数量与金额后再写入，避免统计偏小。"""
+    """实时库存表：支持表头检测，完整导入。仅写入 t_htma_stock（按日期+货号覆盖），不触碰销售/人力/品类/商品档案。同一货号多行（多仓库/库位）会按货号汇总数量与金额后再写入，避免统计偏小。"""
     m = re.search(r"(\d{4})-(\d{2})-(\d{2})", os.path.basename(excel_path))
     data_date = m.group(0) if m else datetime.now().strftime("%Y-%m-%d")
     df = _read_excel_safe(excel_path)
@@ -1378,7 +1382,7 @@ def import_profit(excel_path, conn):
 
 
 def refresh_category_from_sale(conn):
-    """从销售表透视大类/中类/小类，写入品类主数据表 t_htma_category，作为查询基础数据"""
+    """从销售表透视大类/中类/小类，写入品类主数据表 t_htma_category。仅操作 t_htma_category，不触碰销售/库存/人力/商品档案表。"""
     cur = conn.cursor()
     try:
         cur.execute("SELECT category_large_code, category_large, category_mid_code, category_mid, category_small_code, category_small, category FROM t_htma_sale LIMIT 1")
@@ -1731,6 +1735,7 @@ def import_labor_cost(excel_path, report_month, conn, store_id=None):
     成本以「开票金额/总成本」为准；供应商(斗米/中锐/快聘/保洁)从列或 sheet 名解析。
     组长/组员 sheet：全部到人导入（姓名为空或汇总行跳过）；兼职/小时工/保洁：到人且每人有人名。
     report_month 如 2026-01。返回 (counts_dict, diagnostics)。
+    仅操作 t_htma_labor_cost（先按 report_month 删除该月再写入），不触碰销售/库存/品类/商品档案表。
     """
     store_id = store_id or STORE_ID
     counts = {"leader": 0, "fulltime": 0, "parttime": 0, "hourly": 0, "cleaner": 0, "management": 0}
@@ -2707,8 +2712,7 @@ def _ensure_product_master_distribution_mode(conn):
 
 
 def import_product_master(excel_path, conn, store_id=None, archive_date=None):
-    """分店商品档案 Excel 导入 t_htma_product_master。按文件名解析 archive_date（分店商品档案_20260306-_101750.xlsx）。
-    返回 (inserted_count, message)。"""
+    """分店商品档案 Excel 导入 t_htma_product_master。仅操作 t_htma_product_master（按门店+货号覆盖），不触碰销售/库存/人力/品类表。按文件名解析 archive_date（分店商品档案_20260306-_101750.xlsx）。返回 (inserted_count, message)。"""
     _ensure_product_master_distribution_mode(conn)
     store_id = (store_id or STORE_ID or "默认").strip()[:32]
     if archive_date is None:

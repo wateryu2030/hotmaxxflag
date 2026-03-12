@@ -201,7 +201,7 @@ def main():
         has_sale_daily = sale_daily_cnt > 0
         if multi["sale_summary"]:
             sale_summary_cnt, diag = import_sale_summary(
-                multi["sale_summary"], conn, overwrite_on_duplicate=has_sale_daily
+                multi["sale_summary"], conn, overwrite_on_duplicate=True
             )
             print(f"销售汇总: {sale_summary_cnt} 条", diag or "", flush=True)
             has_sale_summary = True
@@ -225,7 +225,7 @@ def main():
             print(f"销售日报: {sale_daily_cnt} 条", diag or "", flush=True)
         if has_sale_summary:
             sale_summary_cnt, diag = import_sale_summary(
-                files["sale_summary"], conn, overwrite_on_duplicate=has_sale_daily
+                files["sale_summary"], conn, overwrite_on_duplicate=True
             )
             print(f"销售汇总: {sale_summary_cnt} 条", diag or "", flush=True)
         if "stock" in files:

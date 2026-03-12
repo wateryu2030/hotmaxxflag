@@ -92,6 +92,77 @@ def stage1_standardize(conn, store_id: str = "沈阳超级仓", days: int = 30, 
     return out
 
 
+def stage1_standardize_for_skus(
+    conn, store_id: str = "沈阳超级仓", sku_codes: Optional[list] = None, days: int = 30
+) -> list[dict]:
+    """
+    仅对指定 sku_code 列表做阶段1标准化（用于前端勾选后只比价选中商品）。
+    与 stage1_standardize 同结构，但 WHERE 增加 sku_code IN (...)。
+    """
+    if not sku_codes or not isinstance(sku_codes, (list, tuple)):
+        return []
+    sku_list = [str(s).strip() for s in sku_codes if s]
+    if not sku_list:
+        return []
+    placeholders = ",".join(["%s"] * len(sku_list))
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT s.sku_code,
+               COALESCE(st.product_name, s.product_name, s.sku_code) AS raw_name,
+               MAX(COALESCE(st.spec, s.spec)) AS spec,
+               MAX(COALESCE(st.brand_name, s.brand_name)) AS brand_name,
+               MAX(COALESCE(st.barcode, s.barcode)) AS barcode,
+               MAX(s.category) AS category, MAX(s.category_large) AS category_large,
+               MAX(s.category_mid) AS category_mid, MAX(s.category_small) AS category_small,
+               SUM(s.sale_qty) AS sale_qty, SUM(s.sale_amount) AS sale_amount,
+               SUM(s.gross_profit) AS gross_profit,
+               SUM(s.sale_amount)/NULLIF(SUM(s.sale_qty),0) AS unit_price
+        FROM t_htma_sale s
+        LEFT JOIN t_htma_stock st ON st.sku_code = s.sku_code AND st.store_id = s.store_id
+            AND st.data_date = (SELECT MAX(t.data_date) FROM t_htma_stock t WHERE t.store_id = %s)
+        WHERE s.store_id = %s
+          AND s.data_date >= DATE_SUB(CURDATE(), INTERVAL %s DAY)
+          AND s.sku_code IN (""" + placeholders + """)
+          AND COALESCE(s.category_small,'') NOT LIKE %s
+          AND COALESCE(s.category_small,'') NOT LIKE %s
+          AND COALESCE(s.category_small,'') NOT LIKE %s
+        GROUP BY s.sku_code, st.product_name, s.product_name, s.category, s.category_large, s.category_mid, s.category_small
+        HAVING SUM(s.sale_amount) > 0 AND SUM(s.sale_qty) >= 1
+        ORDER BY SUM(s.sale_amount) DESC
+    """, (store_id, store_id, days, *sku_list, "%购物袋%", "%包装袋%", "%塑料袋%"))
+    rows = cur.fetchall()
+    cur.close()
+
+    out = []
+    for r in rows:
+        raw = (r.get("raw_name") or r.get("sku_code") or "").strip()
+        if not raw:
+            continue
+        name = _clean_product_name(raw)
+        if not name or len(name) < 2:
+            continue
+        unit_price = float(r.get("unit_price") or 0)
+        if unit_price <= 0 or unit_price > 10000:
+            continue
+        out.append({
+            "sku_code": r["sku_code"],
+            "raw_name": raw[:64],
+            "std_name": name[:128],
+            "spec": (r.get("spec") or "")[:32],
+            "brand_name": (r.get("brand_name") or "")[:32],
+            "barcode": (r.get("barcode") or "")[:32],
+            "category": (r.get("category") or "")[:32],
+            "category_large": (r.get("category_large") or "")[:32],
+            "category_mid": (r.get("category_mid") or "")[:32],
+            "category_small": (r.get("category_small") or "")[:32],
+            "sale_qty": float(r.get("sale_qty") or 0),
+            "sale_amount": float(r.get("sale_amount") or 0),
+            "gross_profit": float(r.get("gross_profit") or 0),
+            "unit_price": unit_price,
+        })
+    return out
+
+
 def stage1_standardize_single_day(
     conn, store_id: str = "沈阳超级仓", data_date: Optional[date] = None, limit: int = 50
 ) -> list[dict]:
@@ -355,6 +426,8 @@ def stage3_calc_advantage(
             it["jd_platform"] = None
             it["taobao_min_price"] = None
             it["taobao_platform"] = None
+            it["match_type"] = None
+            it["original_query"] = None
         else:
             comp_min = float(comp["min_price"])
             adv = (comp_min - ht_price) / comp_min * 100 if comp_min > 0 else 0
@@ -365,6 +438,9 @@ def stage3_calc_advantage(
             it["jd_platform"] = comp.get("jd_platform")
             it["taobao_min_price"] = comp.get("taobao_min_price")
             it["taobao_platform"] = comp.get("taobao_platform")
+            it["match_type"] = comp.get("match_type")
+            it["original_query"] = comp.get("original_query")
+            it["price_source"] = comp.get("price_source")
             if adv >= _TIER_HIGH:
                 it["tier"] = "高优势款"
             elif adv >= _TIER_MID:
@@ -430,25 +506,63 @@ def run_full_pipeline(
     fetcher: Optional[Callable[[str], Optional[dict]]] = None,
     save_to_db: bool = True,
     fetch_limit: Optional[int] = None,
+    sku_codes: Optional[list] = None,
 ) -> dict:
     """执行完整 4 阶段闭环，返回货盘分析结果。fetcher 优先使用传入的，否则尝试 baidu_fetcher 已配置的。
-    fetch_limit: 真实 API 时仅对前 N 个商品比价，其余标为独家款，用于控制成本（如 50）"""
+    fetch_limit: 真实 API 时仅对前 N 个商品比价，其余标为独家款，用于控制成本（如 50）
+    sku_codes: 若传入非空列表，仅对这些 sku_code 的商品执行比价（前端勾选）。"""
     fetcher_error = None
     fetcher_platform = "jd"  # 用于报告提示
     if fetcher is None:
+        # 强制优先使用百度 Skill（已安装则必须先用，无需 ONEBOUND_KEY）
+        skill_fetcher = None
+        _this_dir = os.path.dirname(os.path.abspath(__file__))
+        _root = os.path.dirname(_this_dir)
+        import sys
+        import importlib.util
+        for _path in (_this_dir, _root):
+            if _path and _path not in sys.path:
+                sys.path.insert(0, _path)
+        # 多种方式尝试加载，确保 launchd 下 cwd=htma_dashboard 时也能命中
         try:
-            from baidu_fetcher import get_configured_fetcher, onebound_test_ok, ONEBOUND_PLATFORM, ONEBOUND_KEY, ONEBOUND_SECRET
-            fetcher = get_configured_fetcher()
-            fetcher_platform = (ONEBOUND_PLATFORM or "jd").lower()
-            # OneBound 预检：双平台或单平台 fetcher 只要用万邦就做预检，便于报告提示
-            if fetcher and (ONEBOUND_KEY and ONEBOUND_SECRET):
-                ok, err = onebound_test_ok()
-                if not ok:
-                    fetcher_error = err
+            from htma_dashboard.baidu_skill_compare import baidu_skill_item_fetcher as skill_fetcher
         except ImportError:
-            fetcher = None
+            try:
+                from baidu_skill_compare import baidu_skill_item_fetcher as skill_fetcher
+            except ImportError:
+                try:
+                    _mod_path = os.path.join(_this_dir, "baidu_skill_compare.py")
+                    if os.path.isfile(_mod_path):
+                        _spec = importlib.util.spec_from_file_location("baidu_skill_compare", _mod_path)
+                        _mod = importlib.util.module_from_spec(_spec)
+                        _spec.loader.exec_module(_mod)
+                        skill_fetcher = getattr(_mod, "baidu_skill_item_fetcher", None)
+                except Exception:
+                    pass
+        if skill_fetcher is not None:
+            fetcher = skill_fetcher
+            fetcher_platform = "百度Skill"
+        # 仅当百度 Skill 不可用时才回退到万邦/蚂蚁星球；万邦 Key 过期时不使用、不展示其错误
+        if fetcher is None:
+            try:
+                from baidu_fetcher import get_configured_fetcher, onebound_test_ok, ONEBOUND_PLATFORM, ONEBOUND_KEY, ONEBOUND_SECRET
+                fetcher = get_configured_fetcher()
+                fetcher_platform = (ONEBOUND_PLATFORM or "jd").lower()
+                if fetcher and (ONEBOUND_KEY and ONEBOUND_SECRET):
+                    ok, err = onebound_test_ok()
+                    if not ok:
+                        # Key 过期或不可用时：不使用万邦，不展示「接口预检」错误，避免误导
+                        fetcher = None
+                        fetcher_platform = "未配置"
+                    # else: 使用 fetcher，不设置 fetcher_error
+            except ImportError:
+                fetcher = None
+                fetcher_platform = "未配置"
     use_mock = use_mock_fetcher and fetcher is None
-    items = stage1_standardize(conn, store_id, days)
+    if sku_codes and isinstance(sku_codes, (list, tuple)) and len([s for s in sku_codes if s]) > 0:
+        items = stage1_standardize_for_skus(conn, store_id, sku_codes, days=days)
+    else:
+        items = stage1_standardize(conn, store_id, days)
     items = stage3_calc_advantage(items, fetcher=fetcher, use_mock=use_mock, fetch_limit=fetch_limit)
     portfolio = stage4_portfolio_analysis(items)
     run_at = datetime.now()
@@ -543,12 +657,43 @@ def run_daily_top_compare(
             data_date = r["data_date"]
             if isinstance(data_date, datetime):
                 data_date = data_date.date()
+    _daily_platform = "jd"
     if fetcher is None:
+        # 强制优先使用百度 Skill（与 run_full_pipeline 一致，含 importlib 回退）
+        skill_fetcher = None
+        _this_dir = os.path.dirname(os.path.abspath(__file__))
+        _root = os.path.dirname(_this_dir)
+        import sys
+        import importlib.util
+        for _path in (_this_dir, _root):
+            if _path and _path not in sys.path:
+                sys.path.insert(0, _path)
         try:
-            from baidu_fetcher import get_configured_fetcher
-            fetcher = get_configured_fetcher()
+            from htma_dashboard.baidu_skill_compare import baidu_skill_item_fetcher as skill_fetcher
         except ImportError:
-            fetcher = None
+            try:
+                from baidu_skill_compare import baidu_skill_item_fetcher as skill_fetcher
+            except ImportError:
+                try:
+                    _mod_path = os.path.join(_this_dir, "baidu_skill_compare.py")
+                    if os.path.isfile(_mod_path):
+                        _spec = importlib.util.spec_from_file_location("baidu_skill_compare", _mod_path)
+                        _mod = importlib.util.module_from_spec(_spec)
+                        _spec.loader.exec_module(_mod)
+                        skill_fetcher = getattr(_mod, "baidu_skill_item_fetcher", None)
+                except Exception:
+                    pass
+        if skill_fetcher is not None:
+            fetcher = skill_fetcher
+            _daily_platform = "百度Skill"
+        if fetcher is None:
+            try:
+                from baidu_fetcher import get_configured_fetcher, ONEBOUND_PLATFORM
+                fetcher = get_configured_fetcher()
+                if fetcher:
+                    _daily_platform = (ONEBOUND_PLATFORM or "jd").lower()
+            except ImportError:
+                fetcher = None
     use_mock = use_mock_fetcher and fetcher is None
     items = stage3_calc_advantage(items, fetcher=fetcher, use_mock=use_mock, fetch_limit=fetch_limit or limit)
     portfolio = stage4_portfolio_analysis(items)
@@ -598,7 +743,7 @@ def run_daily_top_compare(
         "data_date": str(data_date) if data_date else None,
         "use_real_fetcher": fetcher is not None,
         "fetcher_error": None,
-        "fetcher_platform": "jd",
+        "fetcher_platform": _daily_platform if fetcher is not None else "jd",
     }
 
 
@@ -620,19 +765,34 @@ def format_report(result: dict) -> str:
         "",
         "━━━ 货盘分层 ━━━",
     ]
+    data_sources = [it.get("price_source") for it in items if it.get("price_source")]
+    if data_sources:
+        src = data_sources[0]
+        if src == "baidu_youxuan_mcp":
+            lines.insert(4, "数据来源：百度优选 MCP（本机 clawhub 无 run 命令，已自动回退）。")
+        elif src == "baidu_skill":
+            lines.insert(4, "数据来源：百度 Skill（clawhub run / 网关）。")
     lines.extend(strategies)
-    # 当使用真实 API 且全部为独家款时，给出排查提示
+    # 当使用真实 API 且全部为独家款时，给出排查提示（按当前数据源区分）
     total = summary.get("total", 0)
     exclusive = summary.get("exclusive", 0)
+    platform = result.get("fetcher_platform") or ""
     if result.get("use_real_fetcher") and total > 0 and exclusive == total:
         lines.append("")
         lines.append("【排查提示】本次比价全部未命中竞品（均为独家款），可能原因：")
-        lines.append("1) .env 未配置 ONEBOUND_KEY/ONEBOUND_SECRET 或 PDD_HOJINGKE_APIKEY；")
-        lines.append("2) 万邦控制台未开通京东/淘宝 item_search 接口（与 key 用量/权限有关）；")
-        lines.append("3) 蚂蚁星球需在开发者中心完成京东联盟设置。建议先配置后重试或联系管理员。")
-    if result.get("fetcher_error"):
+        if platform == "百度Skill":
+            lines.append("1) 当前仅使用百度 Skill（网关 /tools/invoke 或 clawhub run），无其它数据源回退。")
+            lines.append("2) 请确认：已执行 bash scripts/setup_openclaw_baidu_tools.sh 并重启 OpenClaw 网关；或本机可执行 clawhub run <slug> 且已安装百度比价 Skill。")
+            lines.append("3) 在 OpenClaw 网页 Chat 中说「请用百度优选比价洽洽坚果」可验证 Skill 是否返回数据。详见 docs/百度Skill比价环境说明.md。")
+        else:
+            lines.append("1) .env 未配置 ONEBOUND_KEY/ONEBOUND_SECRET 或 PDD_HOJINGKE_APIKEY；")
+            lines.append("2) 万邦控制台未开通京东/淘宝 item_search 接口（与 key 用量/权限有关）；")
+            lines.append("3) 蚂蚁星球需在开发者中心完成京东联盟设置。建议先配置后重试或联系管理员。")
+    # 仅在使用万邦且预检失败时展示接口预检（百度 Skill 优先时不会出现）
+    if result.get("fetcher_error") and platform != "百度Skill":
         lines.append("")
         lines.append(f"【接口预检】竞品接口异常：{result.get('fetcher_error')}")
+        lines.append("请检查 .env 中 ONEBOUND_KEY/ONEBOUND_SECRET 或 PDD_HOJINGKE_APIKEY，以及万邦/蚂蚁星球控制台是否已开通对应接口。或改用百度 Skill（在 OpenClaw Chat 中安装百度电商比价 Skill）。")
     lines.append("")
     # 表格：好特卖商品、规格、好特卖售价、竞品最低价、竞品来源、价格优势%
     lines.append("━━━ 比价明细表（好特卖 vs 其他平台） ━━━")
@@ -640,7 +800,7 @@ def format_report(result: dict) -> str:
     w_name, w_spec = 20, 12
     sep = "+" + "-" * (w_name + 2) + "+" + "-" * (w_spec + 2) + "+" + "-" * 14 + "+" + "-" * 14 + "+" + "-" * 16 + "+" + "-" * 10 + "+"
     lines.append(sep)
-    lines.append(f"| {'品名':<{w_name}} | {'规格':<{w_spec}} | {'好特卖售价(元)':>12} | {'竞品最低价(元)':>12} | {'竞品来源':>14} | {'价格优势%':>8} |")
+    lines.append(f"| {'品名':<{w_name}} | {'规格':<{w_spec}} | {'好特卖售价(元)':>12} | {'竞品最低价(元)':>12} | {'竞品来源':>16} | {'价格优势%':>8} |")
     lines.append(sep)
     for it in items[:80]:  # 最多 80 行，避免过长
         name = ((it.get("raw_name") or it.get("std_name") or "")[:w_name]).strip()
@@ -649,14 +809,24 @@ def format_report(result: dict) -> str:
         ht_s = f"{ht:.2f}" if ht is not None else "-"
         comp = it.get("competitor_min")
         comp_s = f"{comp:.2f}" if comp is not None else "-"
-        plat = (it.get("platform") or "-")[:14]
+        plat = (it.get("platform") or "-")
+        if it.get("match_type") == "fuzzy":
+            plat = plat + "（模糊）" if plat and plat != "-" else "模糊匹配"
+        plat = plat[:16]
         adv = it.get("advantage_pct")
         adv_s = f"{adv}%" if adv is not None else "-"
-        lines.append(f"| {name:<{w_name}} | {spec:<{w_spec}} | {ht_s:>12} | {comp_s:>12} | {plat:>14} | {adv_s:>8} |")
+        lines.append(f"| {name:<{w_name}} | {spec:<{w_spec}} | {ht_s:>12} | {comp_s:>12} | {plat:>16} | {adv_s:>8} |")
     if len(items) > 80:
         lines.append("")
         lines.append(f"（共 {len(items)} 条，上表仅展示前 80 条）")
     lines.append(sep)
+    fuzzy_items = [it for it in items if it.get("match_type") == "fuzzy"]
+    if fuzzy_items:
+        lines.append("")
+        orig_queries = [it.get("original_query") or it.get("raw_name") or it.get("std_name") or "" for it in fuzzy_items]
+        lines.append("【模糊匹配】以下商品为搜索最相似结果比价：" + "；".join(orig_queries[:15]))
+        if len(fuzzy_items) > 15:
+            lines.append(f"  （共 {len(fuzzy_items)} 条为模糊匹配）")
     lines.append("")
     lines.append("━━━ 高优势款 Top10（可主推） ━━━")
     high = [x for x in items if x.get("tier") == "高优势款"]
@@ -670,12 +840,12 @@ def format_report(result: dict) -> str:
         platforms = {it.get("platform") for it in items if it.get("platform") and it.get("platform") != "模拟"}
         plat_str = "、".join(p for p in platforms if p) or "真实API"
         lines.append(f"（注：竞品价来自 {plat_str}）")
-    elif result.get("fetcher_error"):
+    elif result.get("fetcher_error") and (result.get("fetcher_platform") or "") != "百度Skill":
         err = (result["fetcher_error"] or "")[:70]
         if len((result["fetcher_error"] or "")) > 70:
             err = err.rstrip() + "…"
         plat = "京东" if (result.get("fetcher_platform") or "jd") == "jd" else "淘宝"
-        lines.append(f"（注：OneBound 接口异常，当前为模拟数据。{err} 请在控制台开通{plat} item_search 接口。）")
+        lines.append(f"（注：万邦/蚂蚁星球接口异常，当前为模拟数据。{err} 请开通{plat} item_search 或改用百度 Skill。）")
     else:
         lines.append("（注：竞品价为模拟数据。配置 ONEBOUND_KEY/SECRET 或 JUHE_PRICE_KEY 可接入真实比价，见 .env.example 与 docs/货盘价格对比分析.md）")
     lines.append(f"--- 报告生成时间 {datetime.now().strftime('%Y-%m-%d %H:%M')} ---")

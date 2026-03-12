@@ -5,6 +5,7 @@
 直接读取 MySQL htma_dashboard，提供 API 与看板页面。
 """
 import os
+import sys
 import urllib.parse
 from datetime import date, timedelta, datetime
 
@@ -12,7 +13,7 @@ from datetime import date, timedelta, datetime
 _env_dir = os.path.dirname(os.path.abspath(os.path.realpath(__file__)))
 _project_root = os.path.abspath(os.path.join(_env_dir, ".."))
 _env_path = os.path.join(_project_root, ".env")
-_ENV_KEYS = ("FEISHU_APP_ID", "FEISHU_APP_SECRET", "HTMA_PUBLIC_URL", "FLASK_SECRET_KEY")
+_ENV_KEYS = ("FEISHU_APP_ID", "FEISHU_APP_SECRET", "HTMA_PUBLIC_URL", "FLASK_SECRET_KEY", "FEISHU_WEBHOOK_URL", "FEISHU_AT_USER_ID", "FEISHU_AT_USER_NAME")
 
 
 def _load_env_from_file(path, force_keys=None):
@@ -88,7 +89,7 @@ try:
 except ImportError:
     pass
 # 先强制从项目根 .env 注入飞书相关（覆盖空值），再按原逻辑补其他
-_load_env_from_file(_env_path, force_keys=("FEISHU_APP_ID", "FEISHU_APP_SECRET"))
+_load_env_from_file(_env_path, force_keys=("FEISHU_APP_ID", "FEISHU_APP_SECRET", "FEISHU_WEBHOOK_URL"))
 for _p in (_env_path, os.path.join(os.getcwd(), ".env"), os.path.abspath(os.path.join(os.getcwd(), "..", ".env"))):
     _load_env_from_file(_p)
 import subprocess
@@ -101,8 +102,8 @@ from flask import Flask, Response, jsonify, send_from_directory, request, sessio
 from werkzeug.utils import secure_filename
 
 from import_logic import import_sale_daily, import_sale_summary, import_stock, import_category, import_profit, import_tax_burden, refresh_profit, refresh_category_from_sale, sync_products_table, sync_category_table, preview_sale_excel, import_labor_cost, import_labor_cost_from_image, refresh_labor_cost_analysis, import_product_master, _ensure_product_master_distribution_mode
-from analytics import build_insights, category_rank_data
-from query_layer import date_condition as _ql_date_condition, query_filters_from_request as _ql_query_filters
+from analytics import build_insights, build_enhanced_insights, build_structured_report, build_marketing_report, category_rank_data, advanced_search_consumer_insight
+from query_layer import date_condition as _ql_date_condition, query_filters_from_request as _ql_query_filters, query_filters_from_params as _ql_query_filters_from_params
 
 # 简单内存缓存：key -> (value, expire_at)，用于 date_range / kpi 等只读接口
 _api_cache = {}
@@ -898,9 +899,24 @@ def api_tax_burden_export():
     return jsonify({"success": False, "error": "format 仅支持 csv 或 pdf"}), 400
 
 
-def _get_consumer_insight_data():
-    """消费洞察：概览 KPI、品类贡献、品牌贡献、价格带、经销方式、新品表现。与经营分析/税率同周期。"""
-    date_cond, date_params, params, category_cond, _ = _query_filters()
+def _get_consumer_insight_data(param_override=None):
+    """消费洞察：概览 KPI、品类贡献、品牌贡献、价格带、经销方式、新品表现。与经营分析/税率同周期。
+    param_override: 可选 dict，含 period/start_date/end_date/category/brand/product_name，用于非 request 调用（如结构化报告）。"""
+    if param_override:
+        date_cond, date_params, params, category_cond, _ = _ql_query_filters_from_params(
+            period=param_override.get("period") or "recent30",
+            start_date=param_override.get("start_date"),
+            end_date=param_override.get("end_date"),
+            category=param_override.get("category"),
+            brand=param_override.get("brand"),
+            category_large_code=param_override.get("category_large_code"),
+            category_mid_code=param_override.get("category_mid_code"),
+            category_small_code=param_override.get("category_small_code"),
+        )
+        if params and params[0] is None:
+            params = (STORE_ID,) + tuple(params[1:])
+    else:
+        date_cond, date_params, params, category_cond, _ = _query_filters()
     date_only_params = (STORE_ID,) + tuple(date_params)
     conn = get_conn()
     try:
@@ -1397,9 +1413,14 @@ def _get_consumer_insight_data():
         except Exception:
             period_over_period = {}
         # 日期范围文案（与税率计算一致：自定义用 start_date~end_date，否则用 period 标签）
-        start_d = (request.args.get("start_date") or "").strip()
-        end_d = (request.args.get("end_date") or "").strip()
-        period = request.args.get("period", "recent30")
+        if param_override:
+            start_d = (param_override.get("start_date") or "").strip()
+            end_d = (param_override.get("end_date") or "").strip()
+            period = (param_override.get("period") or "recent30").strip()
+        else:
+            start_d = (request.args.get("start_date") or "").strip()
+            end_d = (request.args.get("end_date") or "").strip()
+            period = request.args.get("period", "recent30")
         date_range = f"{start_d} ~ {end_d}" if (start_d and end_d) else {"day": "今日", "week": "本周", "month": "本月", "recent30": "近30天"}.get(period, "近30天")
         bi_insight = _build_bi_insight(overview, period_over_period, category_matrix, return_rate_pct, distribution, date_range)
         # 下钻层级：品类 → 品牌 → 款式(品名) → 货号明细
@@ -1407,9 +1428,14 @@ def _get_consumer_insight_data():
         drill_styles = []
         drill_subcategory = []
         drill_sku_rank = []
-        category_name = (request.args.get("category") or "").strip()
-        brand_name = (request.args.get("brand") or "").strip()
-        product_name = (request.args.get("product_name") or "").strip()
+        if param_override:
+            category_name = (param_override.get("category") or "").strip()
+            brand_name = (param_override.get("brand") or "").strip()
+            product_name = (param_override.get("product_name") or "").strip()
+        else:
+            category_name = (request.args.get("category") or "").strip()
+            brand_name = (request.args.get("brand") or "").strip()
+            product_name = (request.args.get("product_name") or "").strip()
         try:
             if category_name:
                 # 二级：该品类下品牌列表（点击品牌进入三级）
@@ -1783,6 +1809,23 @@ def api_auth_feishu_callback():
                 next_url = "/"
     if not next_url.startswith("/"):
         next_url = "/"
+    # 超级管理员若直接回首页且有待审批，先跳到管理员提醒页
+    try:
+        from auth import _super_admin_open_id
+        admin_oid = (_super_admin_open_id() or "").strip()
+        oid = (user.get("open_id") or "").strip()
+        if admin_oid and oid and next_url == "/":
+            if oid == admin_oid or oid.replace("ou_", "") == admin_oid.replace("ou_", ""):
+                conn = get_conn()
+                cur = conn.cursor()
+                cur.execute("SELECT COUNT(*) FROM t_htma_external_access WHERE status = 'pending'")
+                n = (cur.fetchone() or (0,))[0]
+                cur.close()
+                conn.close()
+                if n > 0:
+                    next_url = "/admin"
+    except Exception:
+        pass
     return redirect(next_url or "/")
 
 
@@ -1812,6 +1855,33 @@ def approval_page():
     return send_from_directory("static", "approval.html")
 
 
+@app.route("/admin")
+def admin_reminder_page():
+    """超级管理员专用提醒页：待审批数量与快捷入口"""
+    if _auth_enabled() and not _is_logged_in():
+        return redirect("/login?next=" + urllib.parse.quote(request.url or "/admin"))
+    if not _is_super_admin():
+        return redirect("/login?error=" + urllib.parse.quote("仅超级管理员可访问"))
+    return send_from_directory("static", "admin.html")
+
+
+@app.route("/api/auth/pending_count")
+def api_auth_pending_count():
+    """待审批数量（仅超级管理员可查，用于提醒页）"""
+    if not _is_super_admin():
+        return jsonify({"success": True, "is_super_admin": False, "pending_count": 0})
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM t_htma_external_access WHERE status = 'pending'")
+        n = (cur.fetchone() or (0,))[0]
+        cur.close()
+        conn.close()
+        return jsonify({"success": True, "is_super_admin": True, "pending_count": n})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e), "pending_count": 0}), 500
+
+
 @app.route("/api/auth/approvals")
 def api_auth_approvals():
     """待审批列表（仅超级管理员）"""
@@ -1819,7 +1889,7 @@ def api_auth_approvals():
         return jsonify({"success": False, "message": "仅超级管理员可查看"}), 403
     try:
         conn = get_conn()
-        cur = conn.cursor()
+        cur = conn.cursor(pymysql.cursors.DictCursor)
         cur.execute(
             "SELECT open_id, name, union_id, status, requested_at FROM t_htma_external_access WHERE status = 'pending' ORDER BY requested_at DESC"
         )
@@ -1904,9 +1974,13 @@ def profit_share_page():
     return send_from_directory("static", "profit_share.html")
 
 
+# 本接口仅处理销售/库存/品类/毛利/税率，不读写人力、商品档案表；各模块数据隔离。
+IMPORT_ALLOWED_KEYS = ("sale_daily", "sale_summary", "stock", "category", "profit", "tax_burden")
+
+
 @app.route("/api/import", methods=["POST"])
 def api_import():
-    """上传 Excel，覆盖式导入 MySQL。preview_only=1 时仅预览销售表结构，不导入"""
+    """上传 Excel，导入 MySQL。仅处理销售日报/销售汇总/库存/品类/毛利/税率，不触碰人力与商品档案。preview_only=1 时仅预览销售表结构，不导入"""
     if _auth_enabled() and not _has_module_access("import"):
         return jsonify({"success": False, "message": "无权访问数据导入模块，请联系管理员"}), 403
     preview_only = request.form.get("preview_only", "").strip() in ("1", "true", "yes")
@@ -1928,15 +2002,15 @@ def api_import():
                 return jsonify({"success": False, "error": "仅支持 .xls / .xlsx"}), 400
         return jsonify({"success": False, "error": "请选择销售日报或销售汇总文件"}), 400
 
-    # 至少有一个已选中的文件（有 filename），避免仅选税率表时被误判为“未上传”
+    # 至少有一个已选中的文件（有 filename），且仅处理白名单 key，避免误操作其他模块
     def _has_any_file():
-        for key in ("sale_daily", "sale_summary", "stock", "category", "profit", "tax_burden"):
+        for key in IMPORT_ALLOWED_KEYS:
             f = request.files.get(key)
             if f and getattr(f, "filename", None) and str(f.filename).strip():
                 return True
         return False
     if not _has_any_file():
-        return jsonify({"success": False, "message": "请至少上传一个 Excel 文件"}), 400
+        return jsonify({"success": False, "message": "请至少上传一个 Excel 文件（销售日报/销售汇总/库存/品类/毛利/税率之一）"}), 400
 
     conn = None
     result = {"sale_daily": 0, "sale_summary": 0, "stock": 0, "category": 0, "profit": 0, "profit_refreshed": 0, "tax_burden": 0, "errors": []}
@@ -1973,6 +2047,8 @@ def api_import():
             os.environ["HTMA_COST_AS_TOTAL"] = "1"
         try:
             for key, file in request.files.items():
+                if key not in IMPORT_ALLOWED_KEYS:
+                    continue
                 if not file or file.filename == "":
                     continue
                 if not (file.filename.lower().endswith(".xls") or file.filename.lower().endswith(".xlsx")):
@@ -1987,8 +2063,8 @@ def api_import():
                             if diag:
                                 result.setdefault("diagnostics", []).append(diag)
                         elif key == "sale_summary":
-                            # 与日报同传时：同(日期,货号)覆盖不累加，避免销售额翻倍（日报与汇总常为同一批数据两种导出）
-                            cnt, diag = import_sale_summary(tmp.name, conn, overwrite_on_duplicate=_has_valid_file(["sale_daily"]))
+                            # 销售汇总始终按(日期,货号)覆盖不累加，避免与日报重复或单独导入时在已有数据上累加导致翻倍
+                            cnt, diag = import_sale_summary(tmp.name, conn, overwrite_on_duplicate=True)
                             result["sale_summary"] = cnt
                             if diag:
                                 result.setdefault("diagnostics", []).append(diag)
@@ -2024,9 +2100,9 @@ def api_import():
                 if _orig_cost is not None:
                     os.environ["HTMA_COST_AS_TOTAL"] = _orig_cost
 
-        # 导入后自动化更新：毛利表 → 品类主数据 → 商品表 → 品类毛利表，确保后续看板/导出/比价正常
-        # 1) 有销售数据且未上传毛利 Excel 时，从销售表汇总刷新毛利表
-        if (result["sale_daily"] > 0 or result["sale_summary"] > 0) and not _has_valid_file(["profit"]):
+        # 导入后自动化更新：毛利表 → 品类主数据 → 商品表 → 品类毛利表，确保统计口径一致
+        # 1) 只要有销售日报/汇总导入，就从 t_htma_sale 同步刷新 t_htma_profit（与展示统一用 sale 表，profit 表仅作兼容/导出）
+        if result["sale_daily"] > 0 or result["sale_summary"] > 0:
             result["profit_refreshed"] = refresh_profit(conn)
         # 2) 从销售表透视生成品类主数据 t_htma_category（大类/中类/小类）
         if result["sale_daily"] > 0 or result["sale_summary"] > 0:
@@ -2905,13 +2981,13 @@ def _product_master_analysis(conn, store_id=None):
         v = _f(r, key, default)
         return int(round(v))
 
-    # ---------- 1. 整体概览 KPI ----------
+    # ---------- 1. 整体概览 KPI（按 DISTINCT sku_code 统计，避免重复行导致虚高）----------
     cur.execute("""
         SELECT
-            COUNT(*) AS total_sku,
-            SUM(CASE WHEN TRIM(COALESCE(product_status,'')) = '正常' THEN 1 ELSE 0 END) AS normal_count,
-            SUM(CASE WHEN TRIM(COALESCE(product_status,'')) = '新品' THEN 1 ELSE 0 END) AS new_count,
-            SUM(CASE WHEN TRIM(COALESCE(product_status,'')) = '停售' THEN 1 ELSE 0 END) AS stop_count,
+            COUNT(DISTINCT sku_code) AS total_sku,
+            COUNT(DISTINCT CASE WHEN TRIM(COALESCE(product_status,'')) = '正常' THEN sku_code END) AS normal_count,
+            COUNT(DISTINCT CASE WHEN TRIM(COALESCE(product_status,'')) = '新品' THEN sku_code END) AS new_count,
+            COUNT(DISTINCT CASE WHEN TRIM(COALESCE(product_status,'')) = '停售' THEN sku_code END) AS stop_count,
             AVG(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS avg_retail,
             MAX(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS max_retail,
             MIN(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS min_retail,
@@ -2941,12 +3017,21 @@ def _product_master_analysis(conn, store_id=None):
         overview["member_discount_count"] = _i(r2, "c2")
     except Exception:
         pass
+    try:
+        cur.execute(
+            "SELECT COUNT(DISTINCT sku_code) AS c FROM t_htma_sale WHERE store_id = %s AND data_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)",
+            [store_id],
+        )
+        r3 = cur.fetchone()
+        overview["sale_sku_count_30d"] = _i(r3, "c")
+    except Exception:
+        overview["sale_sku_count_30d"] = None
 
-    # ---------- 2. 按商品状态（含占比、平均零售价、品牌数）----------
+    # ---------- 2. 按商品状态（含占比、平均零售价、品牌数，按 DISTINCT sku_code 统计）----------
     cur.execute("""
         SELECT
             COALESCE(NULLIF(TRIM(product_status), ''), '未填') AS k,
-            COUNT(*) AS sku_count,
+            COUNT(DISTINCT sku_code) AS sku_count,
             AVG(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS avg_retail,
             COUNT(DISTINCT NULLIF(TRIM(COALESCE(brand_name,'')), '')) AS brand_count
         FROM t_htma_product_master
@@ -2963,11 +3048,11 @@ def _product_master_analysis(conn, store_id=None):
             "brand_count": _i(r, "brand_count"),
         })
 
-    # ---------- 3. 按品类（类别）：SKU数、占比、均价、最高/最低价、品牌数、供应商数、近30天销量/销售额 ----------
+    # ---------- 3. 按品类（类别）：SKU数、占比、均价、最高/最低价、品牌数、供应商数、近30天销量/销售额（按 DISTINCT sku_code 统计）----------
     cur.execute("""
         SELECT
             COALESCE(NULLIF(TRIM(p.category_name), ''), '未分类') AS cat,
-            COUNT(*) AS sku_count,
+            COUNT(DISTINCT p.sku_code) AS sku_count,
             AVG(CASE WHEN COALESCE(p.retail_price, 0) > 0 THEN p.retail_price END) AS avg_retail,
             MAX(CASE WHEN COALESCE(p.retail_price, 0) > 0 THEN p.retail_price END) AS max_retail,
             MIN(CASE WHEN COALESCE(p.retail_price, 0) > 0 THEN p.retail_price END) AS min_retail,
@@ -3010,11 +3095,11 @@ def _product_master_analysis(conn, store_id=None):
     except Exception:
         pass
 
-    # ---------- 4. 按品牌：SKU数、占比、均价、最高/最低、覆盖品类数、主要品类 Top3、近30天销量/销售额 ----------
+    # ---------- 4. 按品牌：SKU数、占比、均价、最高/最低、覆盖品类数、主要品类 Top3、近30天销量/销售额（按 DISTINCT sku_code 统计）----------
     cur.execute("""
         SELECT
             COALESCE(NULLIF(TRIM(brand_name), ''), '未填') AS brand,
-            COUNT(*) AS sku_count,
+            COUNT(DISTINCT sku_code) AS sku_count,
             AVG(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS avg_retail,
             MAX(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS max_retail,
             MIN(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS min_retail,
@@ -3075,7 +3160,7 @@ def _product_master_analysis(conn, store_id=None):
                 WHEN retail_price < 1000 THEN '500-999'
                 ELSE '1000+'
             END AS band,
-            COUNT(*) AS sku_count,
+            COUNT(DISTINCT sku_code) AS sku_count,
             COUNT(DISTINCT NULLIF(TRIM(COALESCE(category_name,'')), '')) AS category_count,
             COUNT(DISTINCT NULLIF(TRIM(COALESCE(brand_name,'')), '')) AS brand_count
         FROM t_htma_product_master
@@ -3122,7 +3207,7 @@ def _product_master_analysis(conn, store_id=None):
         cur.execute("""
             SELECT
                 COALESCE(NULLIF(TRIM(distribution_mode), ''), '未填') AS mode,
-                COUNT(*) AS sku_count,
+                COUNT(DISTINCT sku_code) AS sku_count,
                 AVG(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS avg_retail,
                 AVG(CASE WHEN COALESCE(joint_rate, 0) > 0 THEN joint_rate END) AS joint_rate_avg
             FROM t_htma_product_master
@@ -3140,11 +3225,11 @@ def _product_master_analysis(conn, store_id=None):
     except Exception:
         pass
 
-    # ---------- 7. 按供应商：SKU数、占比、覆盖品类数、主要经销方式、平均零售价、联营扣率均值 ----------
+    # ---------- 7. 按供应商：SKU数、占比、覆盖品类数、主要经销方式、平均零售价、联营扣率均值（按 DISTINCT sku_code 统计）----------
     cur.execute("""
         SELECT
             COALESCE(NULLIF(TRIM(supplier_name), ''), NULLIF(TRIM(supplier_code), ''), '未填') AS supplier,
-            COUNT(*) AS sku_count,
+            COUNT(DISTINCT sku_code) AS sku_count,
             COUNT(DISTINCT NULLIF(TRIM(COALESCE(category_name,'')), '')) AS category_count,
             AVG(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS avg_retail,
             AVG(CASE WHEN COALESCE(joint_rate, 0) > 0 THEN joint_rate END) AS joint_rate_avg
@@ -3175,11 +3260,11 @@ def _product_master_analysis(conn, store_id=None):
         except Exception:
             s["main_distribution"] = "-"
 
-    # ---------- 8. 性别分布 ----------
+    # ---------- 8. 性别分布（按 DISTINCT sku_code 统计）----------
     cur.execute("""
         SELECT
             COALESCE(NULLIF(TRIM(gender), ''), '未指定') AS k,
-            COUNT(*) AS sku_count,
+            COUNT(DISTINCT sku_code) AS sku_count,
             AVG(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS avg_retail
         FROM t_htma_product_master
         """ + cond + """ GROUP BY k ORDER BY sku_count DESC LIMIT 10""", params)
@@ -3201,41 +3286,41 @@ def _product_master_analysis(conn, store_id=None):
             GROUP BY category_name ORDER BY COUNT(*) DESC LIMIT 3""", params + [g["name"] if g["name"] != "未指定" else ""])
         g["top_categories"] = ", ".join([(x.get("cat") or "").strip() for x in cur.fetchall() if x.get("cat")]) or "-"
 
-    # ---------- 9. 上下装/配件 ----------
+    # ---------- 9. 上下装/配件（按 DISTINCT sku_code 统计）----------
     cur.execute("""
         SELECT
             COALESCE(NULLIF(TRIM(clothing_type), ''), '其他') AS k,
-            COUNT(*) AS sku_count,
+            COUNT(DISTINCT sku_code) AS sku_count,
             AVG(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS avg_retail
         FROM t_htma_product_master
         """ + cond + """ GROUP BY k ORDER BY sku_count DESC LIMIT 15""", params)
     by_clothing_type = [{"name": (r.get("k") or "其他").strip(), "count": _i(r, "sku_count"), "pct": round(_i(r, "sku_count") / total_sku * 100, 2) if total_sku else 0, "avg_retail": round(_f(r, "avg_retail"), 2) if _f(r, "avg_retail") else None} for r in cur.fetchall()]
 
-    # ---------- 10. 风格 ----------
+    # ---------- 10. 风格（按 DISTINCT sku_code 统计）----------
     cur.execute("""
         SELECT
             COALESCE(NULLIF(TRIM(style), ''), '未填') AS k,
-            COUNT(*) AS sku_count,
+            COUNT(DISTINCT sku_code) AS sku_count,
             AVG(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS avg_retail
         FROM t_htma_product_master
         """ + cond + """ GROUP BY k ORDER BY sku_count DESC LIMIT 15""", params)
     by_style = [{"name": (r.get("k") or "未填").strip(), "count": _i(r, "sku_count"), "pct": round(_i(r, "sku_count") / total_sku * 100, 2) if total_sku else 0, "avg_retail": round(_f(r, "avg_retail"), 2) if _f(r, "avg_retail") else None} for r in cur.fetchall()]
 
-    # ---------- 11. 色系 ----------
+    # ---------- 11. 色系（按 DISTINCT sku_code 统计）----------
     cur.execute("""
         SELECT
             COALESCE(NULLIF(TRIM(color_family), ''), '未填') AS k,
-            COUNT(*) AS sku_count,
+            COUNT(DISTINCT sku_code) AS sku_count,
             AVG(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS avg_retail
         FROM t_htma_product_master
         """ + cond + """ GROUP BY k ORDER BY sku_count DESC LIMIT 15""", params)
     by_color = [{"name": (r.get("k") or "未填").strip(), "count": _i(r, "sku_count"), "pct": round(_i(r, "sku_count") / total_sku * 100, 2) if total_sku else 0, "avg_retail": round(_f(r, "avg_retail"), 2) if _f(r, "avg_retail") else None} for r in cur.fetchall()]
 
-    # ---------- 12. 产地 ----------
+    # ---------- 12. 产地（按 DISTINCT sku_code 统计）----------
     cur.execute("""
         SELECT
             COALESCE(NULLIF(TRIM(origin), ''), '未填') AS k,
-            COUNT(*) AS sku_count,
+            COUNT(DISTINCT sku_code) AS sku_count,
             AVG(CASE WHEN COALESCE(retail_price, 0) > 0 THEN retail_price END) AS avg_retail
         FROM t_htma_product_master
         """ + cond + """ GROUP BY k ORDER BY sku_count DESC LIMIT 15""", params)
@@ -3307,11 +3392,51 @@ def _product_master_analysis(conn, store_id=None):
     special["bundle_pct"] = round(special["bundle_count"] / total_sku * 100, 2) if total_sku else 0
     special["points_pct"] = round(special["points_count"] / total_sku * 100, 2) if total_sku else 0
 
+    # ---------- 品类层级（大类，来自销售表与档案 JOIN，含价格与近30天销售，供前端 大类→中类→小类→品牌→商品 下钻）----------
+    by_category_large = []
+    try:
+        cur.execute("""
+            SELECT
+                COALESCE(NULLIF(TRIM(s.category_large_code), ''), '未分类') AS large_code,
+                COALESCE(NULLIF(TRIM(s.category_large), ''), s.category_large_code, '未分类') AS large_name,
+                COUNT(DISTINCT p.sku_code) AS sku_count,
+                AVG(CASE WHEN COALESCE(p.retail_price, 0) > 0 THEN p.retail_price END) AS avg_retail,
+                MAX(CASE WHEN COALESCE(p.retail_price, 0) > 0 THEN p.retail_price END) AS max_retail,
+                MIN(CASE WHEN COALESCE(p.retail_price, 0) > 0 THEN p.retail_price END) AS min_retail,
+                COALESCE(SUM(sale.sale_amount), 0) AS sales_amount,
+                COALESCE(SUM(sale.sale_qty), 0) AS sales_quantity
+            FROM t_htma_product_master p
+            INNER JOIN (
+                SELECT sku_code, MAX(store_id) AS store_id, MAX(category_large_code) AS category_large_code, MAX(category_large) AS category_large
+                FROM t_htma_sale WHERE store_id = %s GROUP BY sku_code
+            ) s ON p.sku_code = s.sku_code AND p.store_id = s.store_id
+            LEFT JOIN (
+                SELECT sku_code, SUM(sale_amount) AS sale_amount, SUM(sale_qty) AS sale_qty
+                FROM t_htma_sale WHERE store_id = %s AND data_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) GROUP BY sku_code
+            ) sale ON sale.sku_code = p.sku_code
+            WHERE p.store_id = %s
+            GROUP BY large_code, large_name ORDER BY sku_count DESC LIMIT 100
+        """, [store_id, store_id, store_id])
+        for r in cur.fetchall():
+            by_category_large.append({
+                "large_code": (r.get("large_code") or "未分类").strip(),
+                "large_name": (r.get("large_name") or "未分类").strip(),
+                "sku_count": _i(r, "sku_count"),
+                "avg_retail_price": round(float(r.get("avg_retail") or 0), 2) if r.get("avg_retail") is not None else None,
+                "max_retail_price": round(float(r.get("max_retail") or 0), 2) if r.get("max_retail") is not None else None,
+                "min_retail_price": round(float(r.get("min_retail") or 0), 2) if r.get("min_retail") is not None else None,
+                "sales_amount": round(float(r.get("sales_amount") or 0), 2),
+                "sales_quantity": round(float(r.get("sales_quantity") or 0), 2),
+            })
+    except Exception:
+        pass
+
     cur.close()
     return {
         "overview": overview,
         "by_status": by_status,
         "by_category": by_category,
+        "by_category_large": by_category_large,
         "by_brand": by_brand,
         "by_distribution": by_distribution,
         "by_price_band": by_price_band,
@@ -3347,13 +3472,84 @@ def api_product_master_analysis():
         return jsonify({"success": False, "message": str(e)}), 500
 
 
+@app.route("/api/product_master_category_mid")
+def api_product_master_category_mid():
+    """商品档案·按品类层级：指定大类后返回中类列表（SKU 数来自档案+销售口径）。需 product_master 权限。"""
+    if _auth_enabled() and not _has_module_access("product_master"):
+        return jsonify({"success": False, "message": "无权访问"}), 403
+    large_code = (request.args.get("category_large_code") or request.args.get("category_large") or "").strip()
+    if not large_code:
+        return jsonify({"success": False, "message": "请提供 category_large_code"}), 400
+    store_id = (STORE_ID or "默认").strip()[:32]
+    conn = get_conn()
+    try:
+        cur = conn.cursor(pymysql.cursors.DictCursor)
+        cur.execute("""
+            SELECT
+                COALESCE(NULLIF(TRIM(s.category_mid_code), ''), '未分类') AS mid_code,
+                COALESCE(NULLIF(TRIM(s.category_mid), ''), s.category_mid_code, '未分类') AS mid_name,
+                COUNT(DISTINCT p.sku_code) AS sku_count
+            FROM t_htma_product_master p
+            INNER JOIN (
+                SELECT sku_code, MAX(store_id) AS store_id, MAX(category_mid_code) AS category_mid_code, MAX(category_mid) AS category_mid
+                FROM t_htma_sale WHERE store_id = %s
+                  AND (COALESCE(TRIM(category_large_code), '') = %s OR COALESCE(TRIM(category_large), '') = %s)
+                GROUP BY sku_code
+            ) s ON p.sku_code = s.sku_code AND p.store_id = s.store_id
+            WHERE p.store_id = %s
+            GROUP BY mid_code, mid_name ORDER BY sku_count DESC LIMIT 100
+        """, [store_id, large_code, large_code, store_id])
+        rows = [{"mid_code": (r.get("mid_code") or "").strip(), "mid_name": (r.get("mid_name") or "未分类").strip(), "sku_count": int(r.get("sku_count") or 0)} for r in cur.fetchall()]
+        return jsonify({"success": True, "category_large_code": large_code, "items": rows})
+    finally:
+        conn.close()
+
+
+@app.route("/api/product_master_category_small")
+def api_product_master_category_small():
+    """商品档案·按品类层级：指定大类+中类后返回小类列表。需 product_master 权限。"""
+    if _auth_enabled() and not _has_module_access("product_master"):
+        return jsonify({"success": False, "message": "无权访问"}), 403
+    large_code = (request.args.get("category_large_code") or request.args.get("category_large") or "").strip()
+    mid_code = (request.args.get("category_mid_code") or request.args.get("category_mid") or "").strip()
+    if not large_code or not mid_code:
+        return jsonify({"success": False, "message": "请提供 category_large_code 与 category_mid_code"}), 400
+    store_id = (STORE_ID or "默认").strip()[:32]
+    conn = get_conn()
+    try:
+        cur = conn.cursor(pymysql.cursors.DictCursor)
+        cur.execute("""
+            SELECT
+                COALESCE(NULLIF(TRIM(s.category_small_code), ''), '未分类') AS small_code,
+                COALESCE(NULLIF(TRIM(s.category_small), ''), s.category_small_code, COALESCE(NULLIF(TRIM(s.category), ''), '未分类')) AS small_name,
+                COUNT(DISTINCT p.sku_code) AS sku_count
+            FROM t_htma_product_master p
+            INNER JOIN (
+                SELECT sku_code, MAX(store_id) AS store_id, MAX(category_small_code) AS category_small_code, MAX(category_small) AS category_small, MAX(category) AS category
+                FROM t_htma_sale WHERE store_id = %s
+                  AND (COALESCE(TRIM(category_large_code), '') = %s OR COALESCE(TRIM(category_large), '') = %s)
+                  AND (COALESCE(TRIM(category_mid_code), '') = %s OR COALESCE(TRIM(category_mid), '') = %s)
+                GROUP BY sku_code
+            ) s ON p.sku_code = s.sku_code AND p.store_id = s.store_id
+            WHERE p.store_id = %s
+            GROUP BY small_code, small_name ORDER BY sku_count DESC LIMIT 100
+        """, [store_id, large_code, large_code, mid_code, mid_code, store_id])
+        rows = [{"small_code": (r.get("small_code") or "").strip(), "small_name": (r.get("small_name") or "未分类").strip(), "sku_count": int(r.get("sku_count") or 0)} for r in cur.fetchall()]
+        return jsonify({"success": True, "category_large_code": large_code, "category_mid_code": mid_code, "items": rows})
+    finally:
+        conn.close()
+
+
 @app.route("/api/product_master_drill")
 def api_product_master_drill():
-    """商品档案下钻：品类→品牌列表；品类+品牌→SKU 销售明细。需 product_master 权限。"""
+    """商品档案下钻：品类→品牌列表；品类+品牌→SKU 销售明细。支持 category_small_code 按小类筛品牌。需 product_master 权限。"""
     if _auth_enabled() and not _has_module_access("product_master"):
         return jsonify({"success": False, "message": "无权访问"}), 403
     category = (request.args.get("category") or "").strip()
     brand = (request.args.get("brand") or "").strip()
+    category_large_code = (request.args.get("category_large_code") or "").strip()
+    category_mid_code = (request.args.get("category_mid_code") or "").strip()
+    category_small_code = (request.args.get("category_small_code") or "").strip()
     page = max(1, int(request.args.get("page", 1)))
     page_size = min(100, max(20, int(request.args.get("page_size", 50))))
     store_id = (STORE_ID or "默认").strip()[:32]
@@ -3365,6 +3561,19 @@ def api_product_master_drill():
         if category:
             cond += " AND TRIM(COALESCE(p.category_name,'')) = %s "
             params.append(category)
+        if category_small_code:
+            sku_sub = " SELECT sku_code FROM t_htma_sale WHERE store_id = %s "
+            sub_params = [store_id]
+            if category_large_code:
+                sku_sub += " AND (COALESCE(TRIM(category_large_code),'') = %s OR COALESCE(TRIM(category_large),'') = %s) "
+                sub_params.extend([category_large_code, category_large_code])
+            if category_mid_code:
+                sku_sub += " AND (COALESCE(TRIM(category_mid_code),'') = %s OR COALESCE(TRIM(category_mid),'') = %s) "
+                sub_params.extend([category_mid_code, category_mid_code])
+            sku_sub += " AND (COALESCE(TRIM(category_small_code),'') = %s OR COALESCE(TRIM(category_small),'') = %s OR COALESCE(TRIM(category),'') = %s) GROUP BY sku_code "
+            sub_params.extend([category_small_code, category_small_code, category_small_code])
+            cond += " AND p.sku_code IN (" + sku_sub + ") "
+            params.extend(sub_params)
         if brand:
             cond += " AND TRIM(COALESCE(p.brand_name,'')) = %s "
             params.append(brand)
@@ -3432,6 +3641,425 @@ def api_product_master_drill():
             })
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
+    finally:
+        conn.close()
+
+
+def _pm_drill_price_sales_select():
+    """返回商品档案下钻用到的价格与近30天销售字段片段（兼容无 wholesale/list_price 列）。"""
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT COLUMN_NAME FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 't_htma_product_master'
+            AND COLUMN_NAME IN ('wholesale_price', 'list_price')
+        """)
+        cols = {r[0] for r in cur.fetchall()}
+        conn.close()
+    except Exception:
+        cols = set()
+    sel = "AVG(CASE WHEN COALESCE(p.retail_price, 0) > 0 THEN p.retail_price END) AS avg_retail_price, MAX(CASE WHEN COALESCE(p.retail_price, 0) > 0 THEN p.retail_price END) AS max_retail_price, MIN(CASE WHEN COALESCE(p.retail_price, 0) > 0 THEN p.retail_price END) AS min_retail_price"
+    if "wholesale_price" in cols:
+        sel += ", AVG(CASE WHEN COALESCE(p.wholesale_price, 0) > 0 THEN p.wholesale_price END) AS avg_wholesale_price"
+    else:
+        sel += ", NULL AS avg_wholesale_price"
+    if "list_price" in cols:
+        sel += ", AVG(CASE WHEN COALESCE(p.list_price, 0) > 0 THEN p.list_price END) AS avg_list_price"
+    else:
+        sel += ", NULL AS avg_list_price"
+    return sel
+
+
+@app.route("/api/product_master/drill_large_categories")
+def api_product_master_drill_large():
+    """品类下钻：所有大类（含 SKU 数、价格统计、近30天销量/销售额）。需 product_master 权限。"""
+    if _auth_enabled() and not _has_module_access("product_master"):
+        return jsonify({"success": False, "message": "无权访问"}), 403
+    store_id = (STORE_ID or "默认").strip()[:32]
+    price_sel = _pm_drill_price_sales_select()
+    conn = get_conn()
+    try:
+        cur = conn.cursor(pymysql.cursors.DictCursor)
+        cur.execute("""
+            SELECT
+                COALESCE(NULLIF(TRIM(s.category_large_code), ''), '未分类') AS code,
+                COALESCE(NULLIF(TRIM(s.category_large), ''), s.category_large_code, '未分类') AS name,
+                COUNT(DISTINCT p.sku_code) AS sku_count,
+                """ + price_sel + """,
+                COALESCE(SUM(sale.sale_amount), 0) AS sales_amount,
+                COALESCE(SUM(sale.sale_qty), 0) AS sales_quantity
+            FROM t_htma_product_master p
+            INNER JOIN (
+                SELECT sku_code, MAX(store_id) AS store_id, MAX(category_large_code) AS category_large_code, MAX(category_large) AS category_large
+                FROM t_htma_sale WHERE store_id = %s GROUP BY sku_code
+            ) s ON p.sku_code = s.sku_code AND p.store_id = s.store_id
+            LEFT JOIN (
+                SELECT sku_code, SUM(sale_amount) AS sale_amount, SUM(sale_qty) AS sale_qty
+                FROM t_htma_sale WHERE store_id = %s AND data_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) GROUP BY sku_code
+            ) sale ON sale.sku_code = p.sku_code
+            WHERE p.store_id = %s
+            GROUP BY s.category_large_code, s.category_large ORDER BY sku_count DESC LIMIT 200
+        """, [store_id, store_id, store_id])
+        rows = _format_drill_rows(cur.fetchall(), "code", "name")
+        return jsonify({"success": True, "items": rows})
+    finally:
+        conn.close()
+
+
+@app.route("/api/product_master/drill_mid_categories")
+def api_product_master_drill_mid():
+    """品类下钻：指定大类下的中类（含价格与销售统计）。参数 large_code 或 category_large_code。"""
+    if _auth_enabled() and not _has_module_access("product_master"):
+        return jsonify({"success": False, "message": "无权访问"}), 403
+    large_code = (request.args.get("large_code") or request.args.get("category_large_code") or "").strip()
+    if not large_code:
+        return jsonify({"success": False, "message": "请提供 large_code"}), 400
+    store_id = (STORE_ID or "默认").strip()[:32]
+    price_sel = _pm_drill_price_sales_select()
+    conn = get_conn()
+    try:
+        cur = conn.cursor(pymysql.cursors.DictCursor)
+        cur.execute("""
+            SELECT
+                COALESCE(NULLIF(TRIM(s.category_mid_code), ''), '未分类') AS code,
+                COALESCE(NULLIF(TRIM(s.category_mid), ''), s.category_mid_code, '未分类') AS name,
+                COUNT(DISTINCT p.sku_code) AS sku_count,
+                """ + price_sel + """,
+                COALESCE(SUM(sale.sale_amount), 0) AS sales_amount,
+                COALESCE(SUM(sale.sale_qty), 0) AS sales_quantity
+            FROM t_htma_product_master p
+            INNER JOIN (
+                SELECT sku_code, MAX(store_id) AS store_id, MAX(category_mid_code) AS category_mid_code, MAX(category_mid) AS category_mid
+                FROM t_htma_sale WHERE store_id = %s
+                  AND (COALESCE(TRIM(category_large_code), '') = %s OR COALESCE(TRIM(category_large), '') = %s)
+                GROUP BY sku_code
+            ) s ON p.sku_code = s.sku_code AND p.store_id = s.store_id
+            LEFT JOIN (
+                SELECT sku_code, SUM(sale_amount) AS sale_amount, SUM(sale_qty) AS sale_qty
+                FROM t_htma_sale WHERE store_id = %s AND data_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) GROUP BY sku_code
+            ) sale ON sale.sku_code = p.sku_code
+            WHERE p.store_id = %s
+            GROUP BY s.category_mid_code, s.category_mid ORDER BY sku_count DESC LIMIT 200
+        """, [store_id, large_code, large_code, store_id, store_id])
+        rows = _format_drill_rows(cur.fetchall(), "code", "name")
+        return jsonify({"success": True, "large_code": large_code, "items": rows})
+    finally:
+        conn.close()
+
+
+@app.route("/api/product_master/drill_small_categories")
+def api_product_master_drill_small():
+    """品类下钻：指定大类+中类下的小类。参数 large_code, mid_code。"""
+    if _auth_enabled() and not _has_module_access("product_master"):
+        return jsonify({"success": False, "message": "无权访问"}), 403
+    large_code = (request.args.get("large_code") or request.args.get("category_large_code") or "").strip()
+    mid_code = (request.args.get("mid_code") or request.args.get("category_mid_code") or "").strip()
+    if not large_code or not mid_code:
+        return jsonify({"success": False, "message": "请提供 large_code 与 mid_code"}), 400
+    store_id = (STORE_ID or "默认").strip()[:32]
+    price_sel = _pm_drill_price_sales_select()
+    conn = get_conn()
+    try:
+        cur = conn.cursor(pymysql.cursors.DictCursor)
+        cur.execute("""
+            SELECT
+                COALESCE(NULLIF(TRIM(s.category_small_code), ''), '未分类') AS code,
+                COALESCE(NULLIF(TRIM(s.category_small), ''), NULLIF(TRIM(s.category), ''), s.category_small_code, '未分类') AS name,
+                COUNT(DISTINCT p.sku_code) AS sku_count,
+                """ + price_sel + """,
+                COALESCE(SUM(sale.sale_amount), 0) AS sales_amount,
+                COALESCE(SUM(sale.sale_qty), 0) AS sales_quantity
+            FROM t_htma_product_master p
+            INNER JOIN (
+                SELECT sku_code, MAX(store_id) AS store_id, MAX(category_small_code) AS category_small_code, MAX(category_small) AS category_small, MAX(category) AS category
+                FROM t_htma_sale WHERE store_id = %s
+                  AND (COALESCE(TRIM(category_large_code), '') = %s OR COALESCE(TRIM(category_large), '') = %s)
+                  AND (COALESCE(TRIM(category_mid_code), '') = %s OR COALESCE(TRIM(category_mid), '') = %s)
+                GROUP BY sku_code
+            ) s ON p.sku_code = s.sku_code AND p.store_id = s.store_id
+            LEFT JOIN (
+                SELECT sku_code, SUM(sale_amount) AS sale_amount, SUM(sale_qty) AS sale_qty
+                FROM t_htma_sale WHERE store_id = %s AND data_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) GROUP BY sku_code
+            ) sale ON sale.sku_code = p.sku_code
+            WHERE p.store_id = %s
+            GROUP BY s.category_small_code, s.category_small, s.category ORDER BY sku_count DESC LIMIT 200
+        """, [store_id, large_code, large_code, mid_code, mid_code, store_id, store_id])
+        rows = _format_drill_rows(cur.fetchall(), "code", "name")
+        return jsonify({"success": True, "large_code": large_code, "mid_code": mid_code, "items": rows})
+    finally:
+        conn.close()
+
+
+@app.route("/api/product_master/drill_brands")
+def api_product_master_drill_brands():
+    """品类下钻：指定大类+中类+小类下的品牌列表。参数 large_code, mid_code, small_code。"""
+    if _auth_enabled() and not _has_module_access("product_master"):
+        return jsonify({"success": False, "message": "无权访问"}), 403
+    large_code = (request.args.get("large_code") or "").strip()
+    mid_code = (request.args.get("mid_code") or "").strip()
+    small_code = (request.args.get("small_code") or "").strip()
+    if not large_code or not mid_code or not small_code:
+        return jsonify({"success": False, "message": "请提供 large_code, mid_code, small_code"}), 400
+    store_id = (STORE_ID or "默认").strip()[:32]
+    price_sel = _pm_drill_price_sales_select()
+    conn = get_conn()
+    try:
+        cur = conn.cursor(pymysql.cursors.DictCursor)
+        cur.execute("""
+            SELECT
+                COALESCE(NULLIF(TRIM(p.brand_name), ''), '未填') AS name,
+                COUNT(DISTINCT p.sku_code) AS sku_count,
+                """ + price_sel + """,
+                COALESCE(SUM(sale.sale_amount), 0) AS sales_amount,
+                COALESCE(SUM(sale.sale_qty), 0) AS sales_quantity
+            FROM t_htma_product_master p
+            INNER JOIN (
+                SELECT sku_code, MAX(store_id) AS store_id FROM t_htma_sale WHERE store_id = %s
+                  AND (COALESCE(TRIM(category_large_code), '') = %s OR COALESCE(TRIM(category_large), '') = %s)
+                  AND (COALESCE(TRIM(category_mid_code), '') = %s OR COALESCE(TRIM(category_mid), '') = %s)
+                  AND (COALESCE(TRIM(category_small_code), '') = %s OR COALESCE(TRIM(category_small), '') = %s OR COALESCE(TRIM(category), '') = %s)
+                GROUP BY sku_code
+            ) s ON p.sku_code = s.sku_code AND p.store_id = s.store_id
+            LEFT JOIN (
+                SELECT sku_code, SUM(sale_amount) AS sale_amount, SUM(sale_qty) AS sale_qty
+                FROM t_htma_sale WHERE store_id = %s AND data_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) GROUP BY sku_code
+            ) sale ON sale.sku_code = p.sku_code
+            WHERE p.store_id = %s
+            GROUP BY p.brand_name ORDER BY sku_count DESC LIMIT 200
+        """, [store_id, large_code, large_code, mid_code, mid_code, small_code, small_code, small_code, store_id, store_id])
+        rows = _format_drill_rows(cur.fetchall(), "name", "name")
+        return jsonify({"success": True, "large_code": large_code, "mid_code": mid_code, "small_code": small_code, "items": rows})
+    finally:
+        conn.close()
+
+
+@app.route("/api/product_master/drill_skus")
+def api_product_master_drill_skus():
+    """品类/品牌下钻：SKU 列表（含零售价、批发价、划线价、近30天销量/销售额）。参数 large_code, mid_code, small_code, brand；分页 page, page_size。"""
+    if _auth_enabled() and not _has_module_access("product_master"):
+        return jsonify({"success": False, "message": "无权访问"}), 403
+    large_code = (request.args.get("large_code") or "").strip()
+    mid_code = (request.args.get("mid_code") or "").strip()
+    small_code = (request.args.get("small_code") or "").strip()
+    brand = (request.args.get("brand") or "").strip()
+    page = max(1, int(request.args.get("page", 1)))
+    page_size = min(100, max(10, int(request.args.get("page_size", 50))))
+    store_id = (STORE_ID or "默认").strip()[:32]
+    conn = get_conn()
+    try:
+        cur = conn.cursor(pymysql.cursors.DictCursor)
+        cond = " WHERE p.store_id = %s "
+        params = [store_id]
+        if large_code or mid_code or small_code:
+            sku_sub = """ SELECT sku_code FROM t_htma_sale WHERE store_id = %s """
+            sub_p = [store_id]
+            if large_code:
+                sku_sub += " AND (COALESCE(TRIM(category_large_code),'') = %s OR COALESCE(TRIM(category_large),'') = %s) "
+                sub_p.extend([large_code, large_code])
+            if mid_code:
+                sku_sub += " AND (COALESCE(TRIM(category_mid_code),'') = %s OR COALESCE(TRIM(category_mid),'') = %s) "
+                sub_p.extend([mid_code, mid_code])
+            if small_code:
+                sku_sub += " AND (COALESCE(TRIM(category_small_code),'') = %s OR COALESCE(TRIM(category_small),'') = %s OR COALESCE(TRIM(category),'') = %s) "
+                sub_p.extend([small_code, small_code, small_code])
+            sku_sub += " GROUP BY sku_code "
+            cond += " AND p.sku_code IN (" + sku_sub + ") "
+            params.extend(sub_p)
+        if brand:
+            cond += " AND TRIM(COALESCE(p.brand_name,'')) = %s "
+            params.append(brand)
+        cur.execute("SELECT COUNT(DISTINCT p.sku_code) AS total FROM t_htma_product_master p " + cond, params)
+        total = cur.fetchone().get("total") or 0
+        offset = (page - 1) * page_size
+        cur.execute("""
+            SELECT p.sku_code, p.product_name, p.category_name, p.brand_name,
+                p.retail_price, p.wholesale_price, p.list_price, p.member_price, p.member_discount,
+                COALESCE(SUM(s.sale_qty), 0) AS sale_qty,
+                COALESCE(SUM(s.sale_amount), 0) AS sale_amount,
+                COALESCE(SUM(s.gross_profit), 0) AS gross_profit
+            FROM t_htma_product_master p
+            LEFT JOIN t_htma_sale s ON s.sku_code = p.sku_code AND s.store_id = p.store_id AND s.data_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+            """ + cond + """
+            GROUP BY p.sku_code, p.product_name, p.category_name, p.brand_name, p.retail_price, p.wholesale_price, p.list_price, p.member_price, p.member_discount
+            ORDER BY sale_amount DESC
+            LIMIT %s OFFSET %s
+        """, params + [page_size, offset])
+        rows = cur.fetchall()
+        skus = []
+        for r in rows:
+            skus.append({
+                "sku_code": r.get("sku_code"),
+                "product_name": (r.get("product_name") or "").strip() or "-",
+                "category_name": (r.get("category_name") or "").strip() or "-",
+                "brand_name": (r.get("brand_name") or "").strip() or "-",
+                "retail_price": _round_price(r.get("retail_price")),
+                "wholesale_price": _round_price(r.get("wholesale_price")),
+                "list_price": _round_price(r.get("list_price")),
+                "member_price": _round_price(r.get("member_price")),
+                "member_discount": (r.get("member_discount") or "").strip() or None,
+                "sale_qty": round(float(r.get("sale_qty") or 0), 2),
+                "sale_amount": round(float(r.get("sale_amount") or 0), 2),
+                "gross_profit": round(float(r.get("gross_profit") or 0), 2),
+            })
+        return jsonify({"success": True, "items": skus, "total": total, "page": page, "page_size": page_size})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+    finally:
+        conn.close()
+
+
+def _round_price(v):
+    if v is None:
+        return None
+    try:
+        return round(float(v), 2)
+    except (TypeError, ValueError):
+        return None
+
+
+def _format_drill_rows(rows, code_key, name_key):
+    """将下钻查询结果格式化为统一结构（含价格与销售）。"""
+    out = []
+    for r in rows:
+        code = (r.get(code_key) or "未分类").strip()
+        name = (r.get(name_key) or code).strip() if name_key else code
+        out.append({
+            "code": code,
+            "name": name,
+            "sku_count": int(r.get("sku_count") or 0),
+            "avg_retail_price": _round_price(r.get("avg_retail_price")),
+            "max_retail_price": _round_price(r.get("max_retail_price")),
+            "min_retail_price": _round_price(r.get("min_retail_price")),
+            "avg_wholesale_price": _round_price(r.get("avg_wholesale_price")),
+            "avg_list_price": _round_price(r.get("avg_list_price")),
+            "sales_amount": round(float(r.get("sales_amount") or 0), 2),
+            "sales_quantity": round(float(r.get("sales_quantity") or 0), 2),
+        })
+    return out
+
+
+@app.route("/api/product_master/brand_large_categories")
+def api_product_master_brand_large():
+    """品牌下钻：指定品牌下的大类分布（含 SKU 数、价格与销售）。参数 brand。"""
+    if _auth_enabled() and not _has_module_access("product_master"):
+        return jsonify({"success": False, "message": "无权访问"}), 403
+    brand = (request.args.get("brand") or "").strip()
+    if not brand:
+        return jsonify({"success": False, "message": "请提供 brand"}), 400
+    store_id = (STORE_ID or "默认").strip()[:32]
+    price_sel = _pm_drill_price_sales_select()
+    conn = get_conn()
+    try:
+        cur = conn.cursor(pymysql.cursors.DictCursor)
+        cur.execute("""
+            SELECT
+                COALESCE(NULLIF(TRIM(s.category_large_code), ''), '未分类') AS code,
+                COALESCE(NULLIF(TRIM(s.category_large), ''), s.category_large_code, '未分类') AS name,
+                COUNT(DISTINCT p.sku_code) AS sku_count,
+                """ + price_sel + """,
+                COALESCE(SUM(sale.sale_amount), 0) AS sales_amount,
+                COALESCE(SUM(sale.sale_qty), 0) AS sales_quantity
+            FROM t_htma_product_master p
+            INNER JOIN (
+                SELECT sku_code, MAX(store_id) AS store_id, MAX(category_large_code) AS category_large_code, MAX(category_large) AS category_large
+                FROM t_htma_sale WHERE store_id = %s GROUP BY sku_code
+            ) s ON p.sku_code = s.sku_code AND p.store_id = s.store_id
+            LEFT JOIN (
+                SELECT sku_code, SUM(sale_amount) AS sale_amount, SUM(sale_qty) AS sale_qty
+                FROM t_htma_sale WHERE store_id = %s AND data_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) GROUP BY sku_code
+            ) sale ON sale.sku_code = p.sku_code
+            WHERE p.store_id = %s AND TRIM(COALESCE(p.brand_name,'')) = %s
+            GROUP BY s.category_large_code, s.category_large ORDER BY sku_count DESC LIMIT 200
+        """, [store_id, store_id, store_id, brand])
+        rows = _format_drill_rows(cur.fetchall(), "code", "name")
+        return jsonify({"success": True, "brand": brand, "items": rows})
+    finally:
+        conn.close()
+
+
+@app.route("/api/product_master/brand_mid_categories")
+def api_product_master_brand_mid():
+    """品牌下钻：指定品牌+大类下的中类分布。参数 brand, large_code。"""
+    if _auth_enabled() and not _has_module_access("product_master"):
+        return jsonify({"success": False, "message": "无权访问"}), 403
+    brand = (request.args.get("brand") or "").strip()
+    large_code = (request.args.get("large_code") or "").strip()
+    if not brand or not large_code:
+        return jsonify({"success": False, "message": "请提供 brand 与 large_code"}), 400
+    store_id = (STORE_ID or "默认").strip()[:32]
+    price_sel = _pm_drill_price_sales_select()
+    conn = get_conn()
+    try:
+        cur = conn.cursor(pymysql.cursors.DictCursor)
+        cur.execute("""
+            SELECT
+                COALESCE(NULLIF(TRIM(s.category_mid_code), ''), '未分类') AS code,
+                COALESCE(NULLIF(TRIM(s.category_mid), ''), s.category_mid_code, '未分类') AS name,
+                COUNT(DISTINCT p.sku_code) AS sku_count,
+                """ + price_sel + """,
+                COALESCE(SUM(sale.sale_amount), 0) AS sales_amount,
+                COALESCE(SUM(sale.sale_qty), 0) AS sales_quantity
+            FROM t_htma_product_master p
+            INNER JOIN (
+                SELECT sku_code, MAX(store_id) AS store_id, MAX(category_mid_code) AS category_mid_code, MAX(category_mid) AS category_mid
+                FROM t_htma_sale WHERE store_id = %s
+                  AND (COALESCE(TRIM(category_large_code), '') = %s OR COALESCE(TRIM(category_large), '') = %s)
+                GROUP BY sku_code
+            ) s ON p.sku_code = s.sku_code AND p.store_id = s.store_id
+            LEFT JOIN (
+                SELECT sku_code, SUM(sale_amount) AS sale_amount, SUM(sale_qty) AS sale_qty
+                FROM t_htma_sale WHERE store_id = %s AND data_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) GROUP BY sku_code
+            ) sale ON sale.sku_code = p.sku_code
+            WHERE p.store_id = %s AND TRIM(COALESCE(p.brand_name,'')) = %s
+            GROUP BY s.category_mid_code, s.category_mid ORDER BY sku_count DESC LIMIT 200
+        """, [store_id, large_code, large_code, store_id, store_id, brand])
+        rows = _format_drill_rows(cur.fetchall(), "code", "name")
+        return jsonify({"success": True, "brand": brand, "large_code": large_code, "items": rows})
+    finally:
+        conn.close()
+
+
+@app.route("/api/product_master/brand_small_categories")
+def api_product_master_brand_small():
+    """品牌下钻：指定品牌+大类+中类下的小类分布。参数 brand, large_code, mid_code。"""
+    if _auth_enabled() and not _has_module_access("product_master"):
+        return jsonify({"success": False, "message": "无权访问"}), 403
+    brand = (request.args.get("brand") or "").strip()
+    large_code = (request.args.get("large_code") or "").strip()
+    mid_code = (request.args.get("mid_code") or "").strip()
+    if not brand or not large_code or not mid_code:
+        return jsonify({"success": False, "message": "请提供 brand, large_code 与 mid_code"}), 400
+    store_id = (STORE_ID or "默认").strip()[:32]
+    price_sel = _pm_drill_price_sales_select()
+    conn = get_conn()
+    try:
+        cur = conn.cursor(pymysql.cursors.DictCursor)
+        cur.execute("""
+            SELECT
+                COALESCE(NULLIF(TRIM(s.category_small_code), ''), '未分类') AS code,
+                COALESCE(NULLIF(TRIM(s.category_small), ''), NULLIF(TRIM(s.category), ''), s.category_small_code, '未分类') AS name,
+                COUNT(DISTINCT p.sku_code) AS sku_count,
+                """ + price_sel + """,
+                COALESCE(SUM(sale.sale_amount), 0) AS sales_amount,
+                COALESCE(SUM(sale.sale_qty), 0) AS sales_quantity
+            FROM t_htma_product_master p
+            INNER JOIN (
+                SELECT sku_code, MAX(store_id) AS store_id, MAX(category_small_code) AS category_small_code, MAX(category_small) AS category_small, MAX(category) AS category
+                FROM t_htma_sale WHERE store_id = %s
+                  AND (COALESCE(TRIM(category_large_code), '') = %s OR COALESCE(TRIM(category_large), '') = %s)
+                  AND (COALESCE(TRIM(category_mid_code), '') = %s OR COALESCE(TRIM(category_mid), '') = %s)
+                GROUP BY sku_code
+            ) s ON p.sku_code = s.sku_code AND p.store_id = s.store_id
+            LEFT JOIN (
+                SELECT sku_code, SUM(sale_amount) AS sale_amount, SUM(sale_qty) AS sale_qty
+                FROM t_htma_sale WHERE store_id = %s AND data_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) GROUP BY sku_code
+            ) sale ON sale.sku_code = p.sku_code
+            WHERE p.store_id = %s AND TRIM(COALESCE(p.brand_name,'')) = %s
+            GROUP BY s.category_small_code, s.category_small, s.category ORDER BY sku_count DESC LIMIT 200
+        """, [store_id, large_code, large_code, mid_code, mid_code, store_id, store_id, brand])
+        rows = _format_drill_rows(cur.fetchall(), "code", "name")
+        return jsonify({"success": True, "brand": brand, "large_code": large_code, "mid_code": mid_code, "items": rows})
     finally:
         conn.close()
 
@@ -3942,7 +4570,7 @@ def page_labor():
             return str(ym)
     base_css = (
         "body{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;margin:20px;}"
-        ".box{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:16px;margin-bottom:12px;}"
+        ".box{background:#1e293b;border:1px solid #334155;border-radius:6px;padding:12px 10px;margin-bottom:12px;}"
         ".label{color:#94a3b8;font-size:0.9rem;}"
         ".value{font-size:1.2rem;font-weight:700;color:#38bdf8;}"
         "table{border-collapse:collapse;width:100%;margin-top:8px;} th,td{padding:8px 12px;text-align:left;border-bottom:1px solid #334155;} th{color:#94a3b8;} .num{text-align:right;}"
@@ -4278,7 +4906,7 @@ def page_labor():
         "<p><a href='/'>返回看板</a> | <a href='/import'>数据导入</a> | <a href='/labor_analysis'>人力分析</a> | <a href='/labor'>刷新</a> | <button type='button' id='btnLaborClear' style='margin-left:8px;padding:6px 12px;background:#64748b;color:#e2e8f0;border:1px solid #475569;border-radius:6px;cursor:pointer;font-size:0.9rem;'>清空人力数据</button></p>"
     "<script>"
     "document.getElementById('btnLaborClear') && document.getElementById('btnLaborClear').addEventListener('click', function(){"
-    "  if(!confirm('确定清空全部人力明细与汇总数据？清空后需重新导入 Excel。')) return;"
+    "  if(!confirm('【提醒】将永久删除全部人力成本明细与汇总数据，且无法恢复。仅清空人力相关表，不影响销售/库存/商品档案。\n\n确定清空？清空后需重新导入人力 Excel。')) return;"
     "  var f = new FormData(); f.append('confirm','yes');"
     "  fetch('/api/labor_cost_clear', { method:'POST', body: f, credentials:'include' })"
     "    .then(function(r){ return r.json(); })"
@@ -4762,7 +5390,7 @@ def _labor_analysis_overview(conn, start_date, end_date):
             labor_rows = cur.fetchall()
         except Exception:
             labor_rows = []
-        # 无任何映射时，全部人力计入经营（与销售匹配），确保「所有销售都对应经营人力成本」
+        # 经营 vs 管理：仅按映射表拆分。无任何映射时全部计入经营；有映射时，仅命中「管理」的计入管理，其余（含未在映射表中的岗位）默认归经营（与设计文档一致）
         no_mapping = not op_positions and not mgr_positions
         for r in labor_rows:
             pos = (r.get("position_name") or "").strip()
@@ -4772,12 +5400,10 @@ def _labor_analysis_overview(conn, start_date, end_date):
             if matched_mgr:
                 management_cost += cost
                 management_head += weight
-            elif matched_op or no_mapping:
+            else:
+                # 命中经营 或 无映射 或 未在映射表中：均计入经营
                 operational_cost += cost
                 operational_head += weight
-            else:
-                management_cost += cost
-                management_head += weight
     total_cost = operational_cost + management_cost
     total_headcount = operational_head + management_head
     total_sale = total_sale
@@ -5053,7 +5679,7 @@ def _find_excel_files_in_dir(directory):
 
 @app.route("/api/import_from_downloads", methods=["POST", "OPTIONS"])
 def api_import_from_downloads():
-    """从配置的下载目录（IMPORT_DOWNLOADS_DIR 或 项目/downloads）自动导入 Excel，并执行去重与刷新，确保数据完整可靠"""
+    """从配置的下载目录自动导入销售日报/销售汇总/库存/商品档案，并执行去重与刷新。仅处理上述表，不触碰人力成本表。"""
     if request.method == "OPTIONS":
         return "", 204
     directory = _import_downloads_directory()
@@ -5084,7 +5710,7 @@ def api_import_from_downloads():
             if diag:
                 result.setdefault("diagnostics", []).append(diag)
         if has_sale_summary:
-            cnt, diag = import_sale_summary(files["sale_summary"], conn, overwrite_on_duplicate=has_sale_daily)
+            cnt, diag = import_sale_summary(files["sale_summary"], conn, overwrite_on_duplicate=True)
             result["sale_summary"] = cnt
             if diag:
                 result.setdefault("diagnostics", []).append(diag)
@@ -5625,36 +6251,78 @@ def api_kpi():
     end_d = request.args.get("end_date", "").strip()
     use_cache = (period != "custom" and not (start_d and end_d))
     if use_cache:
-        cache_key = "kpi:%s:%s:%s:%s" % (STORE_ID or "", period, request.args.get("category_large_code", ""), request.args.get("category_mid_code", ""))
+        cache_key = "kpi:%s:%s:%s:%s:%s:%s" % (
+            STORE_ID or "", period,
+            request.args.get("category_large_code", ""),
+            request.args.get("category_mid_code", ""),
+            request.args.get("category_small_code", ""),
+            request.args.get("sku_code", ""),
+        )
         cached = _cache_get(cache_key)
         if cached is not None:
             return jsonify(cached)
-    date_cond, date_params, _, sale_cat_cond, _ = _query_filters()
+    date_cond, date_params, params, sale_cat_cond, sku_cond = _query_filters()
+    # 总销售额、总毛利直接从 t_htma_sale 聚合，与手工统计、导入明细一致，避免与 t_htma_profit 不同步导致显示不一致
     profit_cat_cond, profit_cat_params = _profit_category_cond_and_params(date_cond, date_params)
-    params = (STORE_ID,) + date_params + profit_cat_params
+    params_inv = (STORE_ID,) + date_params + profit_cat_params
+    inv_cond, inv_params, need_join = _inv_category_cond_and_params()
+    sku_code = request.args.get("sku_code", "").strip()
     conn = get_conn()
     try:
         with conn.cursor() as cur:
             cur.execute(f"""
-                SELECT COALESCE(SUM(total_sale), 0) AS total_sale_amount,
-                       COALESCE(SUM(total_profit), 0) AS total_gross_profit
-                FROM t_htma_profit
-                WHERE store_id = %s AND {date_cond}{profit_cat_cond}
+                SELECT COALESCE(SUM(sale_amount), 0) AS total_sale_amount,
+                       COALESCE(SUM(COALESCE(gross_profit, 0)), 0) AS total_gross_profit
+                FROM t_htma_sale
+                WHERE store_id = %s AND {date_cond}{sale_cat_cond}{sku_cond}
             """, params)
             row = cur.fetchone()
             total_sale = float(row["total_sale_amount"] or 0)
             total_profit = float(row["total_gross_profit"] or 0)
             avg_rate = (total_profit / total_sale * 100) if total_sale > 0 else 0
 
-            cur.execute("""
-                SELECT COALESCE(SUM(stock_amount), 0) AS total_stock_amount
-                FROM t_htma_stock
-                WHERE store_id = %s AND data_date = (
-                    SELECT MAX(data_date) FROM t_htma_stock WHERE store_id = %s
-                )
-            """, (STORE_ID, STORE_ID))
-            stock_row = cur.fetchone()
-            total_stock = float(stock_row["total_stock_amount"] or 0)
+            if need_join or sku_code:
+                sku_cond = " AND st.sku_code = %s" if sku_code else ""
+                stock_params = (STORE_ID, STORE_ID, STORE_ID)
+                if sku_code:
+                    stock_params = stock_params + (sku_code,)
+                if need_join:
+                    stock_params = stock_params + inv_params
+                if need_join:
+                    cur.execute(f"""
+                        SELECT COALESCE(SUM(st.stock_amount), 0) AS total_stock_amount
+                        FROM t_htma_stock st
+                        INNER JOIN (
+                            SELECT sku_code,
+                                   MAX(category_large_code) AS category_large_code, MAX(category_large) AS category_large,
+                                   MAX(category_mid_code) AS category_mid_code, MAX(category_mid) AS category_mid,
+                                   MAX(category_small_code) AS category_small_code, MAX(category_small) AS category_small, MAX(category) AS category
+                            FROM t_htma_sale WHERE store_id = %s GROUP BY sku_code
+                        ) s ON st.sku_code = s.sku_code
+                        WHERE st.store_id = %s AND st.data_date = (
+                            SELECT MAX(data_date) FROM t_htma_stock WHERE store_id = %s
+                        ){sku_cond}{inv_cond}
+                    """, stock_params)
+                else:
+                    cur.execute(f"""
+                        SELECT COALESCE(SUM(stock_amount), 0) AS total_stock_amount
+                        FROM t_htma_stock
+                        WHERE store_id = %s AND data_date = (
+                            SELECT MAX(data_date) FROM t_htma_stock WHERE store_id = %s
+                        ){sku_cond.replace('st.', '')}
+                    """, (STORE_ID, STORE_ID) + ((sku_code,) if sku_code else ()))
+                stock_row = cur.fetchone()
+                total_stock = float(stock_row["total_stock_amount"] or 0)
+            else:
+                cur.execute("""
+                    SELECT COALESCE(SUM(stock_amount), 0) AS total_stock_amount
+                    FROM t_htma_stock
+                    WHERE store_id = %s AND data_date = (
+                        SELECT MAX(data_date) FROM t_htma_stock WHERE store_id = %s
+                    )
+                """, (STORE_ID, STORE_ID))
+                stock_row = cur.fetchone()
+                total_stock = float(stock_row["total_stock_amount"] or 0)
 
         period_label = f"{start_d} ~ {end_d}" if (start_d and end_d) else {"day": "今日", "week": "本周", "month": "本月", "recent30": "近30天"}.get(period, "近30天")
         out = {
@@ -5789,83 +6457,48 @@ def api_sales_trend_route():
 
 
 def api_sales_trend(granularity):
-    """按日/周/月聚合销售额与毛利趋势。优先 t_htma_profit；若无数据则从 t_htma_sale 聚合（保证有趋势可展示）。"""
-    date_cond, date_params, params_full, category_cond, _ = _query_filters()
-    profit_cat_cond, profit_cat_params = _profit_category_cond_and_params(date_cond, date_params)
-    params_profit = (STORE_ID,) + date_params + profit_cat_params
-    params_sale = params_full
+    """按日/周/月聚合销售额与毛利趋势。与 KPI 一致，均从 t_htma_sale 聚合。"""
+    date_cond, date_params, params, category_cond, sku_cond = _query_filters()
     conn = get_conn()
     try:
         with conn.cursor() as cur:
             if granularity == "day":
                 cur.execute(f"""
-                    SELECT data_date AS x_date, SUM(total_sale) AS sale_amount, SUM(total_profit) AS profit_amount
-                    FROM t_htma_profit
-                    WHERE store_id = %s AND {date_cond}{profit_cat_cond}
+                    SELECT data_date AS x_date,
+                           COALESCE(SUM(sale_amount), 0) AS sale_amount,
+                           COALESCE(SUM(COALESCE(gross_profit, 0)), 0) AS profit_amount
+                    FROM t_htma_sale
+                    WHERE store_id = %s AND {date_cond}{category_cond}{sku_cond}
                     GROUP BY data_date ORDER BY data_date
-                """, params_profit)
+                """, params)
                 rows = cur.fetchall()
                 out = [_format_trend_row(r, "day") for r in rows]
             elif granularity == "week":
                 cur.execute(f"""
                     SELECT MIN(data_date) AS week_start,
                            CONCAT(YEAR(MIN(data_date)), '-W', LPAD(WEEK(MIN(data_date), 3), 2, '0')) AS x_date,
-                           SUM(total_sale) AS sale_amount, SUM(total_profit) AS profit_amount
-                    FROM t_htma_profit
-                    WHERE store_id = %s AND {date_cond}{profit_cat_cond}
+                           COALESCE(SUM(sale_amount), 0) AS sale_amount,
+                           COALESCE(SUM(COALESCE(gross_profit, 0)), 0) AS profit_amount
+                    FROM t_htma_sale
+                    WHERE store_id = %s AND {date_cond}{category_cond}{sku_cond}
                     GROUP BY YEAR(data_date), WEEK(data_date, 3)
                     ORDER BY MIN(data_date)
-                """, params_profit)
+                """, params)
                 rows = cur.fetchall()
                 out = [_format_trend_row(r, "week") for r in rows]
             else:  # month
                 cur.execute(f"""
                     SELECT DATE_FORMAT(MIN(data_date), '%%Y-%%m') AS x_date,
-                           SUM(total_sale) AS sale_amount, SUM(total_profit) AS profit_amount
-                    FROM t_htma_profit
-                    WHERE store_id = %s AND {date_cond}{profit_cat_cond}
+                           COALESCE(SUM(sale_amount), 0) AS sale_amount,
+                           COALESCE(SUM(COALESCE(gross_profit, 0)), 0) AS profit_amount
+                    FROM t_htma_sale
+                    WHERE store_id = %s AND {date_cond}{category_cond}{sku_cond}
                     GROUP BY YEAR(data_date), MONTH(data_date)
                     ORDER BY MIN(data_date)
-                """, params_profit)
+                """, params)
                 rows = cur.fetchall()
                 out = [_format_trend_row(r, "month") for r in rows]
-            # 若毛利表无数据，从销售表聚合（与 KPI 周期一致）
-            if not out:
-                if granularity == "day":
-                    cur.execute(f"""
-                        SELECT data_date AS x_date,
-                               COALESCE(SUM(sale_amount), 0) AS sale_amount,
-                               COALESCE(SUM(gross_profit), SUM(sale_amount) - SUM(sale_cost), 0) AS profit_amount
-                        FROM t_htma_sale
-                        WHERE store_id = %s AND {date_cond}{category_cond}
-                        GROUP BY data_date ORDER BY data_date
-                    """, params_sale)
-                elif granularity == "week":
-                    cur.execute(f"""
-                        SELECT MIN(data_date) AS week_start,
-                               CONCAT(YEAR(MIN(data_date)), '-W', LPAD(WEEK(MIN(data_date), 3), 2, '0')) AS x_date,
-                               COALESCE(SUM(sale_amount), 0) AS sale_amount,
-                               COALESCE(SUM(gross_profit), SUM(sale_amount) - SUM(sale_cost), 0) AS profit_amount
-                        FROM t_htma_sale
-                        WHERE store_id = %s AND {date_cond}{category_cond}
-                        GROUP BY YEAR(data_date), WEEK(data_date, 3)
-                        ORDER BY MIN(data_date)
-                    """, params_sale)
-                else:
-                    cur.execute(f"""
-                        SELECT DATE_FORMAT(MIN(data_date), '%%Y-%%m') AS x_date,
-                               COALESCE(SUM(sale_amount), 0) AS sale_amount,
-                               COALESCE(SUM(gross_profit), SUM(sale_amount) - SUM(sale_cost), 0) AS profit_amount
-                        FROM t_htma_sale
-                        WHERE store_id = %s AND {date_cond}{category_cond}
-                        GROUP BY YEAR(data_date), MONTH(data_date)
-                        ORDER BY MIN(data_date)
-                    """, params_sale)
-                rows = cur.fetchall()
-                out = [_format_trend_row(r, granularity) for r in rows]
-                data_source = "sale"
-            else:
-                data_source = "profit"
+            data_source = "sale"
         if not out:
             return jsonify({
                 "data": [],
@@ -5914,31 +6547,31 @@ def _format_trend_row(r, granularity):
 
 @app.route("/api/trend_analysis")
 def api_trend_analysis():
-    """走势分析：环比（与 KPI 周期联动）、同比、趋势描述。支持 period、start_date、end_date、category"""
+    """走势分析：环比（与 KPI 周期联动）、同比、趋势描述。数据与 KPI 一致，均从 t_htma_sale 聚合。"""
     granularity = request.args.get("granularity", "day")
     period = request.args.get("period", "recent30")
-    date_cond, date_params, _, _, _ = _query_filters()
+    date_cond, date_params, params, sale_cat_cond, sku_cond = _query_filters()
     profit_cat_cond, profit_cat_params = _profit_category_cond_and_params(date_cond, date_params)
     start_date = request.args.get("start_date", "").strip()
     end_date = request.args.get("end_date", "").strip()
-    params_ta = (STORE_ID,) + date_params + profit_cat_params
+    params_ta = params  # 与 KPI 一致：从 t_htma_sale 查，用 sale_cat_cond
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            # 环比：与 KPI 周期联动，本期 vs 上期（等长）
             curr_start, curr_end, prev_start, prev_end, curr_label, prev_label = _period_over_period_ranges(
                 period, start_date or None, end_date or None
             )
+            cat_params = tuple(params[1 + len(date_params):]) if len(params) > 1 + len(date_params) else ()
             cur.execute(
-                """SELECT COALESCE(SUM(total_sale), 0) AS sale_amount, COALESCE(SUM(total_profit), 0) AS profit_amount
-                   FROM t_htma_profit WHERE store_id = %s AND data_date BETWEEN %s AND %s """ + profit_cat_cond,
-                (STORE_ID, curr_start, curr_end) + profit_cat_params,
+                """SELECT COALESCE(SUM(sale_amount), 0) AS sale_amount, COALESCE(SUM(COALESCE(gross_profit, 0)), 0) AS profit_amount
+                   FROM t_htma_sale WHERE store_id = %s AND data_date BETWEEN %s AND %s """ + sale_cat_cond,
+                (STORE_ID, curr_start, curr_end) + cat_params,
             )
             curr_row = cur.fetchone()
             cur.execute(
-                """SELECT COALESCE(SUM(total_sale), 0) AS sale_amount, COALESCE(SUM(total_profit), 0) AS profit_amount
-                   FROM t_htma_profit WHERE store_id = %s AND data_date BETWEEN %s AND %s """ + profit_cat_cond,
-                (STORE_ID, prev_start, prev_end) + profit_cat_params,
+                """SELECT COALESCE(SUM(sale_amount), 0) AS sale_amount, COALESCE(SUM(COALESCE(gross_profit, 0)), 0) AS profit_amount
+                   FROM t_htma_sale WHERE store_id = %s AND data_date BETWEEN %s AND %s """ + sale_cat_cond,
+                (STORE_ID, prev_start, prev_end) + cat_params,
             )
             prev_row = cur.fetchone()
             _curr_sale = float(curr_row["sale_amount"] or 0)
@@ -5960,18 +6593,18 @@ def api_trend_analysis():
 
             if granularity == "day":
                 cur.execute(f"""
-                    SELECT data_date, SUM(total_sale) AS sale_amount, SUM(total_profit) AS profit_amount
-                    FROM t_htma_profit
-                    WHERE store_id = %s AND {date_cond}{profit_cat_cond}
+                    SELECT data_date, COALESCE(SUM(sale_amount), 0) AS sale_amount, COALESCE(SUM(COALESCE(gross_profit, 0)), 0) AS profit_amount
+                    FROM t_htma_sale
+                    WHERE store_id = %s AND {date_cond}{sale_cat_cond}{sku_cond}
                     GROUP BY data_date ORDER BY data_date
                 """, params_ta)
             elif granularity == "week":
                 cur.execute(f"""
                     SELECT YEAR(data_date) AS y, WEEK(data_date, 3) AS w,
                            MIN(data_date) AS week_start,
-                           SUM(total_sale) AS sale_amount, SUM(total_profit) AS profit_amount
-                    FROM t_htma_profit
-                    WHERE store_id = %s AND {date_cond}{profit_cat_cond}
+                           COALESCE(SUM(sale_amount), 0) AS sale_amount, COALESCE(SUM(COALESCE(gross_profit, 0)), 0) AS profit_amount
+                    FROM t_htma_sale
+                    WHERE store_id = %s AND {date_cond}{sale_cat_cond}{sku_cond}
                     GROUP BY YEAR(data_date), WEEK(data_date, 3)
                     ORDER BY week_start
                 """, params_ta)
@@ -5979,9 +6612,9 @@ def api_trend_analysis():
                 cur.execute(f"""
                     SELECT YEAR(data_date) AS y, MONTH(data_date) AS m,
                            DATE_FORMAT(MIN(data_date), '%%Y-%%m') AS month_key,
-                           SUM(total_sale) AS sale_amount, SUM(total_profit) AS profit_amount
-                    FROM t_htma_profit
-                    WHERE store_id = %s AND {date_cond}{profit_cat_cond}
+                           COALESCE(SUM(sale_amount), 0) AS sale_amount, COALESCE(SUM(COALESCE(gross_profit, 0)), 0) AS profit_amount
+                    FROM t_htma_sale
+                    WHERE store_id = %s AND {date_cond}{sale_cat_cond}{sku_cond}
                     GROUP BY YEAR(data_date), MONTH(data_date)
                     ORDER BY MIN(data_date)
                 """, params_ta)
@@ -6085,10 +6718,8 @@ DOW_NAMES = {1: "周日", 2: "周一", 3: "周二", 4: "周三", 5: "周四", 6:
 
 @app.route("/api/dow_sales")
 def api_dow_sales():
-    """周几对比：在所选 KPI 周期内，按「星期几」汇总销售额与毛利，固定返回周日~周六 7 天（无数据填 0）"""
-    date_cond, date_params, _, sale_cat_cond, sale_cat_params = _query_filters()
-    profit_cat_cond, profit_cat_params = _profit_category_cond_and_params(date_cond, date_params)
-    params_profit = (STORE_ID,) + date_params + profit_cat_params
+    """周几对比：与 KPI 一致，仅从 t_htma_sale 按星期几汇总，保证与总销售额、趋势图口径一致"""
+    date_cond, date_params, params, sale_cat_cond, sku_cond = _query_filters()
     conn = get_conn()
     try:
         with conn.cursor() as cur:
@@ -6097,31 +6728,15 @@ def api_dow_sales():
                        MAX(CASE DAYOFWEEK(data_date)
                          WHEN 1 THEN '周日' WHEN 2 THEN '周一' WHEN 3 THEN '周二' WHEN 4 THEN '周三'
                          WHEN 5 THEN '周四' WHEN 6 THEN '周五' WHEN 7 THEN '周六' ELSE '周日' END) AS dow_name,
-                       SUM(total_sale) AS sale_amount, SUM(total_profit) AS profit_amount,
-                       COUNT(DISTINCT data_date) AS day_count
-                FROM t_htma_profit
-                WHERE store_id = %s AND {date_cond}{profit_cat_cond}
-                GROUP BY DAYOFWEEK(data_date)
-                ORDER BY dow
-            """, params_profit)
-            rows = cur.fetchall()
-        total_sale_from_profit = sum(float(r["sale_amount"] or 0) for r in rows)
-        if total_sale_from_profit == 0 and (not sale_cat_cond or not sale_cat_cond.strip()):
-            cur2 = conn.cursor()
-            cur2.execute(f"""
-                SELECT DAYOFWEEK(data_date) AS dow,
-                       MAX(CASE DAYOFWEEK(data_date)
-                         WHEN 1 THEN '周日' WHEN 2 THEN '周一' WHEN 3 THEN '周二' WHEN 4 THEN '周三'
-                         WHEN 5 THEN '周四' WHEN 6 THEN '周五' WHEN 7 THEN '周六' ELSE '周日' END) AS dow_name,
-                       SUM(sale_amount) AS sale_amount, SUM(gross_profit) AS profit_amount,
+                       COALESCE(SUM(sale_amount), 0) AS sale_amount,
+                       COALESCE(SUM(COALESCE(gross_profit, 0)), 0) AS profit_amount,
                        COUNT(DISTINCT data_date) AS day_count
                 FROM t_htma_sale
-                WHERE store_id = %s AND {date_cond}
+                WHERE store_id = %s AND {date_cond}{sale_cat_cond}{sku_cond}
                 GROUP BY DAYOFWEEK(data_date)
                 ORDER BY dow
-            """, (STORE_ID,) + date_params)
-            rows = cur2.fetchall()
-            cur2.close()
+            """, params)
+            rows = cur.fetchall()
         by_dow = {int(r["dow"]): r for r in rows}
         out = []
         for dow in range(1, 8):
@@ -7535,6 +8150,363 @@ def api_insights():
         conn.close()
 
 
+@app.route("/api/enhanced_insights")
+def api_enhanced_insights():
+    """增强分析卡片数据：时间周期、大类可选，返回高毛利/集中度/库存/动销/退货/周转/数据质量等"""
+    if _auth_enabled() and not _has_module_access("profit"):
+        return jsonify({"success": False, "message": "无权访问盈利分析模块，请联系管理员"}), 403
+    period = request.args.get("period", "30").strip()
+    try:
+        period_days = int(period) if period else 30
+    except ValueError:
+        period_days = 30
+    period_days = min(90, max(7, period_days))
+    category_large = (request.args.get("category") or request.args.get("category_large") or "").strip() or None
+    conn = get_conn()
+    try:
+        data = build_enhanced_insights(conn, STORE_ID, period_days=period_days, category_large=category_large)
+        if isinstance(data, dict) and data.get("error"):
+            return jsonify({"success": False, "message": data["error"]}), 500
+        return jsonify({"success": True, "data": data or {}})
+    finally:
+        conn.close()
+
+
+def _advanced_search_range_days(period, start_date, end_date):
+    """根据 period/start_date/end_date 计算查询区间天数，用于周转天数计算。"""
+    if start_date and end_date:
+        try:
+            s = datetime.strptime(start_date, "%Y-%m-%d").date() if isinstance(start_date, str) else start_date
+            e = datetime.strptime(end_date, "%Y-%m-%d").date() if isinstance(end_date, str) else end_date
+            if s > e:
+                s, e = e, s
+            return max(1, (e - s).days + 1)
+        except (ValueError, TypeError):
+            pass
+    if period == "day":
+        return 1
+    if period == "week":
+        return 7
+    if period == "month":
+        today = date.today()
+        try:
+            from calendar import monthrange
+            return monthrange(today.year, today.month)[1]
+        except Exception:
+            return 30
+    return int(os.environ.get("HTMA_DAYS", DEFAULT_DAYS))
+
+
+@app.route("/api/consumer_insight/advanced_search_options")
+def api_advanced_search_options():
+    """高级查询下拉选项：品牌、供应商、品类（去重），从商品档案与销售表取数。"""
+    if _auth_enabled() and not _has_module_access("profit"):
+        return jsonify({"code": 403, "brands": [], "suppliers": [], "categories": []}), 403
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT DISTINCT TRIM(brand_name) AS v FROM t_htma_product_master WHERE store_id = %s AND TRIM(COALESCE(brand_name,'')) != '' ORDER BY v",
+            (STORE_ID,),
+        )
+        brands = [r["v"] for r in cur.fetchall()]
+        cur.execute(
+            "SELECT DISTINCT TRIM(supplier_name) AS v FROM t_htma_product_master WHERE store_id = %s AND TRIM(COALESCE(supplier_name,'')) != '' ORDER BY v",
+            (STORE_ID,),
+        )
+        suppliers = [r["v"] for r in cur.fetchall()]
+        cur.execute(
+            "SELECT DISTINCT TRIM(category_name) AS v FROM t_htma_product_master WHERE store_id = %s AND TRIM(COALESCE(category_name,'')) != '' ORDER BY v",
+            (STORE_ID,),
+        )
+        categories = [r["v"] for r in cur.fetchall()]
+        cur.close()
+        return jsonify({"code": 0, "brands": brands, "suppliers": suppliers, "categories": categories})
+    finally:
+        conn.close()
+
+
+@app.route("/api/consumer_insight/advanced_search")
+def api_advanced_search():
+    """消费洞察高级查询：价格区间、品牌、供应商、品类、库存状态筛选，分页排序。export=1 时返回 CSV 下载。"""
+    if _auth_enabled() and not _has_module_access("profit"):
+        return jsonify({"code": 403, "data": {"total": 0, "page": 1, "page_size": 20, "items": []}}), 403
+    period = (request.args.get("period") or "recent30").strip()
+    start_date = (request.args.get("start_date") or "").strip() or None
+    end_date = (request.args.get("end_date") or "").strip() or None
+    min_price = request.args.get("min_price", type=float)
+    max_price = request.args.get("max_price", type=float)
+    brands = (request.args.get("brands") or "").strip() or None
+    suppliers = (request.args.get("suppliers") or "").strip() or None
+    categories = (request.args.get("categories") or "").strip() or None
+    stock_status = (request.args.get("stock_status") or "").strip() or None
+    page = request.args.get("page", 1, type=int)
+    page_size = request.args.get("page_size", 20, type=int)
+    if request.args.get("export") == "1":
+        page, page_size = 1, 10000
+    sort_by = (request.args.get("sort_by") or "sales_amount").strip()
+    sort_order = (request.args.get("sort_order") or "desc").strip()
+    range_days = _advanced_search_range_days(period, start_date, end_date)
+    conn = get_conn()
+    try:
+        result = advanced_search_consumer_insight(
+            conn,
+            store_id=STORE_ID,
+            period=period,
+            start_date=start_date,
+            end_date=end_date,
+            min_price=min_price,
+            max_price=max_price,
+            brands=brands,
+            suppliers=suppliers,
+            categories=categories,
+            stock_status=stock_status,
+            page=page,
+            page_size=page_size,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            range_days=range_days,
+        )
+        if request.args.get("export") == "1":
+            import csv
+            import io
+            out = io.StringIO()
+            writer = csv.writer(out)
+            writer.writerow(["SKU", "品名", "品牌", "品类", "供应商", "平均单价", "销量", "销售额", "库存", "周转天数"])
+            for x in result["items"]:
+                writer.writerow([
+                    x.get("sku_code") or "",
+                    x.get("product_name") or "",
+                    x.get("brand") or "",
+                    x.get("category") or "",
+                    x.get("supplier") or "",
+                    x.get("avg_unit_price"),
+                    x.get("total_qty"),
+                    x.get("total_sales"),
+                    x.get("stock_qty"),
+                    x.get("stock_turnover_days"),
+                ])
+            resp = Response(out.getvalue(), mimetype="text/csv; charset=utf-8-sig")
+            resp.headers["Content-Disposition"] = "attachment; filename=advanced_search.csv"
+            return resp
+        items = _enrich_advanced_search_with_price_compare(conn, result["items"])
+        return jsonify({
+            "code": 0,
+            "data": {
+                "total": result["total"],
+                "page": page,
+                "page_size": page_size,
+                "items": items,
+            },
+        })
+    finally:
+        conn.close()
+
+
+def _enrich_advanced_search_with_price_compare(conn, items):
+    """为高级查询结果每项附加最新比价信息（从 t_price_compare 取各平台最新一条）。"""
+    if not items:
+        return items
+    sku_list = list({x.get("sku_code") for x in items if x.get("sku_code")})
+    if not sku_list:
+        return items
+    try:
+        cur = conn.cursor()
+        placeholders = ",".join(["%s"] * len(sku_list))
+        cur.execute(
+            """
+            SELECT sku_code, platform, price, original_price, promotion_info, good_rate, capture_date
+            FROM t_price_compare
+            WHERE sku_code IN (""" + placeholders + """)
+            ORDER BY capture_date DESC
+            """,
+            sku_list,
+        )
+        rows = cur.fetchall()
+        cur.close()
+        by_sku = {}
+        for r in rows:
+            sku = r.get("sku_code")
+            if sku not in by_sku:
+                by_sku[sku] = {}
+            platform = r.get("platform") or ""
+            if platform and platform not in by_sku[sku]:
+                cap = r.get("capture_date")
+                by_sku[sku][platform] = {
+                    "price": float(r["price"]) if r.get("price") is not None else None,
+                    "original_price": float(r["original_price"]) if r.get("original_price") is not None else None,
+                    "promotion": (r.get("promotion_info") or "")[:200],
+                    "good_rate": float(r["good_rate"]) if r.get("good_rate") is not None else None,
+                    "capture_date": cap.strftime("%Y-%m-%d %H:%M") if cap else None,
+                }
+        for x in items:
+            x["price_compare"] = by_sku.get(x.get("sku_code")) or {}
+        return items
+    except Exception:
+        for x in items:
+            x["price_compare"] = {}
+        return items
+
+
+@app.route("/api/price_compare/history")
+def api_price_compare_history():
+    """某商品比价历史趋势，用于详情弹窗图表。表 t_price_compare 不存在时返回空数据。"""
+    sku_code = (request.args.get("sku_code") or "").strip()
+    days = min(90, max(7, int(request.args.get("days", 30))))
+    if not sku_code:
+        return jsonify({"code": 1, "message": "缺少 sku_code", "product_name": "", "latest": {}, "history": []}), 400
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT sku_code, product_name, brand, platform, price, original_price, promotion_info, good_rate, capture_date
+            FROM t_price_compare
+            WHERE sku_code = %s AND capture_date >= DATE_SUB(NOW(), INTERVAL %s DAY)
+            ORDER BY capture_date ASC
+            """,
+            (sku_code, days),
+        )
+        rows = cur.fetchall()
+        cur.close()
+        product_name = ""
+        latest = {}
+        history = []
+        for r in rows:
+            if not product_name and r.get("product_name"):
+                product_name = r.get("product_name") or ""
+            cap = r.get("capture_date")
+            cap_str = cap.strftime("%Y-%m-%d %H:%M") if cap else ""
+            platform = r.get("platform") or ""
+            price = float(r["price"]) if r.get("price") is not None else None
+            history.append({"platform": platform, "capture_date": cap_str, "price": price})
+            if platform and platform not in latest:
+                latest[platform] = {
+                    "price": price,
+                    "original_price": float(r["original_price"]) if r.get("original_price") is not None else None,
+                    "promotion": (r.get("promotion_info") or "")[:200],
+                    "good_rate": float(r["good_rate"]) if r.get("good_rate") is not None else None,
+                    "capture_date": cap_str,
+                }
+        return jsonify({"code": 0, "product_name": product_name, "sku_code": sku_code, "latest": latest, "history": history})
+    except Exception:
+        return jsonify({"code": 0, "product_name": "", "sku_code": sku_code, "latest": {}, "history": []})
+    finally:
+        conn.close()
+
+
+def _structured_report_to_html(report):
+    """将结构化报告 dict 转为可读 HTML，用于导出下载。"""
+    if not report:
+        return "<!DOCTYPE html><html><head><meta charset=\"utf-8\"/><title>报告</title></head><body><p>无数据</p></body></html>"
+    import html as html_module
+    parts = ["<!DOCTYPE html><html><head><meta charset=\"utf-8\"/>", "<title>结构化分析报告</title>", "<style>body{font-family:sans-serif;margin:20px;background:#0f172a;color:#e2e8f0;} h2{margin-top:24px;color:#38bdf8;} table{border-collapse:collapse;} th,td{border:1px solid #334155;padding:6px 10px;text-align:left;} th{background:#1e293b;} .section{margin-bottom:20px;}</style>", "</head><body>"]
+    summary = report.get("summary") or {}
+    kpi = summary.get("kpi") or {}
+    parts.append("<h2>1. 总览</h2><div class=\"section\">")
+    parts.append("<p>销售额: %s | 毛利: %s | 毛利率: %s%% | 动销SKU: %s</p>" % (kpi.get("total_sale"), kpi.get("total_profit"), kpi.get("margin_pct"), kpi.get("sku_sold")))
+    if summary.get("conclusion"):
+        parts.append("<p>%s</p>" % html_module.escape(summary["conclusion"][:500]))
+    parts.append("</div>")
+    cat = report.get("category_structure") or {}
+    if cat.get("top_sales") or cat.get("matrix"):
+        parts.append("<h2>2. 品类结构</h2><div class=\"section\">")
+        for row in (cat.get("top_sales") or cat.get("matrix") or [])[:15]:
+            c = row.get("category") or row.get("cat") or "-"
+            s = row.get("sale_amount") or row.get("sale") or 0
+            p = row.get("profit") or 0
+            parts.append("<p>%s — 销售: %s 毛利: %s</p>" % (html_module.escape(str(c)), s, p))
+        parts.append("</div>")
+    drill = report.get("drill_section") or {}
+    if drill.get("brands") or drill.get("styles") or drill.get("skus"):
+        parts.append("<h2>3. 下钻摘要</h2><div class=\"section\">")
+        parts.append("<p>类型: %s</p>" % html_module.escape(drill.get("type", "")))
+        for b in (drill.get("brands") or [])[:10]:
+            parts.append("<p>品牌: %s 销售: %s</p>" % (html_module.escape(str(b.get("brand"))), b.get("sale_amount")))
+        for s in (drill.get("styles") or [])[:10]:
+            parts.append("<p>款式: %s 销售: %s</p>" % (html_module.escape(str(s.get("product_name"))), s.get("sale_amount")))
+        for s in (drill.get("skus") or [])[:15]:
+            parts.append("<p>货号: %s 销售: %s</p>" % (html_module.escape(str(s.get("sku_code"))), s.get("sale_amount")))
+        parts.append("</div>")
+    issues = report.get("issues") or {}
+    rg = issues.get("return_gift") or {}
+    if rg.get("return_rate") is not None or rg.get("return_by_cat"):
+        parts.append("<h2>4. 问题与行动</h2><div class=\"section\">")
+        parts.append("<p>退货率: %s%%</p>" % (rg.get("return_rate") or 0))
+        parts.append("</div>")
+    if report.get("market_expansion"):
+        parts.append("<h2>5. 市场拓展</h2><div class=\"section\"><pre>%s</pre></div>" % html_module.escape((report["market_expansion"] or "")[:2000]))
+    parts.append("</body></html>")
+    return "".join(parts)
+
+
+@app.route("/api/structured_report")
+def api_structured_report():
+    """结构化分析报告：整合智能建议、消费洞察、下钻摘要与可选市场拓展报告。export=1 时返回附件（format=json 或 html）。"""
+    if _auth_enabled() and not _has_module_access("profit"):
+        return jsonify({"code": 403, "msg": "无权访问盈利分析模块，请联系管理员"}), 403
+    period = (request.args.get("period") or "recent30").strip()
+    start_date = (request.args.get("start_date") or "").strip() or None
+    end_date = (request.args.get("end_date") or "").strip() or None
+    category = (request.args.get("category") or "").strip() or None
+    brand = (request.args.get("brand") or "").strip() or None
+    product_name = (request.args.get("product_name") or "").strip() or None
+    category_large_code = (request.args.get("category_large_code") or "").strip() or None
+    category_mid_code = (request.args.get("category_mid_code") or "").strip() or None
+    category_small_code = (request.args.get("category_small_code") or "").strip() or None
+    include_market = (request.args.get("include_market") or "false").strip().lower() == "true"
+
+    param_override = {
+        "period": period,
+        "start_date": start_date,
+        "end_date": end_date,
+        "category": category,
+        "brand": brand,
+        "product_name": product_name,
+        "category_large_code": category_large_code,
+        "category_mid_code": category_mid_code,
+        "category_small_code": category_small_code,
+    }
+    conn = get_conn()
+    try:
+        insight_data = _get_consumer_insight_data(param_override=param_override)
+        drill_context = None
+        if category or brand or product_name:
+            drill_context = {
+                "category": category,
+                "brand": brand,
+                "product_name": product_name,
+                "drill_brands": insight_data.get("drill_brands"),
+                "drill_styles": insight_data.get("drill_styles"),
+                "drill_sku_rank": insight_data.get("drill_sku_rank"),
+            }
+        insights = build_insights(conn, STORE_ID, drill_context=drill_context)
+        market_report_text = None
+        if include_market:
+            try:
+                market_lines = build_marketing_report(conn, STORE_ID, days=30, mode="market_expansion")
+                market_report_text = "\n".join(market_lines) if isinstance(market_lines, list) else str(market_lines)
+            except Exception:
+                market_report_text = ""
+        report = build_structured_report(insight_data, insights, market_report_text=market_report_text)
+        # 报告导出：export=1 时返回附件下载；format=json（默认）或 format=html
+        if request.args.get("export") == "1":
+            import json
+            ts = datetime.now().strftime("%Y%m%d_%H%M")
+            fmt = (request.args.get("format") or "json").strip().lower()
+            if fmt == "html":
+                html = _structured_report_to_html(report)
+                return Response(html.encode("utf-8"), mimetype="text/html; charset=utf-8", headers={"Content-Disposition": "attachment; filename=\"structured_report_%s.html\"" % ts})
+            body = json.dumps({"code": 0, "data": report}, ensure_ascii=False, indent=2)
+            return Response(body.encode("utf-8"), mimetype="application/json; charset=utf-8", headers={"Content-Disposition": "attachment; filename=\"structured_report_%s.json\"" % ts})
+        return jsonify({"code": 0, "data": report})
+    except Exception as e:
+        import traceback
+        return jsonify({"code": 500, "msg": str(e), "traceback": traceback.format_exc()}), 500
+    finally:
+        conn.close()
+
+
 @app.route("/api/repair_recalc_unit_price", methods=["POST"])
 def api_repair_recalc_unit_price():
     """将金额/成本按单价×数量重算：当导入时误将单价当总金额时使用"""
@@ -7658,13 +8630,15 @@ def api_marketing_report():
         conn = get_conn()
         try:
             report = build_marketing_report(conn, STORE_ID, mode=mode)
+            report_text = "\n".join(report) if isinstance(report, list) else str(report or "")
             send_ok = False
             send_err = None
             wecom_ok = dingtalk_ok = False
             if send_feishu_flag:
+                _load_env_from_file(_env_path, force_keys=("FEISHU_WEBHOOK_URL",))
                 try:
                     from notify_util import notify_all
-                    results, _ = notify_all(report, title="好特卖进销存营销分析",
+                    results, _ = notify_all(report_text, title="好特卖进销存营销分析",
                         feishu_at_user_id="ou_8db735f2", feishu_at_user_name="余为军")
                     send_ok = results.get("feishu", (False,))[0]
                     wecom_ok = results.get("wecom", (False,))[0]
@@ -7672,11 +8646,12 @@ def api_marketing_report():
                     send_err = None if send_ok else (results.get("feishu", (False, ""))[1])
                 except Exception as e:
                     from feishu_util import send_feishu
-                    send_ok, send_err = send_feishu(report, at_user_id="ou_8db735f2", at_user_name="余为军")
-            _save_report_log(conn, report, send_ok, send_err)
+                    send_ok, send_err = send_feishu(report_text, at_user_id="ou_8db735f2", at_user_name="余为军")
+            _save_report_log(conn, report_text, send_ok, send_err)
             return jsonify({
-                "success": True, "report": report,
+                "success": True, "report": report_text,
                 "feishu_sent": send_feishu_flag, "feishu_ok": send_ok,
+                "feishu_error": send_err if (send_feishu_flag and not send_ok) else None,
                 "wecom_ok": wecom_ok, "dingtalk_ok": dingtalk_ok,
             })
         finally:
@@ -7695,7 +8670,7 @@ def api_report_history():
             _ensure_report_log_table(conn)
             cur = conn.cursor()
             cur.execute(
-                """SELECT id, report_date, report_time, store_id, feishu_at_user_name, send_status,
+                """SELECT id, report_date, report_time, store_id, feishu_at_user_name, send_status, send_error,
                           LEFT(report_content, 200) AS summary, LENGTH(report_content) AS content_len
                    FROM t_htma_report_log
                    ORDER BY report_time DESC
@@ -7711,6 +8686,7 @@ def api_report_history():
                 "store_id": r["store_id"],
                 "feishu_at_user_name": r["feishu_at_user_name"],
                 "send_status": r["send_status"],
+                "send_error": (r.get("send_error") or "").strip() or None,
                 "summary": r["summary"],
                 "content_len": r["content_len"],
             } for r in rows])
@@ -7754,7 +8730,8 @@ def api_report_detail(rid):
 
 @app.route("/api/ai_chat", methods=["GET", "POST", "OPTIONS"])
 def api_ai_chat():
-    """AI 对话：基于报告数据返回可操作建议，可扩展接入 LLM。支持 GET（避免 CORS 预检）和 POST"""
+    """AI 对话：基于报告数据返回可操作建议，可扩展接入 LLM。支持 GET（避免 CORS 预检）和 POST。
+    支持 current_drill：传入 category / brand / product_name 时，回复中会引用该下钻维度的摘要。"""
     if request.method == "OPTIONS":
         return "", 204
     if _auth_enabled() and not _has_module_access("profit"):
@@ -7762,9 +8739,15 @@ def api_ai_chat():
     try:
         if request.method == "GET":
             msg = (request.args.get("message") or "").strip()
+            category = (request.args.get("category") or "").strip() or None
+            brand = (request.args.get("brand") or "").strip() or None
+            product_name = (request.args.get("product_name") or "").strip() or None
         else:
             data = request.get_json(silent=True) or {}
             msg = (data.get("message") or "").strip()
+            category = (data.get("category") or "").strip() or None
+            brand = (data.get("brand") or "").strip() or None
+            product_name = (data.get("product_name") or "").strip() or None
         if not msg:
             return jsonify({"success": False, "reply": "请输入您的问题"}), 400
         from analytics import ai_chat_response, build_marketing_report
@@ -7775,7 +8758,29 @@ def api_ai_chat():
                 summary = report[:500] if report else ""
             except Exception:
                 summary = ""
-            reply = ai_chat_response(conn, msg, report_summary=summary)
+            current_drill_summary = None
+            if category or brand or product_name:
+                try:
+                    param_override = {
+                        "period": "recent30",
+                        "start_date": None,
+                        "end_date": None,
+                        "category": category,
+                        "brand": brand,
+                        "product_name": product_name,
+                    }
+                    insight_data = _get_consumer_insight_data(param_override=param_override)
+                    current_drill_summary = {
+                        "category": category,
+                        "brand": brand,
+                        "product_name": product_name,
+                        "drill_brands": insight_data.get("drill_brands") or [],
+                        "drill_styles": insight_data.get("drill_styles") or [],
+                        "drill_sku_rank": insight_data.get("drill_sku_rank") or [],
+                    }
+                except Exception:
+                    current_drill_summary = {"category": category, "brand": brand, "product_name": product_name}
+            reply = ai_chat_response(conn, msg, report_summary=summary, current_drill_summary=current_drill_summary)
             return jsonify({"success": True, "reply": reply})
         finally:
             conn.close()
@@ -7869,6 +8874,76 @@ def api_price_compare_products():
         return jsonify({"success": False, "groups": {}, "total": 0, "error": str(e)}), 500
 
 
+# 百度 Skill / Runner 多平台能力说明（供前端展示）
+PRICE_COMPARE_SUPPORTED_PLATFORMS = ["京东", "淘宝", "拼多多", "唯品会", "百度", "百度优选"]
+PRICE_COMPARE_DATA_FORMAT_NOTE = (
+    'Runner（scripts/openclaw_baidu_tools_runner.py）解析多平台格式：'
+    '{"京东": {"price": 12.5}, "淘宝": {"price": 11}} 或数字简写 {"京东": 12.5, "淘宝": 11}。'
+)
+
+
+def _platforms_returned_from_items(items):
+    """从比价结果 items 中汇总本次返回的平台名（用于前端展示）。"""
+    seen = set()
+    for it in (items or []):
+        if not isinstance(it, dict):
+            continue
+        plat = it.get("platform") or ""
+        if not plat or plat == "模拟":
+            continue
+        for part in plat.replace("，", "、").split("、"):
+            part = part.strip()
+            if ":" in part:
+                name = part.split(":", 1)[0].strip()
+            else:
+                name = part
+            if name and len(name) < 20:
+                seen.add(name)
+        if it.get("jd_min_price") is not None:
+            seen.add("京东")
+        if it.get("taobao_min_price") is not None:
+            seen.add("淘宝")
+    return sorted(seen)
+
+
+@app.route("/api/price_compare/capability", methods=["GET"])
+def api_price_compare_capability():
+    """比价能力说明：支持的多平台与数据格式，供前端展示。可选 check_runner=1 探测当前数据来源。"""
+    out = {
+        "supported_platforms": PRICE_COMPARE_SUPPORTED_PLATFORMS,
+        "data_format_note": PRICE_COMPARE_DATA_FORMAT_NOTE,
+        "runner_script": "scripts/openclaw_baidu_tools_runner.py",
+    }
+    if request.args.get("check_runner") == "1":
+        try:
+            _root = os.path.dirname(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+            _runner = os.path.join(_root, "scripts", "openclaw_baidu_tools_runner.py")
+            if os.path.isfile(_runner):
+                import subprocess
+                r = subprocess.run(
+                    [sys.executable, _runner, "get_price_comparison", "洽洽坚果"],
+                    capture_output=True,
+                    text=True,
+                    timeout=25,
+                    cwd=_root,
+                    env=dict(os.environ),
+                )
+                for line in reversed((r.stdout or "").strip().split("\n")):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        d = __import__("json").loads(line)
+                        if isinstance(d, dict) and d.get("source"):
+                            out["current_source"] = d["source"]
+                            break
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+    return jsonify(out)
+
+
 @app.route("/api/price_compare", methods=["GET", "POST", "OPTIONS"])
 def api_price_compare():
     """货盘价格对比分析 - 4 阶段闭环，返回完整报告。POST 时使用真实 API"""
@@ -7879,10 +8954,12 @@ def api_price_compare():
         if request.method == "GET":
             days = int(request.args.get("days", 30))
             fetch_limit = request.args.get("fetch_limit", type=int)
+            sku_codes = None
         else:
             data = (request.get_json(silent=True) or {}) if request.is_json else {}
             days = int(data.get("days", 30))
             fetch_limit = data.get("fetch_limit")
+            sku_codes = data.get("sku_codes")  # 前端勾选的货号，仅对选中项比价
         if fetch_limit is None:
             try:
                 v = os.environ.get("PRICE_COMPARE_FETCH_LIMIT", "")
@@ -7892,7 +8969,7 @@ def api_price_compare():
         use_mock = request.method == "GET"  # POST 时用真实 API
         conn = get_conn()
         try:
-            result = run_full_pipeline(conn, store_id=STORE_ID, days=days, use_mock_fetcher=use_mock, fetch_limit=fetch_limit)
+            result = run_full_pipeline(conn, store_id=STORE_ID, days=days, use_mock_fetcher=use_mock, fetch_limit=fetch_limit, sku_codes=sku_codes)
             report = format_report(result)
             items = result.get("items", [])
             # 构建表格数据，确保 items 字段始终存在（即使为空数组）
@@ -7910,7 +8987,11 @@ def api_price_compare():
                             "platform": str(it.get("platform") or "-"),
                             "advantage_pct": it.get("advantage_pct"),
                             "tier": str(it.get("tier") or "独家款"),
+                            "price_source": it.get("price_source"),
                         })
+            # 本次返回的平台与数据来源（供前端展示）
+            platforms_returned = _platforms_returned_from_items(items)
+            price_sources = list({it.get("price_source") for it in (items or []) if it.get("price_source")})
             # 确保 items 字段始终存在；返回竞品接口状态便于前端提示
             summary = result.get("portfolio", {}).get("summary", {}) if isinstance(result.get("portfolio"), dict) else {}
             exclusive = summary.get("exclusive", 0)
@@ -7924,6 +9005,10 @@ def api_price_compare():
                 "fetcher_error": result.get("fetcher_error"),
                 "fetcher_platform": result.get("fetcher_platform", ""),
                 "all_exclusive_hint": bool(total > 0 and exclusive == total and result.get("use_real_fetcher")),
+                "supported_platforms": PRICE_COMPARE_SUPPORTED_PLATFORMS,
+                "data_format_note": PRICE_COMPARE_DATA_FORMAT_NOTE,
+                "platforms_returned": platforms_returned,
+                "price_sources": price_sources,
             }
             return jsonify(response_data)
         finally:
