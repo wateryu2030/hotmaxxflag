@@ -475,8 +475,8 @@ STOCK_NEW_COLS = {
 }
 
 
-def import_sale_daily(excel_path, conn, overwrite_on_duplicate=False):
-    """销售日报表：支持表头检测。仅写入 t_htma_sale（增量/覆盖），不触碰库存/人力/品类/商品档案。overwrite_on_duplicate=True 时同(日期,货号)覆盖不累加（与汇总同传时防翻倍）。"""
+def import_sale_daily(excel_path, conn, overwrite_on_duplicate=True):
+    """销售日报表：支持表头检测。仅写入 t_htma_sale（增量/覆盖），不触碰库存/人力/品类/商品档案。默认同(日期,货号)覆盖不累加，避免重复导入同一日报导致翻倍。"""
     ensure_sale_table_columns(conn)
     df = _read_excel_safe(excel_path)
     df = _trim_leading_junk_rows(df, ("货号", "销售金额", "商品编码", "销售日期", "销售数量", "品号", "商品号", "商品名称", "订单日期", "销售汇总"))
@@ -1077,7 +1077,8 @@ def import_stock(excel_path, conn):
     inserted = 0
     col_list = None
     buf = []
-    full_map = STOCK_FULL + STOCK_V2_EXTRA
+    # STOCK_V2_EXTRA 仅适用于「库存查询」类宽表（≥26 列含大类/中类/小类）；24 列「实时库存」与 STOCK_FULL 列位一致，若误合并会把第 6 列商品名称写入 category_mid_code 导致超长报错
+    full_map = STOCK_FULL + (STOCK_V2_EXTRA if ncol >= 26 else [])
 
     def flush_stock_batch():
         nonlocal inserted, col_list

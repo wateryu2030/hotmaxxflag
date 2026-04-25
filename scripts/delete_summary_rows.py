@@ -18,9 +18,30 @@ sys.path.insert(0, _ROOT)
 from htma_dashboard.db_config import get_conn
 
 # 与看板 import_logic 一致的汇总标识（货号/品类/品名含这些视为汇总行，需删除）
-SUMMARY_KEYWORDS = ("合计", "总计", "小计", "汇总", "求和项", "合计行", "总计行", "小计行")
+SUMMARY_KEYWORDS = (
+    "合计",
+    "总计",
+    "小计",
+    "汇总",
+    "求和项",
+    "合计行",
+    "总计行",
+    "小计行",
+    "汇总数据",
+)
 # 货号为这些字面量或为空：视为「无商品、仅合计」行，必须删除
-SUMMARY_SKU_EXACT = ("货号", "总计", "合计", "小计", "汇总", "求和项", "合计行", "总计行", "小计行")
+SUMMARY_SKU_EXACT = (
+    "货号",
+    "总计",
+    "合计",
+    "小计",
+    "汇总",
+    "求和项",
+    "合计行",
+    "总计行",
+    "小计行",
+    "汇总数据",
+)
 
 
 def _sale_where_with_product_name():
@@ -40,6 +61,23 @@ def _sale_where_no_product_name():
         [f"category LIKE %s"] * len(SUMMARY_KEYWORDS)
     )
     return " OR ".join(conds), kw_params * 2
+
+
+def _sale_where_zero_sku_and_summary_text(has_product_name):
+    """货号全为 0 且品类/品名含汇总词（与 import_logic 中零货号合计行规则一致）"""
+    kw_params = [f"%{k}%" for k in SUMMARY_KEYWORDS]
+    conds = [f"category LIKE %s"] * len(SUMMARY_KEYWORDS)
+    params = list(kw_params)
+    if has_product_name:
+        conds.extend([f"product_name LIKE %s"] * len(SUMMARY_KEYWORDS))
+        params.extend(kw_params)
+    inner = " OR ".join(conds)
+    sql = (
+        "(CHAR_LENGTH(TRIM(COALESCE(sku_code,''))) BETWEEN 1 AND 10 "
+        "AND TRIM(sku_code) REGEXP '^0+$' "
+        f"AND ({inner}))"
+    )
+    return sql, params
 
 
 def main():
@@ -66,8 +104,12 @@ def main():
         sale_where_like, sale_params_like = _sale_where_with_product_name()
     else:
         sale_where_like, sale_params_like = _sale_where_no_product_name()
-    sale_where = "(" + sale_where_base + ") OR (" + sale_where_like + ")"
-    sale_params = sale_params_base + sale_params_like
+    # 条件3：全零货号 + 品类/品名含汇总词
+    sale_where_zero, sale_params_zero = _sale_where_zero_sku_and_summary_text(has_product_name)
+    sale_where = (
+        "(" + sale_where_base + ") OR (" + sale_where_like + ") OR (" + sale_where_zero + ")"
+    )
+    sale_params = sale_params_base + sale_params_like + sale_params_zero
 
     # 1) 销售表：货号为空/表头/汇总字面量，或 货号/品类/品名 含汇总词
     cur.execute(
@@ -98,8 +140,11 @@ def main():
         stock_where_like, stock_params_like = _sale_where_with_product_name()
     else:
         stock_where_like, stock_params_like = _sale_where_no_product_name()
-    stock_where = "(" + sale_where_base + ") OR (" + stock_where_like + ")"
-    stock_params = sale_params_base + stock_params_like
+    stock_where_zero, stock_params_zero = _sale_where_zero_sku_and_summary_text(stock_has_pn)
+    stock_where = (
+        "(" + sale_where_base + ") OR (" + stock_where_like + ") OR (" + stock_where_zero + ")"
+    )
+    stock_params = sale_params_base + stock_params_like + stock_params_zero
     cur.execute(
         f"SELECT COUNT(*) AS c FROM t_htma_stock WHERE {stock_where}",
         stock_params,

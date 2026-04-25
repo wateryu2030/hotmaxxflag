@@ -2,7 +2,7 @@
 
 ## 原因
 
-`/api/brand_categories`、`/api/supplier_categories`、`/api/price_band_categories` 等接口已在代码中实现，但访问 **https://htma.greatagain.com.cn** 仍返回 **404**，是因为：
+`/api/brand_categories`、`/tax_analysis`（税务分析页）、`/api/tax_analysis/*`、**`/hongbeilou`（红背篓选品）**、**`/api/channel/hongbeilou/*`**（含 **`export_pdf`**）等新页面/接口已在代码中实现，但访问外网仍 **404**，是因为：
 
 - Flask 在**启动时**加载全部路由；运行中的进程不会自动加载新代码。
 - 当前外网指向的那台机器上，看板进程是很早之前启动的，**没有包含这些新路由**。
@@ -73,6 +73,11 @@ launchctl load ~/Library/LaunchAgents/com.htma.dashboard.plist
    .venv/bin/python htma_dashboard/app.py
    ```
 3. 若手动能正常起来，多半是 launchd 环境（工作目录、环境变量）与终端不一致，可改用「方式二」手动启动，或重新执行一次 `bash scripts/install_launchd_htma.sh` 再重启。
+
+## 税务分析 404：导入成功但提示 Not Found
+
+若在「税务分析」导入发票后出现 **404 Not Found**，说明当前运行中的看板进程**没有**税务分析相关接口（`/api/tax_analysis/invoice_months`、`/api/tax_analysis/invoice_detail` 等）。  
+**处理**：在**跑看板的那台电脑**上按上文「操作步骤」**重启看板**一次，再刷新浏览器重试。前端已对 404 做友好提示，会引导至本文档。
 
 ## 如何确认新 API 已生效
 

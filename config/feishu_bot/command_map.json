@@ -1,0 +1,22 @@
+{
+  "commands": [
+    {
+      "id": "project_intro",
+      "keywords": ["项目介绍", "项目情况", "介绍下项目", "好特卖介绍", "看板介绍", "进销存介绍"],
+      "need_db": false,
+      "description": "返回 soul.md 中项目介绍固定话术"
+    },
+    {
+      "id": "db_overview",
+      "keywords": ["报告数据库", "数据库内容", "数据概览", "查数据库", "进销存数据", "报告数据", "库表统计"],
+      "need_db": true,
+      "description": "核心表行数与日期范围（只读模板）"
+    },
+    {
+      "id": "stock_high",
+      "keywords": ["库存大于", "库存>", "高库存"],
+      "need_db": true,
+      "description": "按阈值查询库存示例行（正则解析数字，上限与条数在代码中限制）"
+    }
+  ]
+}

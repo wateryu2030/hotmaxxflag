@@ -13,7 +13,24 @@ from datetime import date, timedelta, datetime
 _env_dir = os.path.dirname(os.path.abspath(os.path.realpath(__file__)))
 _project_root = os.path.abspath(os.path.join(_env_dir, ".."))
 _env_path = os.path.join(_project_root, ".env")
-_ENV_KEYS = ("FEISHU_APP_ID", "FEISHU_APP_SECRET", "HTMA_PUBLIC_URL", "FLASK_SECRET_KEY", "FEISHU_WEBHOOK_URL", "FEISHU_AT_USER_ID", "FEISHU_AT_USER_NAME")
+_ENV_KEYS = (
+    "FEISHU_APP_ID",
+    "FEISHU_APP_SECRET",
+    "HTMA_PUBLIC_URL",
+    "FLASK_SECRET_KEY",
+    "FEISHU_WEBHOOK_URL",
+    "FEISHU_AT_USER_ID",
+    "FEISHU_AT_USER_NAME",
+    "FEISHU_VERIFICATION_TOKEN",
+    "FEISHU_ENCRYPT_KEY",
+    "FEISHU_BOT_REPLY_MODE",
+    "FEISHU_BOT_REPLY_PREFIX",
+    "FEISHU_BOT_OPEN_ID",
+    "FEISHU_BOT_DB_ALLOWED_OPEN_IDS",
+    "FEISHU_BOT_MYSQL_USER",
+    "FEISHU_BOT_MYSQL_PASSWORD",
+    "FEISHU_BOT_DB_REQUIRE_ALLOWLIST",
+)
 
 
 def _load_env_from_file(path, force_keys=None):
@@ -89,9 +106,27 @@ try:
 except ImportError:
     pass
 # 先强制从项目根 .env 注入飞书相关（覆盖空值），再按原逻辑补其他
-_load_env_from_file(_env_path, force_keys=("FEISHU_APP_ID", "FEISHU_APP_SECRET", "FEISHU_WEBHOOK_URL"))
+_load_env_from_file(
+    _env_path,
+    force_keys=(
+        "FEISHU_APP_ID",
+        "FEISHU_APP_SECRET",
+        "FEISHU_WEBHOOK_URL",
+        "FEISHU_VERIFICATION_TOKEN",
+        "FEISHU_ENCRYPT_KEY",
+        "FEISHU_BOT_REPLY_MODE",
+        "FEISHU_BOT_REPLY_PREFIX",
+        "FEISHU_BOT_OPEN_ID",
+        "FEISHU_BOT_DB_ALLOWED_OPEN_IDS",
+        "FEISHU_BOT_MYSQL_USER",
+        "FEISHU_BOT_MYSQL_PASSWORD",
+        "FEISHU_BOT_DB_REQUIRE_ALLOWLIST",
+    ),
+)
 for _p in (_env_path, os.path.join(os.getcwd(), ".env"), os.path.abspath(os.path.join(os.getcwd(), "..", ".env"))):
     _load_env_from_file(_p)
+import csv
+import io
 import subprocess
 import tempfile
 import threading
@@ -101,8 +136,15 @@ from db_config import DB_CONFIG, get_conn
 from flask import Flask, Response, jsonify, send_from_directory, request, session, redirect
 from werkzeug.utils import secure_filename
 
-from import_logic import import_sale_daily, import_sale_summary, import_stock, import_category, import_profit, import_tax_burden, refresh_profit, refresh_category_from_sale, sync_products_table, sync_category_table, preview_sale_excel, import_labor_cost, import_labor_cost_from_image, refresh_labor_cost_analysis, import_product_master, _ensure_product_master_distribution_mode
+from import_logic import import_sale_daily, import_sale_summary, import_stock, import_category, import_profit, import_tax_burden, refresh_profit, refresh_category_from_sale, sync_products_table, sync_category_table, preview_sale_excel, import_labor_cost, import_labor_cost_from_image, refresh_labor_cost_analysis, import_product_master, _ensure_product_master_distribution_mode, _read_excel_safe
 from analytics import build_insights, build_enhanced_insights, build_structured_report, build_marketing_report, category_rank_data, advanced_search_consumer_insight
+from channel_hongbeilou import (
+    query_catalog_rows,
+    EXPORT_SIMPLE_COLUMNS,
+    table_exists,
+    build_selection_logic_meta,
+    rows_to_simple_export,
+)
 from query_layer import date_condition as _ql_date_condition, query_filters_from_request as _ql_query_filters, query_filters_from_params as _ql_query_filters_from_params
 
 # 简单内存缓存：key -> (value, expire_at)，用于 date_range / kpi 等只读接口
@@ -206,6 +248,7 @@ def _has_module_access(module, user_id=None):
         "profit": "HTMA_PROFIT_ALLOWED_FEISHU_OPEN_IDS",
         "product_master": "HTMA_PRODUCT_MASTER_ALLOWED_FEISHU_OPEN_IDS",
         "profit_share": "HTMA_PROFIT_SHARE_ALLOWED_FEISHU_OPEN_IDS",
+        "tax_analysis": "HTMA_TAX_ANALYSIS_ALLOWED_FEISHU_OPEN_IDS",
     }
     env_name = env_map.get(module)
     if not env_name:
@@ -244,6 +287,8 @@ def _require_auth():
         return None
     if path == "/api/health":
         return None
+    if path == "/api/feishu/bot/event" or path == "/feishu/callback":
+        return None
     if path == "/api/date_range":
         return None
     if path == "/labor" or path == "/labor_analysis":
@@ -258,7 +303,7 @@ def _require_auth():
     if _is_logged_in():
         return None
     # 未登录：页面请求重定向到登录页，API 返回 401
-    if path in ("/import", "/product_master", "/profit_share") or path.startswith("/api/"):
+    if path in ("/import", "/product_master", "/profit_share", "/tax_analysis", "/hongbeilou") or path.startswith("/api/"):
         if request.path.startswith("/api/"):
             return jsonify({"success": False, "message": "请先登录", "login_required": True}), 401
         return redirect("/login?next=" + (urllib.parse.quote(request.url) if request.url else "/"))
@@ -1638,6 +1683,7 @@ def api_auth_me():
         "can_profit": _has_module_access("profit", user_id),
         "can_product_master": _has_module_access("product_master", user_id),
         "can_profit_share": _has_module_access("profit_share", user_id),
+        "can_tax_analysis": _has_module_access("tax_analysis", user_id),
     }
     return jsonify({
         "success": True,
@@ -1690,7 +1736,22 @@ def _ensure_env_loaded():
     ]
     for path in candidates:
         if path:
-            _load_env_from_file(path, force_keys=("FEISHU_APP_ID", "FEISHU_APP_SECRET"))
+            _load_env_from_file(
+                path,
+                force_keys=(
+                    "FEISHU_APP_ID",
+                    "FEISHU_APP_SECRET",
+                    "FEISHU_VERIFICATION_TOKEN",
+                    "FEISHU_ENCRYPT_KEY",
+                    "FEISHU_BOT_REPLY_MODE",
+                    "FEISHU_BOT_REPLY_PREFIX",
+                    "FEISHU_BOT_OPEN_ID",
+                    "FEISHU_BOT_DB_ALLOWED_OPEN_IDS",
+                    "FEISHU_BOT_MYSQL_USER",
+                    "FEISHU_BOT_MYSQL_PASSWORD",
+                    "FEISHU_BOT_DB_REQUIRE_ALLOWLIST",
+                ),
+            )
         if not (app.config.get("FEISHU_APP_ID") or "").strip() and (os.environ.get("FEISHU_APP_ID") or "").strip():
             app.config["FEISHU_APP_ID"] = (os.environ.get("FEISHU_APP_ID") or "").strip()
             app.config["FEISHU_APP_SECRET"] = (os.environ.get("FEISHU_APP_SECRET") or "").strip()
@@ -1730,6 +1791,34 @@ def api_auth_feishu_url():
     if err:
         return jsonify({"success": False, "message": err}), 400
     return jsonify({"success": True, "url": url})
+
+
+@app.route("/api/feishu/bot/event", methods=["POST", "GET", "HEAD"])
+@app.route("/feishu/callback", methods=["POST", "GET", "HEAD"])
+def api_feishu_bot_event():
+    """飞书自建应用机器人事件订阅回调（群内 @ 机器人 / 私聊回复）。
+    可用路径（二选一，与开放平台配置一致即可）：
+    - /api/feishu/bot/event（推荐，与看板同端口 5002）
+    - /feishu/callback（与常见教程路径一致，反代需指向本服务 5002）
+    """
+    if request.method == "GET":
+        return jsonify({"ok": True, "service": "htma-feishu-bot", "method": "POST events here"}), 200
+    if request.method == "HEAD":
+        return Response("", status=200)
+    _ensure_env_loaded()
+    app_id = (app.config.get("FEISHU_APP_ID") or "").strip()
+    app_secret = (app.config.get("FEISHU_APP_SECRET") or "").strip()
+    if not app_id or not app_secret:
+        return jsonify({"msg": "未配置 FEISHU_APP_ID / FEISHU_APP_SECRET"}), 503
+    from feishu_bot import process_feishu_bot_http_request
+
+    payload, code = process_feishu_bot_http_request(
+        request.get_data(cache=False, as_text=False),
+        request.headers,
+        app_id,
+        app_secret,
+    )
+    return jsonify(payload), code
 
 
 @app.route("/api/auth/feishu_callback")
@@ -1972,6 +2061,647 @@ def profit_share_page():
     if _auth_enabled() and not _has_module_access("profit_share"):
         return Response("您无权访问收益评估模块，请联系管理员。", status=403)
     return send_from_directory("static", "profit_share.html")
+
+
+@app.route("/tax_analysis")
+def tax_analysis_page():
+    """税务分析（发票比对、税负测算）页面，仅指定人员可访问"""
+    if _auth_enabled() and not _is_logged_in():
+        return redirect("/login?next=" + (urllib.parse.quote(request.url) if request.url else "/"))
+    if _auth_enabled() and not _has_module_access("tax_analysis"):
+        return Response("您无权访问税务分析模块，请联系管理员。", status=403)
+    return send_from_directory("static", "tax_analysis.html")
+
+
+@app.route("/hongbeilou")
+def hongbeilou_page():
+    """供销社「红背篓」选品：按品类筛选并导出 CSV（需 import 权限）"""
+    if _auth_enabled() and not _is_logged_in():
+        return redirect("/login?next=" + (urllib.parse.quote(request.url) if request.url else "/"))
+    if _auth_enabled() and not _has_module_access("import"):
+        return Response("您无权访问该模块，请联系管理员。", status=403)
+    return send_from_directory("static", "hongbeilou.html")
+
+
+# ---------- 税务分析（发票比对、税负测算）API ----------
+def _tax_analysis_forbidden():
+    return jsonify({"error": "无权限"}), 403
+
+
+def _parse_invoice_excel(excel_path, store_id="沈阳超级仓"):
+    """解析发票 Excel（兼容 12 月/1 月两种表头），返回 [(category_small_code, category_small_name, tax_class_code, tax_rate, sale_qty, invoice_amount), ...]。
+    调用方传入 period_month。"""
+    import pandas as pd
+    xl = pd.ExcelFile(excel_path)
+    sheets = [s for s in xl.sheet_names if s]
+    if not sheets:
+        raise ValueError("Excel 中无有效 Sheet")
+    ext = os.path.splitext(excel_path)[1].lower()
+    engine = "openpyxl" if ext == ".xlsx" else "xlrd"
+    out = []
+    for sheet in sheets:
+        try:
+            df = pd.read_excel(excel_path, sheet_name=sheet, header=None, engine=engine)
+        except Exception:
+            df = pd.read_excel(excel_path, sheet_name=sheet, header=None)
+        if df.shape[0] < 2 or df.shape[1] < 4:
+            continue
+        # 找表头行：包含「三级类别名称」或「三级类别编码」
+        header_row = None
+        for i in range(min(6, len(df))):
+            row = df.iloc[i]
+            vals = [str(x).strip() if pd.notna(x) else "" for x in row]
+            if "三级类别名称" in vals or "求和项:开票金额" in vals:
+                header_row = i
+                break
+        if header_row is None:
+            continue
+        headers = [str(x).strip() if pd.notna(x) else "" for x in df.iloc[header_row]]
+        col_name = None
+        col_code = None
+        col_tax_code = None
+        col_rate = None
+        col_qty = None
+        col_amount = None
+        for j, h in enumerate(headers):
+            if h == "三级类别名称":
+                col_name = j
+            elif h == "三级类别编码":
+                col_code = j
+            elif "税收分类编码" in h or h == "税收分类编码":
+                col_tax_code = j
+            elif h == "税率":
+                col_rate = j
+            elif "求和项:销售数量" in h or h == "销售数量":
+                col_qty = j
+            elif "求和项:开票金额" in h or h == "开票金额":
+                col_amount = j
+        if col_name is None or col_amount is None:
+            continue
+        if col_rate is None:
+            col_rate = col_tax_code  # 可能同一列
+        skip_names = ("", "总计", "合计", "小计", "汇总", "价税合计", "共", "第", "第1页", "第2页")
+        for i in range(header_row + 1, len(df)):
+            row = df.iloc[i]
+            name = (row.iloc[col_name] if col_name is not None else None)
+            if pd.isna(name):
+                continue
+            name = str(name).strip()
+            if not name:
+                continue
+            if name in skip_names or any(name.startswith(s) for s in ("共", "第")) or "价税合计" in name:
+                continue
+            code = None
+            if col_code is not None and col_code < len(row):
+                v = row.iloc[col_code]
+                if pd.notna(v):
+                    try:
+                        code = str(int(float(v))) if isinstance(v, (int, float)) else str(v).strip()
+                    except Exception:
+                        code = str(v).strip()
+            tax_code = None
+            if col_tax_code is not None and col_tax_code < len(row):
+                v = row.iloc[col_tax_code]
+                if pd.notna(v):
+                    try:
+                        tax_code = str(int(float(v)))
+                    except Exception:
+                        tax_code = str(v).strip() if v else None
+            try:
+                rate = float(row.iloc[col_rate]) if col_rate is not None and pd.notna(row.iloc[col_rate]) else 0.13
+            except Exception:
+                rate = 0.13
+            try:
+                qty = float(row.iloc[col_qty]) if col_qty is not None and pd.notna(row.iloc[col_qty]) else 0
+            except Exception:
+                qty = 0
+            try:
+                amt = float(row.iloc[col_amount])
+            except Exception:
+                amt = 0
+            if amt == 0 and qty == 0:
+                continue
+            out.append({
+                "category_small_code": code,
+                "category_small_name": name,
+                "tax_class_code": tax_code,
+                "tax_rate": rate,
+                "sale_qty": round(qty, 2),
+                "invoice_amount": round(amt, 2),
+            })
+        if out:
+            break
+    # 按三级类别名称去重：同名称多行合并为一行（数量、金额相加，税率/编码取第一条）
+    seen = {}
+    for r in out:
+        key = (r["category_small_name"] or "").strip()
+        if not key:
+            continue
+        if key not in seen:
+            seen[key] = dict(r)
+        else:
+            seen[key]["sale_qty"] = round(seen[key]["sale_qty"] + r["sale_qty"], 2)
+            seen[key]["invoice_amount"] = round(seen[key]["invoice_amount"] + r["invoice_amount"], 2)
+    return list(seen.values())
+
+
+@app.route("/api/tax_analysis/import_invoice", methods=["POST", "OPTIONS"])
+def api_tax_analysis_import_invoice():
+    """上传当月发票 Excel，解析后写入 t_htma_invoice_detail。表单: period_month=YYYY-MM, file=Excel"""
+    if request.method == "OPTIONS":
+        return "", 204
+    if _auth_enabled() and not _has_module_access("tax_analysis"):
+        return _tax_analysis_forbidden()
+    period = (request.form.get("period_month") or "").strip()
+    if not period or len(period) < 6:
+        return jsonify({"success": False, "message": "请选择账期月份（YYYY-MM）"}), 400
+    try:
+        y, m = int(period[:4]), int(period[5:7])
+        period_date = date(y, m, 1)
+    except Exception:
+        return jsonify({"success": False, "message": "账期月份格式错误，应为 YYYY-MM"}), 400
+    if "file" not in request.files or not request.files["file"].filename:
+        return jsonify({"success": False, "message": "请选择发票 Excel 文件"}), 400
+    f = request.files["file"]
+    if not f.filename.lower().endswith((".xls", ".xlsx")):
+        return jsonify({"success": False, "message": "仅支持 .xls / .xlsx 文件"}), 400
+    store_id = (request.form.get("store_id") or "沈阳超级仓").strip()
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(f.filename)[1]) as tmp:
+            f.save(tmp.name)
+            try:
+                rows = _parse_invoice_excel(tmp.name, store_id)
+            except Exception as e:
+                return jsonify({"success": False, "message": "解析 Excel 失败: " + str(e)}), 400
+            finally:
+                try:
+                    os.unlink(tmp.name)
+                except Exception:
+                    pass
+    except Exception as e:
+        return jsonify({"success": False, "message": "保存文件失败: " + str(e)}), 500
+    if not rows:
+        return jsonify({"success": False, "message": "未解析到有效发票明细行，请检查表头是否含「三级类别名称」「开票金额」"}), 400
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='t_htma_invoice_detail' LIMIT 1"
+        )
+        if not cur.fetchone():
+            return jsonify({"success": False, "message": "表 t_htma_invoice_detail 不存在，请先执行 scripts/24_create_invoice_tables.sql"}), 500
+        inserted = 0
+        for r in rows:
+            cur.execute(
+                """INSERT INTO t_htma_invoice_detail
+                   (period_month, category_small_code, category_small_name, tax_class_code, tax_rate, sale_qty, invoice_amount, store_id)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                   ON DUPLICATE KEY UPDATE
+                   tax_class_code = VALUES(tax_class_code), tax_rate = VALUES(tax_rate), sale_qty = VALUES(sale_qty), invoice_amount = VALUES(invoice_amount), updated_at = CURRENT_TIMESTAMP""",
+                (
+                    period_date,
+                    r.get("category_small_code"),
+                    r["category_small_name"],
+                    r.get("tax_class_code"),
+                    r.get("tax_rate", 0.13),
+                    r.get("sale_qty", 0),
+                    r.get("invoice_amount", 0),
+                    store_id,
+                ),
+            )
+            inserted += 1
+        conn.commit()
+        return jsonify({"success": True, "message": "导入成功", "rows": inserted})
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return jsonify({"success": False, "message": str(e)}), 500
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+@app.route("/api/tax_analysis/invoice_months", methods=["GET"])
+def api_tax_analysis_invoice_months():
+    """已导入发票的账期列表，用于下拉选择。异常时返回 200 + 空列表，避免 500 导致前端报错。"""
+    if _auth_enabled() and not _has_module_access("tax_analysis"):
+        return _tax_analysis_forbidden()
+    conn = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor(pymysql.cursors.DictCursor)
+        cur.execute(
+            "SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='t_htma_invoice_detail' LIMIT 1"
+        )
+        if not cur.fetchone():
+            return jsonify({"success": True, "months": []})
+        cur.execute(
+            "SELECT DISTINCT DATE_FORMAT(period_month, '%Y-%m') AS period FROM t_htma_invoice_detail ORDER BY period DESC LIMIT 24"
+        )
+        rows = cur.fetchall()
+        months = []
+        for row in rows:
+            p = row.get("period") if isinstance(row, dict) else (row[0] if row else None)
+            if p:
+                months.append(p.strftime("%Y-%m") if hasattr(p, "strftime") else str(p))
+        return jsonify({"success": True, "months": months})
+    except Exception as e:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+        return jsonify({"success": True, "months": [], "message": str(e)})
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+
+
+@app.route("/api/tax_analysis/invoice_detail", methods=["GET"])
+def api_tax_analysis_invoice_detail():
+    """已导入的发票明细列表（按 PDF 样式：项目名称、数量、金额、税率、税额）。period_month=YYYY-MM"""
+    if _auth_enabled() and not _has_module_access("tax_analysis"):
+        return _tax_analysis_forbidden()
+    period = (request.args.get("period_month") or "").strip()
+    if not period or len(period) < 6:
+        return jsonify({"success": False, "message": "请传入 period_month=YYYY-MM"}), 400
+    try:
+        y, m = int(period[:4]), int(period[5:7])
+        start_d = date(y, m, 1)
+    except Exception:
+        return jsonify({"success": False, "message": "period_month 格式错误"}), 400
+    store_id = (request.args.get("store_id") or "沈阳超级仓").strip()
+    conn = get_conn()
+    try:
+        cur = conn.cursor(pymysql.cursors.DictCursor)
+        cur.execute(
+            "SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='t_htma_invoice_detail' LIMIT 1"
+        )
+        if not cur.fetchone():
+            return jsonify({"success": True, "period_month": period, "rows": [], "summary": {}})
+        cur.execute(
+            """SELECT category_small_code, category_small_name, tax_class_code, tax_rate, sale_qty, invoice_amount
+               FROM t_htma_invoice_detail WHERE store_id = %s AND period_month = %s ORDER BY category_small_name""",
+            (store_id, start_d),
+        )
+        rows = []
+        total_qty = 0
+        total_amount = 0
+        total_tax = 0
+        for row in cur.fetchall():
+            amt = float(row.get("invoice_amount") or 0)
+            rate = float(row.get("tax_rate") or 0.13)
+            qty = float(row.get("sale_qty") or 0)
+            tax_amt = round(amt * rate / (1 + rate), 2) if rate > 0 else 0
+            total_qty += qty
+            total_amount += amt
+            total_tax += tax_amt
+            rows.append({
+                "category_small_name": row.get("category_small_name") or "",
+                "category_small_code": row.get("category_small_code"),
+                "sale_qty": qty,
+                "invoice_amount": amt,
+                "tax_rate": rate,
+                "tax_amount": tax_amt,
+                "unit_price": round(amt / qty, 4) if qty > 0 else None,
+            })
+        return jsonify({
+            "success": True,
+            "period_month": period,
+            "rows": rows,
+            "summary": {
+                "total_sale_qty": round(total_qty, 2),
+                "total_invoice_amount": round(total_amount, 2),
+                "total_tax_amount": round(total_tax, 2),
+            },
+        })
+    except Exception as e:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+        return jsonify({"success": False, "message": str(e), "rows": [], "summary": {}}), 500
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+
+
+@app.route("/api/tax_analysis/compare", methods=["GET"])
+def api_tax_analysis_compare():
+    """比对结果：系统销售额 vs 开票金额，按品类。period_month=YYYY-MM；可选 baseline_pct（合理开票率基准，默认80）、tolerance_pct（上下浮动%，默认5），开票占比在 [基准-浮动, 基准+浮动] 内视为合理（一致）。"""
+    if _auth_enabled() and not _has_module_access("tax_analysis"):
+        return _tax_analysis_forbidden()
+    period = (request.args.get("period_month") or "").strip()
+    if not period or len(period) < 6:
+        return jsonify({"success": False, "message": "请传入 period_month=YYYY-MM"}), 400
+    try:
+        baseline_pct = float(request.args.get("baseline_pct") or "80")
+        tolerance_pct = float(request.args.get("tolerance_pct") or "5")
+    except (TypeError, ValueError):
+        baseline_pct, tolerance_pct = 80.0, 5.0
+    low_pct = baseline_pct - tolerance_pct
+    high_pct = baseline_pct + tolerance_pct
+    try:
+        y, m = int(period[:4]), int(period[5:7])
+        start_d = date(y, m, 1)
+        if m == 12:
+            end_d = date(y, 12, 31)
+        else:
+            end_d = date(y, m + 1, 1) - timedelta(days=1)
+    except Exception:
+        return jsonify({"success": False, "message": "period_month 格式错误"}), 400
+    store_id = (request.args.get("store_id") or "沈阳超级仓").strip()
+    conn = get_conn()
+    try:
+        cur = conn.cursor(pymysql.cursors.DictCursor)
+        cur.execute(
+            "SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='t_htma_invoice_detail' LIMIT 1"
+        )
+        if not cur.fetchone():
+            return jsonify({"success": True, "summary": {}, "detail": []})
+        # 系统按品类汇总（优先 category_small，无则用 category）
+        cur.execute(
+            """SELECT COALESCE(NULLIF(TRIM(category_small), ''), category, '未分类') AS category_name,
+                      SUM(sale_amount) AS system_sale_amount, SUM(sale_qty) AS system_sale_qty
+               FROM t_htma_sale WHERE store_id = %s AND data_date >= %s AND data_date <= %s
+               GROUP BY COALESCE(NULLIF(TRIM(category_small), ''), category, '未分类')""",
+            (store_id, start_d, end_d),
+        )
+        system_by_cat = {row["category_name"]: row for row in cur.fetchall()}
+        cur.execute(
+            """SELECT category_small_code, category_small_name, tax_rate, sale_qty AS invoice_sale_qty, invoice_amount
+               FROM t_htma_invoice_detail WHERE store_id = %s AND period_month = %s""",
+            (store_id, start_d),
+        )
+        invoice_by_cat = {row["category_small_name"]: row for row in cur.fetchall()}
+        all_cats = set(system_by_cat.keys()) | set(invoice_by_cat.keys())
+        detail = []
+        total_system = 0
+        total_invoice = 0
+        for cat in sorted(all_cats):
+            sys_row = system_by_cat.get(cat, {})
+            inv_row = invoice_by_cat.get(cat, {})
+            sys_amt = float(sys_row.get("system_sale_amount") or 0)
+            sys_qty = float(sys_row.get("system_sale_qty") or 0)
+            inv_amt = float(inv_row.get("invoice_amount") or 0)
+            inv_qty = float(inv_row.get("invoice_sale_qty") or 0)
+            total_system += sys_amt
+            total_invoice += inv_amt
+            diff = round(sys_amt - inv_amt, 2)
+            pct = round(100 * inv_amt / sys_amt, 2) if sys_amt > 0 else (100 if inv_amt > 0 else None)
+            if sys_amt > 0 and inv_amt == 0:
+                flag = "漏开"
+            elif sys_amt > 0 and inv_amt > 0:
+                if low_pct <= pct <= high_pct:
+                    flag = "一致"
+                elif sys_amt > inv_amt:
+                    flag = "少开"
+                elif abs(diff) / sys_amt > 0.001:
+                    flag = "不一致"
+                else:
+                    flag = "一致"
+            elif sys_amt > 0 and abs(diff) / sys_amt > 0.001:
+                flag = "不一致"
+            else:
+                flag = "一致"
+            detail.append({
+                "category_small_name": cat,
+                "category_small_code": inv_row.get("category_small_code"),
+                "system_sale_amount": sys_amt,
+                "system_sale_qty": sys_qty,
+                "invoice_amount": inv_amt,
+                "invoice_sale_qty": inv_qty,
+                "amount_diff": diff,
+                "invoice_pct": pct,
+                "flag": flag,
+            })
+        summary = {
+            "total_system_sale_amount": round(total_system, 2),
+            "total_invoice_amount": round(total_invoice, 2),
+            "total_amount_diff": round(total_system - total_invoice, 2),
+            "invoice_pct": round(100 * total_invoice / total_system, 2) if total_system > 0 else None,
+            "baseline_pct": baseline_pct,
+            "tolerance_pct": tolerance_pct,
+        }
+        return jsonify({"success": True, "summary": summary, "detail": detail})
+    except Exception as e:
+        import traceback
+        return jsonify({"success": False, "message": str(e), "traceback": traceback.format_exc()[-1500:]}), 500
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+@app.route("/api/tax_analysis/tax_summary", methods=["GET"])
+def api_tax_analysis_tax_summary():
+    """实际税负测算：应有税负、已开票税负、税负缺口、已覆盖比例。period_month=YYYY-MM"""
+    if _auth_enabled() and not _has_module_access("tax_analysis"):
+        return _tax_analysis_forbidden()
+    period = (request.args.get("period_month") or "").strip()
+    if not period or len(period) < 6:
+        return jsonify({"success": False, "message": "请传入 period_month=YYYY-MM"}), 400
+    try:
+        y, m = int(period[:4]), int(period[5:7])
+        start_d = date(y, m, 1)
+        if m == 12:
+            end_d = date(y, 12, 31)
+        else:
+            end_d = date(y, m + 1, 1) - timedelta(days=1)
+    except Exception:
+        return jsonify({"success": False, "message": "period_month 格式错误"}), 400
+    store_id = (request.args.get("store_id") or "沈阳超级仓").strip()
+    conn = get_conn()
+    try:
+        cur = conn.cursor(pymysql.cursors.DictCursor)
+        # 系统销售额按品类（与 compare 一致）
+        cur.execute(
+            """SELECT COALESCE(NULLIF(TRIM(category_small), ''), category, '未分类') AS category_name, SUM(sale_amount) AS system_sale_amount
+               FROM t_htma_sale WHERE store_id = %s AND data_date >= %s AND data_date <= %s
+               GROUP BY COALESCE(NULLIF(TRIM(category_small), ''), category, '未分类')""",
+            (store_id, start_d, end_d),
+        )
+        system_by_cat = {row["category_name"]: row for row in cur.fetchall()}
+        cur.execute(
+            """SELECT category_small_name, tax_rate, invoice_amount FROM t_htma_invoice_detail WHERE store_id = %s AND period_month = %s""",
+            (store_id, start_d),
+        )
+        invoice_rows = cur.fetchall()
+        # 应有税负：按系统销售额 × 税率/(1+税率)。税率优先用发票明细，无则用 t_htma_tax_burden
+        cur.execute("SELECT code, name, tax_rate FROM t_htma_tax_burden")
+        tax_burden = {}
+        for row in cur.fetchall():
+            tax_burden[row["name"]] = float(row["tax_rate"] or 0)
+        system_tax_total = 0
+        for cat, row in system_by_cat.items():
+            amt = float(row.get("system_sale_amount") or 0)
+            rate = tax_burden.get(cat)
+            if rate is None:
+                rate = 0.13
+            system_tax_total += amt * rate / (1 + rate)
+        invoice_tax_total = 0
+        for row in invoice_rows:
+            amt = float(row.get("invoice_amount") or 0)
+            rate = float(row.get("tax_rate") or 0.13)
+            invoice_tax_total += amt * rate / (1 + rate)
+        tax_gap = round(system_tax_total - invoice_tax_total, 2)
+        coverage = round(100 * invoice_tax_total / system_tax_total, 2) if system_tax_total > 0 else None
+        return jsonify({
+            "success": True,
+            "summary": {
+                "system_tax_amount": round(system_tax_total, 2),
+                "invoice_tax_amount": round(invoice_tax_total, 2),
+                "tax_gap": tax_gap,
+                "tax_coverage_pct": coverage,
+            },
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({"success": False, "message": str(e), "traceback": traceback.format_exc()[-1500:]}), 500
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+@app.route("/api/tax_analysis/invoicing_ledger_export", methods=["GET"])
+def api_tax_analysis_invoicing_ledger_export():
+    """开票台账空白模板：三表（未开票收入计算、每日开票台账、每日收入汇总）。format=xlsx|pdf；可选 store_name 覆盖默认卖场名。"""
+    if _auth_enabled() and not _has_module_access("tax_analysis"):
+        return _tax_analysis_forbidden()
+    fmt = (request.args.get("format") or "xlsx").strip().lower()
+    store = (request.args.get("store_name") or os.environ.get("HTMA_INVOICING_LEDGER_STORE_NAME") or "").strip()
+    from invoicing_ledger_export import build_invoicing_ledger_pdf, build_invoicing_ledger_xlsx
+
+    if fmt == "pdf":
+        data = build_invoicing_ledger_pdf(store or None)
+        return Response(
+            data,
+            mimetype="application/pdf",
+            headers={"Content-Disposition": 'attachment; filename="invoicing_ledger_template.pdf"'},
+        )
+    data = build_invoicing_ledger_xlsx(store or None)
+    return Response(
+        data,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="invoicing_ledger_template.xlsx"'},
+    )
+
+
+def _tax_full_invoice_tables_ready(conn):
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='t_htma_full_invoice_line_raw' LIMIT 1"
+        )
+        return cur.fetchone() is not None
+
+
+@app.route("/api/tax_analysis/import_full_invoice", methods=["POST", "OPTIONS"])
+def api_tax_analysis_import_full_invoice():
+    """上传税务平台「全量发票查询导出」xlsx：须含「信息汇总表」「发票基础信息」。表单: period_month=YYYY-MM, file=Excel, store_id 可选。"""
+    if request.method == "OPTIONS":
+        return "", 204
+    if _auth_enabled() and not _has_module_access("tax_analysis"):
+        return _tax_analysis_forbidden()
+    period = (request.form.get("period_month") or "").strip()
+    store_id = (request.form.get("store_id") or "沈阳超级仓").strip()
+    f = request.files.get("file")
+    if not period or not f or not getattr(f, "filename", None):
+        return jsonify({"success": False, "message": "请填写账期月份并选择 Excel 文件"}), 400
+    if not str(f.filename).lower().endswith((".xlsx", ".xls")):
+        return jsonify({"success": False, "message": "仅支持 .xlsx / .xls"}), 400
+    conn = get_conn()
+    if not _tax_full_invoice_tables_ready(conn):
+        conn.close()
+        return jsonify(
+            {
+                "success": False,
+                "message": "数据库未创建全量发票表，请执行 scripts/26_full_invoice_raw_tables.sql 或重启看板",
+            }
+        ), 500
+    suffix = os.path.splitext(f.filename)[1] or ".xlsx"
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp_path = tmp.name
+            f.save(tmp_path)
+        from full_invoice_import import import_full_invoice_excel
+
+        ok, msg, data = import_full_invoice_excel(tmp_path, period, store_id, conn, original_filename=f.filename)
+        if not ok:
+            return jsonify({"success": False, "message": msg}), 400
+        return jsonify({"success": True, "message": msg, **data})
+    except Exception as e:
+        import traceback
+
+        return jsonify({"success": False, "message": str(e), "traceback": traceback.format_exc()[-1200:]}), 500
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+
+
+@app.route("/api/tax_analysis/full_invoice_months", methods=["GET"])
+def api_tax_analysis_full_invoice_months():
+    """已导入全量发票的账期月份列表。"""
+    if _auth_enabled() and not _has_module_access("tax_analysis"):
+        return _tax_analysis_forbidden()
+    conn = get_conn()
+    try:
+        if not _tax_full_invoice_tables_ready(conn):
+            return jsonify({"success": True, "months": []})
+        with conn.cursor(pymysql.cursors.DictCursor) as cur:
+            cur.execute(
+                "SELECT DISTINCT DATE_FORMAT(period_month, '%Y-%m') AS m FROM t_htma_full_invoice_import_batch ORDER BY m DESC LIMIT 36"
+            )
+            months = [r["m"] for r in cur.fetchall() if r.get("m")]
+        return jsonify({"success": True, "months": months})
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+@app.route("/api/tax_analysis/uninvoiced_goods_analysis", methods=["GET"])
+def api_tax_analysis_uninvoiced_goods_analysis():
+    """当月系统销售 vs 全量发票明细（不含税）按归一化品名比对；依赖已导入全量发票与 t_htma_sale.product_name。"""
+    if _auth_enabled() and not _has_module_access("tax_analysis"):
+        return _tax_analysis_forbidden()
+    period = (request.args.get("period_month") or "").strip()
+    store_id = (request.args.get("store_id") or "沈阳超级仓").strip()
+    if not period:
+        return jsonify({"success": False, "message": "请传 period_month=YYYY-MM"}), 400
+    conn = get_conn()
+    try:
+        if not _tax_full_invoice_tables_ready(conn):
+            return jsonify({"success": False, "message": "请先导入全量发票或创建表结构"}), 400
+        from full_invoice_import import compute_uninvoiced_goods_analysis
+
+        out = compute_uninvoiced_goods_analysis(conn, period, store_id)
+        return jsonify(out)
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 # 本接口仅处理销售/库存/品类/毛利/税率，不读写人力、商品档案表；各模块数据隔离。
@@ -5991,6 +6721,395 @@ def api_categories():
             if name not in seen or (code and not seen[name]["code"]):
                 seen[name] = {"code": code or name, "name": name}
         return jsonify(list(seen.values()))
+    finally:
+        conn.close()
+
+
+def _hongbeilou_auth_error():
+    if _auth_enabled() and not _is_logged_in():
+        return jsonify({"success": False, "message": "请先登录", "login_required": True}), 401
+    if _auth_enabled() and not _has_module_access("import"):
+        return jsonify({"success": False, "message": "无权限"}), 403
+    return None
+
+
+def _hongbeilou_json_val(v):
+    from decimal import Decimal as _Dec
+    if v is None:
+        return None
+    if isinstance(v, _Dec):
+        return float(v)
+    if isinstance(v, (datetime, date)):
+        return v.isoformat()
+    return v
+
+
+def _hongbeilou_read_export_params():
+    """从 GET 或 POST(JSON) 读取与预览一致的筛选参数。"""
+    if request.method == "POST" and request.is_json:
+        j = request.get_json(silent=True)
+        if not isinstance(j, dict):
+            j = {}
+
+        def g(k, default=""):
+            v = j.get(k, default)
+            if v is None:
+                return default
+            return str(v).strip()
+
+        large = g("category_large_code")
+        mid = g("category_mid_code")
+        small = g("category_small_code")
+        try:
+            share_ratio = float(g("share_ratio", "0.3") or 0.3)
+        except ValueError:
+            share_ratio = 0.3
+        try:
+            min_stock = float(g("min_stock", "0.01") or 0.01)
+        except ValueError:
+            min_stock = 0.01
+        exc_raw = j.get("exclude_expired", "1")
+        if isinstance(exc_raw, bool):
+            exclude_expired = exc_raw
+        else:
+            exclude_expired = str(exc_raw).strip().lower() not in ("0", "false", "no")
+        mk = j.get("markup", "")
+        markup_raw = "" if mk is None else str(mk).strip()
+        return large, mid, small, share_ratio, min_stock, exclude_expired, markup_raw
+
+    large = request.args.get("category_large_code", "").strip()
+    mid = request.args.get("category_mid_code", "").strip()
+    small = request.args.get("category_small_code", "").strip()
+    try:
+        share_ratio = float(request.args.get("share_ratio", "0.3") or 0.3)
+    except ValueError:
+        share_ratio = 0.3
+    try:
+        min_stock = float(request.args.get("min_stock", "0.01") or 0.01)
+    except ValueError:
+        min_stock = 0.01
+    exclude_expired = request.args.get("exclude_expired", "1").strip().lower() not in ("0", "false", "no")
+    markup_raw = request.args.get("markup", "").strip()
+    return large, mid, small, share_ratio, min_stock, exclude_expired, markup_raw
+
+
+def _hongbeilou_read_sku_filter():
+    """
+    None：不按 SKU 过滤。
+    set：仅保留 sku_code 在集合内的行（用于「导出所选」）。
+    """
+    if request.method == "POST" and request.is_json:
+        j = request.get_json(silent=True)
+        if not isinstance(j, dict) or "sku_codes" not in j:
+            return None
+        raw = j.get("sku_codes")
+        if isinstance(raw, str):
+            codes = [x.strip() for x in raw.replace("\n", ",").split(",") if x.strip()]
+        elif isinstance(raw, list):
+            codes = [str(x).strip() for x in raw if str(x).strip()]
+        else:
+            codes = []
+        return set(codes)
+    if "sku_codes" in request.args:
+        s = (request.args.get("sku_codes") or "").strip()
+        if not s:
+            return set()
+        return set(x.strip() for x in s.split(",") if x.strip())
+    return None
+
+
+def _hongbeilou_apply_sku_filter(simple_rows, sku_filter):
+    if sku_filter is None:
+        return simple_rows
+    return [r for r in simple_rows if (r.get("sku_code") or "") in sku_filter]
+
+
+@app.route("/api/channel/hongbeilou/logic", methods=["GET", "HEAD", "OPTIONS"])
+def api_channel_hongbeilou_logic():
+    """返回当前选品规则说明与环境探测（与预览/导出 SQL 一致），供前端展示。"""
+    if request.method == "OPTIONS":
+        return "", 204
+    err = _hongbeilou_auth_error()
+    if err:
+        return err
+    large = request.args.get("category_large_code", "").strip()
+    mid = request.args.get("category_mid_code", "").strip()
+    small = request.args.get("category_small_code", "").strip()
+    try:
+        share_ratio = float(request.args.get("share_ratio", "0.3") or 0.3)
+    except ValueError:
+        share_ratio = 0.3
+    try:
+        min_stock = float(request.args.get("min_stock", "0.01") or 0.01)
+    except ValueError:
+        min_stock = 0.01
+    exclude_expired = request.args.get("exclude_expired", "1").strip() not in ("0", "false", "no")
+    conn = get_conn()
+    try:
+        meta = build_selection_logic_meta(
+            conn,
+            STORE_ID,
+            category_large_code=large,
+            category_mid_code=mid,
+            category_small_code=small,
+            min_stock=min_stock,
+            share_ratio=share_ratio,
+            exclude_expired=exclude_expired,
+        )
+        return jsonify({"ok": True, "logic": meta})
+    except Exception as e:
+        import traceback
+        return jsonify({"ok": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+    finally:
+        conn.close()
+
+
+@app.route("/api/channel/hongbeilou/preview", methods=["GET", "HEAD", "OPTIONS"])
+def api_channel_hongbeilou_preview():
+    """红背篓选品预览：按大类/中类/小类筛选最新库存 SKU，含效期与共享额度建议。"""
+    if request.method == "OPTIONS":
+        return "", 204
+    err = _hongbeilou_auth_error()
+    if err:
+        return err
+    large = request.args.get("category_large_code", "").strip()
+    mid = request.args.get("category_mid_code", "").strip()
+    small = request.args.get("category_small_code", "").strip()
+    try:
+        share_ratio = float(request.args.get("share_ratio", "0.3") or 0.3)
+    except ValueError:
+        share_ratio = 0.3
+    try:
+        min_stock = float(request.args.get("min_stock", "0.01") or 0.01)
+    except ValueError:
+        min_stock = 0.01
+    exclude_expired = request.args.get("exclude_expired", "1").strip() not in ("0", "false", "no")
+    markup_raw = request.args.get("markup", "").strip()
+    conn = get_conn()
+    try:
+        logic = build_selection_logic_meta(
+            conn,
+            STORE_ID,
+            category_large_code=large,
+            category_mid_code=mid,
+            category_small_code=small,
+            min_stock=min_stock,
+            share_ratio=share_ratio,
+            exclude_expired=exclude_expired,
+        )
+        rows = query_catalog_rows(
+            conn,
+            STORE_ID,
+            category_large_code=large,
+            category_mid_code=mid,
+            category_small_code=small,
+            min_stock=min_stock,
+            share_ratio=share_ratio,
+            exclude_expired=exclude_expired,
+        )
+        try:
+            simple_rows, markup_eff = rows_to_simple_export(rows, markup_raw)
+        except ValueError as ve:
+            return jsonify({"ok": False, "error": str(ve)}), 400
+        out = []
+        for row in simple_rows:
+            out.append({k: _hongbeilou_json_val(row.get(k)) for k in row})
+        logic["result_count"] = len(out)
+        logic["markup_ratio_effective"] = markup_eff
+        return jsonify({"ok": True, "count": len(out), "rows": out, "logic": logic})
+    except Exception as e:
+        import traceback
+        return jsonify({"ok": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+    finally:
+        conn.close()
+
+
+@app.route("/api/channel/hongbeilou/export", methods=["GET", "HEAD", "POST", "OPTIONS"])
+def api_channel_hongbeilou_export():
+    """红背篓选品导出 CSV（UTF-8 BOM，Excel 可开）。POST JSON 可带 sku_codes 仅导出所选。"""
+    if request.method == "OPTIONS":
+        return "", 204
+    err = _hongbeilou_auth_error()
+    if err:
+        return err
+    large, mid, small, share_ratio, min_stock, exclude_expired, markup_raw = _hongbeilou_read_export_params()
+    sku_filter = _hongbeilou_read_sku_filter()
+    conn = get_conn()
+    try:
+        rows = query_catalog_rows(
+            conn,
+            STORE_ID,
+            category_large_code=large,
+            category_mid_code=mid,
+            category_small_code=small,
+            min_stock=min_stock,
+            share_ratio=share_ratio,
+            exclude_expired=exclude_expired,
+        )
+    except Exception as e:
+        conn.close()
+        return jsonify({"ok": False, "error": str(e)}), 500
+    conn.close()
+    try:
+        simple_rows, _mr = rows_to_simple_export(rows, markup_raw)
+    except ValueError as ve:
+        return jsonify({"ok": False, "error": str(ve)}), 400
+    simple_rows = _hongbeilou_apply_sku_filter(simple_rows, sku_filter)
+    from decimal import Decimal as _Dec
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["序号"] + [zh for _en, zh in EXPORT_SIMPLE_COLUMNS])
+    for idx, r in enumerate(simple_rows, start=1):
+        line = [idx]
+        for key, _zh in EXPORT_SIMPLE_COLUMNS:
+            v = r.get(key)
+            if v is None:
+                line.append("")
+            elif isinstance(v, _Dec):
+                line.append(float(v))
+            elif hasattr(v, "isoformat"):
+                line.append(v.isoformat())
+            else:
+                line.append(v)
+        w.writerow(line)
+    raw = "\ufeff" + buf.getvalue()
+    fname = "hongbeilou_%s.csv" % (datetime.now().strftime("%Y%m%d_%H%M%S"),)
+    return Response(
+        raw.encode("utf-8"),
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="%s"' % fname},
+    )
+
+
+def _hongbeilou_disclaimer_lines():
+    now = datetime.now()
+    ts = now.strftime("%Y年%m月%d日 %H:%M")
+    # 仅保留面向接收方的时效说明（供货价计算说明给操作者看，不出现在 PDF）
+    return [
+        "本选品单于%s生成，不代表其他时间有效。" % ts,
+    ]
+
+
+def _hongbeilou_read_watermark_flag():
+    if request.method == "POST" and request.is_json:
+        j = request.get_json(silent=True) or {}
+        w = j.get("watermark", False)
+        if isinstance(w, bool):
+            return w
+        return str(w).strip().lower() in ("1", "true", "yes", "on")
+    return request.args.get("watermark", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+@app.route("/api/channel/hongbeilou/export_pdf", methods=["GET", "HEAD", "POST", "OPTIONS"])
+def api_channel_hongbeilou_export_pdf():
+    """红背篓选品导出 PDF；GET watermark=1 或 POST JSON watermark:true。POST 可带 sku_codes。列与 CSV 一致。"""
+    if request.method == "OPTIONS":
+        return "", 204
+    err = _hongbeilou_auth_error()
+    if err:
+        return err
+    large, mid, small, share_ratio, min_stock, exclude_expired, markup_raw = _hongbeilou_read_export_params()
+    sku_filter = _hongbeilou_read_sku_filter()
+    watermark = _hongbeilou_read_watermark_flag()
+    conn = get_conn()
+    try:
+        rows = query_catalog_rows(
+            conn,
+            STORE_ID,
+            category_large_code=large,
+            category_mid_code=mid,
+            category_small_code=small,
+            min_stock=min_stock,
+            share_ratio=share_ratio,
+            exclude_expired=exclude_expired,
+        )
+    except Exception as e:
+        conn.close()
+        return jsonify({"ok": False, "error": str(e)}), 500
+    conn.close()
+    try:
+        simple_rows, _mr = rows_to_simple_export(rows, markup_raw)
+    except ValueError as ve:
+        return jsonify({"ok": False, "error": str(ve)}), 400
+    simple_rows = _hongbeilou_apply_sku_filter(simple_rows, sku_filter)
+    try:
+        from hongbeilou_pdf import render_hongbeilou_pdf_bytes
+    except ImportError as e:
+        return jsonify({"ok": False, "error": "缺少 PDF 依赖，请执行: pip install reportlab", "detail": str(e)}), 500
+    disclaimer = _hongbeilou_disclaimer_lines()
+    try:
+        pdf_bytes = render_hongbeilou_pdf_bytes(
+            simple_rows,
+            EXPORT_SIMPLE_COLUMNS,
+            title="供销社「红背篓」选品单",
+            disclaimer_lines=disclaimer,
+            watermark=watermark,
+            watermark_text="宝赞商业＠振鸿",
+        )
+    except Exception as e:
+        import traceback
+        return jsonify({"ok": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+    suffix = "_watermark" if watermark else ""
+    fname = "hongbeilou_%s%s.pdf" % (datetime.now().strftime("%Y%m%d_%H%M%S"), suffix)
+    return Response(
+        pdf_bytes,
+        mimetype="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="%s"' % fname},
+    )
+
+
+@app.route("/api/channel/hongbeilou/batch", methods=["POST", "OPTIONS"])
+def api_channel_hongbeilou_batch():
+    """批量写入批次效期（需已建表 t_htma_sku_batch）。Body: {\"rows\":[{\"sku_code\",\"expiry_date\",\"qty\",...}]}"""
+    if request.method == "OPTIONS":
+        return "", 204
+    err = _hongbeilou_auth_error()
+    if err:
+        return err
+    body = request.get_json(silent=True) or {}
+    rows_in = body.get("rows")
+    if not isinstance(rows_in, list) or not rows_in:
+        return jsonify({"ok": False, "error": "请提供 rows 数组"}), 400
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            if not table_exists(cur, "t_htma_sku_batch"):
+                return jsonify({"ok": False, "error": "请先执行 scripts/25_create_sku_batch_table.sql 建表"}), 400
+            n_ok = 0
+            for row in rows_in:
+                sku = (row.get("sku_code") or "").strip()
+                exp = row.get("expiry_date")
+                if not sku or not exp:
+                    continue
+                if isinstance(exp, str):
+                    exp = exp[:10]
+                qty = row.get("qty", 0)
+                try:
+                    qty = float(qty)
+                except (TypeError, ValueError):
+                    qty = 0
+                batch_no = (row.get("batch_no") or "").strip() or None
+                prod = row.get("production_date")
+                if isinstance(prod, str) and prod:
+                    prod = prod[:10]
+                else:
+                    prod = None
+                remark = (row.get("remark") or "").strip() or None
+                cur.execute(
+                    """
+                    INSERT INTO t_htma_sku_batch
+                      (store_id, sku_code, batch_no, production_date, expiry_date, qty, remark)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (STORE_ID, sku, batch_no, prod, exp, qty, remark),
+                )
+                n_ok += 1
+        conn.commit()
+        return jsonify({"ok": True, "inserted": n_ok})
+    except Exception as e:
+        conn.rollback()
+        import traceback
+        return jsonify({"ok": False, "error": str(e), "traceback": traceback.format_exc()}), 500
     finally:
         conn.close()
 

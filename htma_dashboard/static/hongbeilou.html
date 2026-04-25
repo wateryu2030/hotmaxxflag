@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>红背篓选品导出 - 好特卖运营看板</title>
+  <link rel="stylesheet" href="/static/css/mobile.css" />
+  <style>
+    /* 红背篓页：与全局 mobile.css 浅色风格统一，提升可读性 */
+    body.hongbeilou-page { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; background: #f1f5f9; color: #1e293b; min-height: 100vh; padding: 16px; }
+    body.hongbeilou-page h1 { font-size: 1.35rem; margin-bottom: 8px; color: #0f172a; }
+    body.hongbeilou-page h2 { font-size: 1rem; color: #475569; margin: 16px 0 10px; font-weight: 600; }
+    body.hongbeilou-page .sub { font-size: 0.88rem; color: #475569; margin-bottom: 16px; line-height: 1.55; }
+    body.hongbeilou-page .sub strong { color: #1e293b; }
+    body.hongbeilou-page .sub code { background: #f1f5f9; color: #334155; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; border: 1px solid #e2e8f0; }
+    body.hongbeilou-page .nav { margin-bottom: 20px; }
+    body.hongbeilou-page .nav a { color: #2563eb; margin-right: 14px; text-decoration: none; }
+    body.hongbeilou-page .nav a:hover { text-decoration: underline; }
+    body.hongbeilou-page .card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 16px; max-width: 1200px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+    body.hongbeilou-page .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 12px; }
+    body.hongbeilou-page .field label { display: block; font-size: 0.8rem; color: #475569; margin-bottom: 4px; }
+    body.hongbeilou-page .field label .help { color: #64748b; font-weight: normal; cursor: help; border-bottom: 1px dotted #94a3b8; }
+    body.hongbeilou-page .field select,
+    body.hongbeilou-page .field input { min-width: 200px; padding: 8px 12px; border-radius: 8px; border: 1px solid #cbd5e1; background: #ffffff; color: #1e293b; }
+    body.hongbeilou-page .btn { background: #2563eb; color: #ffffff; border: none; padding: 10px 18px; border-radius: 8px; font-weight: 600; cursor: pointer; }
+    body.hongbeilou-page .btn:hover { background: #1d4ed8; }
+    body.hongbeilou-page .btn-secondary { background: #f1f5f9; color: #334155; border: 1px solid #e2e8f0; }
+    body.hongbeilou-page .btn-secondary:hover { background: #e2e8f0; color: #1e293b; }
+    body.hongbeilou-page .btn-ghost { background: transparent; border: 1px solid #cbd5e1; color: #475569; }
+    body.hongbeilou-page .btn-ghost:hover { background: #f8fafc; color: #1e293b; }
+    body.hongbeilou-page .tip { font-size: 0.85rem; color: #475569; line-height: 1.55; margin-top: 8px; }
+    body.hongbeilou-page .err { color: #dc2626; margin-top: 8px; }
+    body.hongbeilou-page .ok { color: #059669; }
+    body.hongbeilou-page .badges { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+    body.hongbeilou-page .badge { font-size: 0.75rem; padding: 4px 10px; border-radius: 999px; border: 1px solid #e2e8f0; background: #f8fafc; color: #475569; }
+    body.hongbeilou-page .badge.on { background: #ecfdf5; border-color: #34d399; color: #047857; }
+    body.hongbeilou-page .badge.off { background: #fef2f2; border-color: #f87171; color: #b91c1c; }
+    body.hongbeilou-page .badge.neutral { background: #eff6ff; border-color: #3b82f6; color: #1d4ed8; }
+    body.hongbeilou-page .logic-rule { padding: 10px 12px; margin-bottom: 8px; background: #f8fafc; border-radius: 8px; border-left: 3px solid #cbd5e1; font-size: 0.86rem; color: #334155; }
+    body.hongbeilou-page .logic-rule strong { color: #1e293b; display: block; margin-bottom: 4px; }
+    body.hongbeilou-page .logic-rule.active-yes { border-left-color: #22c55e; }
+    body.hongbeilou-page .logic-rule.active-no { border-left-color: #94a3b8; opacity: 0.9; }
+    body.hongbeilou-page details.logic-details { margin-top: 8px; }
+    body.hongbeilou-page details.logic-details summary { cursor: pointer; color: #2563eb; font-size: 0.9rem; user-select: none; }
+    body.hongbeilou-page .filter-summary { font-size: 0.82rem; color: #475569; background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0; font-family: ui-monospace, monospace; white-space: pre-wrap; word-break: break-all; }
+    /* 表格：与 mobile.css 一致，浅灰表头 + 白底 */
+    body.hongbeilou-page .card table { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 12px; overflow-x: auto; display: block; max-height: 480px; overflow-y: auto; background: #ffffff; }
+    body.hongbeilou-page .card thead { position: sticky; top: 0; z-index: 1; }
+    body.hongbeilou-page .card thead th { background: #f1f5f9; color: #1e293b; font-weight: 600; padding: 8px 10px; text-align: left; white-space: nowrap; border: 1px solid #e2e8f0; border-bottom: 2px solid #cbd5e1; cursor: help; }
+    body.hongbeilou-page .card thead th.num { text-align: center; }
+    body.hongbeilou-page .card tbody td { color: #334155; padding: 8px 10px; border: 1px solid #e2e8f0; white-space: nowrap; }
+    body.hongbeilou-page .card tbody td.num { text-align: center; }
+    body.hongbeilou-page .card tbody tr:nth-child(even) { background: #f8fafc; }
+    body.hongbeilou-page .card tbody tr:hover { background: #f1f5f9; }
+    body.hongbeilou-page .gloss { width: 100%; border-collapse: collapse; font-size: 0.78rem; display: table; background: #ffffff; }
+    body.hongbeilou-page .gloss th, body.hongbeilou-page .gloss td { padding: 6px 8px; border: 1px solid #e2e8f0; color: #334155; }
+    body.hongbeilou-page .gloss th { background: #f1f5f9; color: #1e293b; font-weight: 600; }
+    body.hongbeilou-page .preview-summary-card h2,
+    body.hongbeilou-page .preview-table-card h2 { font-size: 0.95rem; color: #475569; margin: 0 0 10px 0; font-weight: 600; }
+    body.hongbeilou-page .preview-summary-main { font-size: 0.9rem; color: #1e293b; line-height: 1.6; padding: 10px 12px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; }
+    body.hongbeilou-page .preview-summary-main strong { color: #2563eb; font-weight: 700; }
+    body.hongbeilou-page .preview-summary-detail { font-size: 0.82rem; color: #475569; line-height: 1.55; margin-top: 10px; padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; }
+    body.hongbeilou-page .preview-tools { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin: 0 0 12px; font-size: 0.86rem; color: #334155; }
+    body.hongbeilou-page .preview-tools label { cursor: pointer; user-select: none; color: #334155; }
+    body.hongbeilou-page .preview-tools .mini { font-size: 0.78rem; color: #64748b; }
+    body.hongbeilou-page .preview-foot-tip { font-size: 0.8rem; color: #475569; line-height: 1.5; margin-top: 10px; padding: 8px 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; }
+    body.hongbeilou-page .cat-block { margin: 12px 0; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; background: #ffffff; }
+    body.hongbeilou-page .cat-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 12px; background: #f1f5f9; border-bottom: 1px solid #e2e8f0; font-weight: 600; color: #1e293b; font-size: 0.85rem; }
+    body.hongbeilou-page .cat-sub { padding: 6px 12px 6px 20px; background: #fafafa; border-bottom: 1px solid #e2e8f0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 0.82rem; color: #475569; }
+    body.hongbeilou-page .cat-sub2 { padding: 4px 12px 4px 32px; background: #ffffff; border-bottom: 1px solid #e2e8f0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 0.8rem; color: #334155; }
+    body.hongbeilou-page .cat-block table { display: table; max-height: none; margin-top: 0; background: #ffffff; }
+    body.hongbeilou-page .cat-block thead { position: static; }
+    body.hongbeilou-page .cat-block thead th { background: #f1f5f9; color: #1e293b; border: 1px solid #e2e8f0; }
+    body.hongbeilou-page .cat-block tbody td { color: #334155; border: 1px solid #e2e8f0; }
+    body.hongbeilou-page .cat-block tbody tr:nth-child(even) { background: #f8fafc; }
+    body.hongbeilou-page .hb-table-wrap { overflow-x: auto; margin-top: 0; padding: 0 0 8px 0; max-height: 520px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; }
+    /* 品类级联多选：高对比，与预览数据一致（后端 preview 已返回每行大类/中/小类） */
+    body.hongbeilou-page .hb-cascade { margin-top: 8px; }
+    body.hongbeilou-page .hb-cascade-panel { background: #ffffff; border: 2px solid #94a3b8; border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; box-shadow: 0 2px 6px rgba(15,23,42,0.08); }
+    body.hongbeilou-page .hb-cascade-panel h3 { margin: 0 0 6px 0; font-size: 1.02rem; color: #0f172a; font-weight: 700; letter-spacing: 0.02em; }
+    body.hongbeilou-page .hb-cascade-sub { margin: 0 0 12px 0; font-size: 0.82rem; color: #475569; line-height: 1.45; }
+    body.hongbeilou-page .hb-cascade-toolbar { margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    body.hongbeilou-page .hb-cascade-toolbar button { padding: 6px 14px; font-size: 0.82rem; border-radius: 8px; border: 1px solid #64748b; background: #f8fafc; color: #1e293b; font-weight: 600; cursor: pointer; }
+    body.hongbeilou-page .hb-cascade-toolbar button:hover { background: #e2e8f0; border-color: #475569; }
+    body.hongbeilou-page .hb-cascade-grid { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: stretch; }
+    body.hongbeilou-page .hb-cascade-item { display: inline-flex; align-items: center; gap: 10px; padding: 10px 14px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.92rem; color: #0f172a; font-weight: 600; min-height: 44px; box-sizing: border-box; }
+    body.hongbeilou-page .hb-cascade-item input[type="checkbox"] { width: 18px; height: 18px; min-width: 18px; cursor: pointer; accent-color: #2563eb; }
+    body.hongbeilou-page .hb-cascade-muted { color: #334155; font-size: 0.9rem; padding: 14px 16px; background: #e2e8f0; border-radius: 8px; border: 2px dashed #64748b; font-weight: 500; line-height: 1.5; }
+    body.hongbeilou-page .hb-cascade-count { font-weight: 700; color: #2563eb; margin-left: 4px; }
+    body.hongbeilou-page .navbar { background: #ffffff; border-bottom: 1px solid #e2e8f0; margin: -16px -16px 16px; padding: 12px 16px; }
+    body.hongbeilou-page .navbar-brand { color: #1e293b; }
+    body.hongbeilou-page .navbar-menu a { color: #475569; }
+    body.hongbeilou-page .navbar-menu a:hover { color: #2563eb; }
+  </style>
+</head>
+<body class="hongbeilou-page">
+  <div class="navbar">
+    <div class="navbar-brand">好特卖运营看板</div>
+    <div class="navbar-user">
+      <span id="authUserBar" style="margin-right:8px;"></span>
+      <button type="button" class="navbar-toggle" id="navbarToggle" aria-label="菜单">☰</button>
+    </div>
+    <div class="navbar-menu" id="navbarMenu">
+      <a href="/">← 看板</a>
+      <a href="/import">数据导入</a>
+      <a href="/hongbeilou">红背篓选品</a>
+      <a href="/api/auth/logout">退出</a>
+    </div>
+  </div>
+
+  <h1>供销社「红背篓」选品导出</h1>
+  <p class="sub">先在下框选择条件并填写<strong>加价率（不得低于 10%，留空默认 15%）</strong>；点<strong>预览清单</strong>后可按品类分组查看，并<strong>勾选部分或整类商品</strong>；勾选「仅导出已勾选」后，导出仅包含选中 SKU（与筛选条件求交）。导出列仍不含大类。PDF 含面向客户的时效说明；「导出 PDF（水印）」叠加水印「宝赞商业＠振鸿」。批次表：<code>scripts/25_create_sku_batch_table.sql</code>。</p>
+
+  <div class="card">
+    <h2 style="margin-top:0;">筛选条件</h2>
+    <div class="row">
+      <div class="field">
+        <label>大类 <span class="help" title="与库存表 category_large_code 或 category_large 匹配；不选则不限大类">?</span></label>
+        <select id="selLarge"><option value="">— 全部 —</option></select>
+      </div>
+      <div class="field">
+        <label>中类 <span class="help" title="需先选大类；与库存表 category_mid_code 或 category_mid 匹配">?</span></label>
+        <select id="selMid"><option value="">— 全部 —</option></select>
+      </div>
+      <div class="field">
+        <label>小类 <span class="help" title="需先选大类+中类；与库存表 category_small_code 或 category_small 匹配">?</span></label>
+        <select id="selSmall"><option value="">— 全部 —</option></select>
+      </div>
+      <div class="field">
+        <label>共享比例 <span class="help" title="共享额度建议 = floor(库存数量 × 比例)，比例限制在 0～1">?</span></label>
+        <input type="text" id="shareRatio" value="0.3" style="width:88px;min-width:88px;" />
+      </div>
+      <div class="field">
+        <label>最小库存 <span class="help" title="只显示库存数量大于该值的 SKU，默认 0.01">?</span></label>
+        <input type="text" id="minStock" value="0.01" style="width:88px;min-width:88px;" />
+      </div>
+      <div class="field">
+        <label>加价率 <span class="help" title="不得低于 10%。填 0.1 或 10 表示 10%；填 0.15 或 15 表示 15%。留空按 15% 计。供货价=参考价×(1+加价率)">?</span></label>
+        <input type="text" id="markup" value="15" placeholder="至少 10，默认 15" style="width:120px;min-width:120px;" />
+      </div>
+      <div class="field">
+        <label><input type="checkbox" id="excludeExpired" checked /> 排除已过期 <span class="help" title="仅当已建 t_htma_sku_batch 且 SKU 有最早到期日时生效；无批次记录的 SKU 仍会保留">?</span></label>
+      </div>
+    </div>
+    <div class="row">
+      <button type="button" class="btn" id="btnPreview">预览清单</button>
+      <button type="button" class="btn btn-secondary" id="btnExport">导出 CSV</button>
+      <button type="button" class="btn btn-secondary" id="btnExportPdf">导出 PDF</button>
+      <button type="button" class="btn btn-secondary" id="btnExportPdfWm">导出 PDF（水印）</button>
+      <button type="button" class="btn btn-ghost" id="btnRefreshLogic">刷新逻辑说明</button>
+    </div>
+    <div id="msg"></div>
+  </div>
+
+  <!-- 预览后显示：摘要 → 商品清单 → 选品逻辑（清单优先于逻辑说明） -->
+  <div class="card preview-summary-card" id="previewSummaryCard" style="display:none;">
+    <h2 style="margin-top:0;">清单预览摘要</h2>
+    <div class="preview-summary-main" id="previewSummaryMain"></div>
+    <div class="preview-summary-detail" id="previewSummaryDetail"></div>
+  </div>
+
+  <div class="card preview-table-card" id="previewCard" style="display:none;">
+    <h2 style="margin-top:0;">商品清单（勾选与导出）</h2>
+    <div class="preview-tools">
+      <label><input type="checkbox" id="chkGrouped" /> 按大类 → 中类 → 小类级联勾选（先选大类再出现中类，再选小类后出表格；与预览接口数据一致）</label>
+      <label><input type="checkbox" id="chkExportSelected" /> 导出 CSV/PDF 时<strong>仅导出已勾选</strong>商品</label>
+      <span class="mini">（须先预览；默认全选，可取消勾选或按组快速选择）</span>
+      <button type="button" class="btn btn-ghost" id="btnSelectAll" style="padding:6px 12px;font-size:0.8rem;">全选</button>
+      <button type="button" class="btn btn-ghost" id="btnSelectNone" style="padding:6px 12px;font-size:0.8rem;">全不选</button>
+    </div>
+    <div id="previewMount"></div>
+  </div>
+
+  <div class="card" id="logicCard">
+    <h2 style="margin-top:0;">选品逻辑（与后端一致）</h2>
+    <div class="badges" id="logicBadges"></div>
+    <div class="filter-summary" id="logicApplied" style="display:none;"></div>
+    <details class="logic-details" open>
+      <summary>规则条目（点击折叠）</summary>
+      <div id="logicRules" style="margin-top:12px;"></div>
+      <p class="tip" id="logicExportNote" style="margin-top:12px;"></p>
+    </details>
+    <details class="logic-details">
+      <summary>导出/预览字段释义</summary>
+      <div style="overflow-x:auto;margin-top:10px;">
+        <table class="gloss" id="logicGlossary"></table>
+      </div>
+    </details>
+  </div>
+
+  <script>
+    var GLOSSARY_MAP = {};
+
+    async function fetchJSON(url) {
+      const r = await fetch(url, { credentials: 'same-origin' });
+      if (r.status === 401) { window.location.href = '/login?next=' + encodeURIComponent(location.pathname); return null; }
+      return r.json();
+    }
+
+    function qs() {
+      const p = new URLSearchParams();
+      const lc = document.getElementById('selLarge').value;
+      const mc = document.getElementById('selMid').value;
+      const sc = document.getElementById('selSmall').value;
+      if (lc) p.set('category_large_code', lc);
+      if (mc) p.set('category_mid_code', mc);
+      if (sc) p.set('category_small_code', sc);
+      p.set('share_ratio', document.getElementById('shareRatio').value || '0.3');
+      p.set('min_stock', document.getElementById('minStock').value || '0.01');
+      var mk = (document.getElementById('markup') && document.getElementById('markup').value.trim()) || '15';
+      p.set('markup', mk);
+      if (!document.getElementById('excludeExpired').checked) p.set('exclude_expired', '0');
+      return p.toString();
+    }
+
+    function renderLogic(logic) {
+      if (!logic) return;
+      var badges = document.getElementById('logicBadges');
+      badges.innerHTML = '';
+      function addBadge(text, cls) {
+        var s = document.createElement('span');
+        s.className = 'badge ' + cls;
+        s.textContent = text;
+        badges.appendChild(s);
+      }
+      addBadge('门店: ' + (logic.store_id || '—'), 'neutral');
+      addBadge('库存快照日: ' + (logic.latest_stock_date || '无数据'), logic.latest_stock_date ? 'on' : 'off');
+      addBadge(logic.has_batch_table ? '已建批次表 t_htma_sku_batch' : '未建批次表（效期为「未知」）', logic.has_batch_table ? 'on' : 'off');
+      addBadge(logic.has_price_compare_table ? '已建比价表 t_price_compare' : '无比价表（价格优势为空）', logic.has_price_compare_table ? 'on' : 'off');
+
+      var ap = logic.applied_filters || {};
+      document.getElementById('logicApplied').style.display = 'block';
+      document.getElementById('logicApplied').textContent = JSON.stringify(ap, null, 2);
+
+      var rulesEl = document.getElementById('logicRules');
+      rulesEl.innerHTML = '';
+      (logic.rules || []).forEach(function (rule) {
+        var div = document.createElement('div');
+        var active = rule.active;
+        div.className = 'logic-rule' + (active === true ? ' active-yes' : active === false ? ' active-no' : '');
+        var t = document.createElement('strong');
+        t.textContent = rule.title + (active === true ? ' （当前生效）' : active === false ? ' （当前未生效/无数据）' : '');
+        div.appendChild(t);
+        var p = document.createElement('div');
+        p.style.color = '#94a3b8';
+        p.textContent = rule.detail;
+        div.appendChild(p);
+        rulesEl.appendChild(div);
+      });
+
+      GLOSSARY_MAP = {};
+      var gt = document.getElementById('logicGlossary');
+      gt.innerHTML = '<thead><tr><th>字段</th><th>含义</th><th>计算/来源说明</th></tr></thead><tbody></tbody>';
+      var tb = gt.querySelector('tbody');
+      (logic.column_glossary || []).forEach(function (g) {
+        GLOSSARY_MAP[g.field] = g.hint;
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td>' + (g.field || '') + '</td><td>' + (g.label || '') + '</td><td>' + (g.hint || '') + '</td>';
+        tb.appendChild(tr);
+      });
+
+      var noteEl = document.getElementById('logicExportNote');
+      if (noteEl) noteEl.textContent = logic.export_note || '';
+    }
+
+    async function loadLogic() {
+      var data = await fetchJSON('/api/channel/hongbeilou/logic?' + qs());
+      if (!data || !data.ok) return;
+      renderLogic(data.logic);
+    }
+
+    async function loadLarge() {
+      const data = await fetchJSON('/api/categories?level=large');
+      const sel = document.getElementById('selLarge');
+      sel.innerHTML = '<option value="">— 全部 —</option>';
+      (data || []).forEach(function (x) {
+        const o = document.createElement('option');
+        o.value = x.code || '';
+        o.textContent = (x.name || x.code || '') + (x.code ? ' (' + x.code + ')' : '');
+        sel.appendChild(o);
+      });
+      loadLogic();
+    }
+
+    async function loadMid() {
+      const lc = document.getElementById('selLarge').value;
+      const sel = document.getElementById('selMid');
+      sel.innerHTML = '<option value="">— 全部 —</option>';
+      document.getElementById('selSmall').innerHTML = '<option value="">— 全部 —</option>';
+      if (!lc) { loadLogic(); return; }
+      const data = await fetchJSON('/api/categories?level=mid&category_large_code=' + encodeURIComponent(lc));
+      (data || []).forEach(function (x) {
+        const o = document.createElement('option');
+        o.value = x.code || '';
+        o.textContent = (x.name || x.code || '') + (x.code ? ' (' + x.code + ')' : '');
+        sel.appendChild(o);
+      });
+      loadLogic();
+    }
+
+    async function loadSmall() {
+      const lc = document.getElementById('selLarge').value;
+      const mc = document.getElementById('selMid').value;
+      const sel = document.getElementById('selSmall');
+      sel.innerHTML = '<option value="">— 全部 —</option>';
+      if (!lc || !mc) { loadLogic(); return; }
+      const data = await fetchJSON('/api/categories?level=small&category_large_code=' + encodeURIComponent(lc) + '&category_mid_code=' + encodeURIComponent(mc));
+      (data || []).forEach(function (x) {
+        const o = document.createElement('option');
+        o.value = x.code || '';
+        o.textContent = (x.name || x.code || '') + (x.code ? ' (' + x.code + ')' : '');
+        sel.appendChild(o);
+      });
+      loadLogic();
+    }
+
+    window._fullPreviewRows = [];
+    window._selectedSkus = new Set();
+
+    var NUM_PREVIEW_KEYS = { stock_qty: 1, sale_qty_30d: 1, supply_price: 1 };
+    var COLS_FLAT = [
+      ['__pick__', '选'],
+      [null, '序号'],
+      ['category_large', '大类'],
+      ['product_name','品名'], ['spec','规格'], ['unit','单位'], ['brand_name','品牌'],
+      ['category_mid','中类'], ['category_small','小类'],
+      ['stock_qty','库存数量'], ['sale_qty_30d','近30天销量'], ['supply_price','供货价']
+    ];
+
+    function buildExportJsonBody(withWatermark) {
+      var body = {
+        category_large_code: document.getElementById('selLarge').value,
+        category_mid_code: document.getElementById('selMid').value,
+        category_small_code: document.getElementById('selSmall').value,
+        share_ratio: document.getElementById('shareRatio').value || '0.3',
+        min_stock: document.getElementById('minStock').value || '0.01',
+        markup: (document.getElementById('markup') && document.getElementById('markup').value.trim()) || '15',
+        exclude_expired: document.getElementById('excludeExpired').checked,
+      };
+      if (withWatermark) body.watermark = true;
+      if (document.getElementById('chkExportSelected').checked) {
+        body.sku_codes = Array.from(window._selectedSkus);
+      }
+      return body;
+    }
+
+    async function postHongbeilouExport(url, body, filename) {
+      var r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(body),
+      });
+      if (r.status === 401) {
+        window.location.href = '/login?next=' + encodeURIComponent(location.pathname);
+        return;
+      }
+      var ct = (r.headers.get('content-type') || '').toLowerCase();
+      if (!r.ok) {
+        if (ct.indexOf('json') >= 0) {
+          var errJ = await r.json();
+          alert(errJ.error || errJ.message || ('失败 HTTP ' + r.status));
+        } else {
+          alert('导出失败 HTTP ' + r.status);
+        }
+        return;
+      }
+      var blob = await r.blob();
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+    }
+
+    function syncSelectionFromRows(rows) {
+      window._fullPreviewRows = (rows || []).slice();
+      window._selectedSkus = new Set();
+      window._fullPreviewRows.forEach(function (r) {
+        var s = (r.sku_code || '').toString().trim();
+        if (s) window._selectedSkus.add(s);
+      });
+    }
+
+    function bindRowCheckbox(inp) {
+      inp.addEventListener('change', function () {
+        var sku = (inp.getAttribute('data-sku') || '').trim();
+        if (!sku) return;
+        if (inp.checked) window._selectedSkus.add(sku);
+        else window._selectedSkus.delete(sku);
+      });
+    }
+
+    function buildFlatPreview(rows) {
+      var wrap = document.createElement('div');
+      wrap.style.overflowX = 'auto';
+      var tbl = document.createElement('table');
+      var thead = document.createElement('thead');
+      var trh = document.createElement('tr');
+      COLS_FLAT.forEach(function (c) {
+        var th = document.createElement('th');
+        th.textContent = c[1];
+        if (c[0] === '__pick__' || c[0] === null || NUM_PREVIEW_KEYS[c[0]]) th.classList.add('num');
+        if (c[0] && c[0] !== '__pick__') {
+          var gg = GLOSSARY_MAP[c[0]];
+          if (gg) th.title = gg;
+        }
+        trh.appendChild(th);
+      });
+      thead.appendChild(trh);
+      tbl.appendChild(thead);
+      var tbody = document.createElement('tbody');
+      var show = rows.slice(0, 200);
+      show.forEach(function (r, rowIndex) {
+        var tr = document.createElement('tr');
+        COLS_FLAT.forEach(function (c) {
+          var td = document.createElement('td');
+          if (c[0] === '__pick__') {
+            td.classList.add('num');
+            var sku = (r.sku_code || '').toString().trim();
+            var inp = document.createElement('input');
+            inp.type = 'checkbox';
+            inp.setAttribute('data-sku', sku);
+            inp.checked = !!sku && window._selectedSkus.has(sku);
+            bindRowCheckbox(inp);
+            td.appendChild(inp);
+          } else if (c[0] === null) {
+            td.textContent = String(rowIndex + 1);
+            td.classList.add('num');
+          } else {
+            var v = r[c[0]];
+            if (v === null || v === undefined) v = '';
+            td.textContent = v;
+            if (NUM_PREVIEW_KEYS[c[0]]) td.classList.add('num');
+          }
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+      tbl.appendChild(tbody);
+      wrap.appendChild(tbl);
+      if (rows.length > 200) {
+        var p = document.createElement('p');
+        p.className = 'preview-foot-tip';
+        p.textContent = '平铺模式仅展示前 200 行（共 ' + rows.length + ' 条）；勾选对全部 ' + rows.length + ' 条生效。可切换「分组展示」浏览全部。';
+        wrap.appendChild(p);
+      }
+      return wrap;
+    }
+
+    function buildHbProductTable(list, seqRef) {
+      var wrap = document.createElement('div');
+      wrap.className = 'hb-table-wrap';
+      var tbl = document.createElement('table');
+      var thead = document.createElement('thead');
+      var trh = document.createElement('tr');
+      COLS_FLAT.forEach(function (c) {
+        var th = document.createElement('th');
+        th.textContent = c[1];
+        if (c[0] === '__pick__' || c[0] === null || NUM_PREVIEW_KEYS[c[0]]) th.classList.add('num');
+        trh.appendChild(th);
+      });
+      thead.appendChild(trh);
+      tbl.appendChild(thead);
+      var tbody = document.createElement('tbody');
+      (list || []).forEach(function (r) {
+        var tr = document.createElement('tr');
+        var mySeq = seqRef.n++;
+        COLS_FLAT.forEach(function (c) {
+          var td = document.createElement('td');
+          if (c[0] === '__pick__') {
+            td.classList.add('num');
+            var sku = (r.sku_code || '').toString().trim();
+            var inp = document.createElement('input');
+            inp.type = 'checkbox';
+            inp.setAttribute('data-sku', sku);
+            inp.checked = !!sku && window._selectedSkus.has(sku);
+            bindRowCheckbox(inp);
+            td.appendChild(inp);
+          } else if (c[0] === null) {
+            td.textContent = String(mySeq);
+            td.classList.add('num');
+          } else {
+            var v2 = r[c[0]];
+            if (v2 === null || v2 === undefined) v2 = '';
+            td.textContent = v2;
+            if (NUM_PREVIEW_KEYS[c[0]]) td.classList.add('num');
+          }
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+      tbl.appendChild(tbody);
+      wrap.appendChild(tbl);
+      return wrap;
+    }
+
+    var HB_SEP = '\x1e';
+
+    function hbNormRow(r) {
+      var L = (r.category_large !== undefined && r.category_large !== null && String(r.category_large).trim() !== '') ? String(r.category_large) : '（未填大类）';
+      var M = (r.category_mid !== undefined && r.category_mid !== null && String(r.category_mid).trim() !== '') ? String(r.category_mid) : '（未填中类）';
+      var S = (r.category_small !== undefined && r.category_small !== null && String(r.category_small).trim() !== '') ? String(r.category_small) : '（未填小类）';
+      return { L: L, M: M, S: S };
+    }
+
+    function hbKeyMid(L, M) { return L + HB_SEP + M; }
+    function hbKeySmall(L, M, S) { return L + HB_SEP + M + HB_SEP + S; }
+
+    function hbInitCatPickFromRows(rows) {
+      var pick = { large: new Set(), mid: new Set(), small: new Set() };
+      (rows || []).forEach(function (r) {
+        var n = hbNormRow(r);
+        pick.large.add(n.L);
+        pick.mid.add(hbKeyMid(n.L, n.M));
+        pick.small.add(hbKeySmall(n.L, n.M, n.S));
+      });
+      return pick;
+    }
+
+    function hbPruneCatPick(rows) {
+      var pick = window._hbCatPick;
+      if (!pick) return;
+      var validL = new Set();
+      (rows || []).forEach(function (r) { validL.add(hbNormRow(r).L); });
+      Array.from(pick.large).forEach(function (L) { if (!validL.has(L)) pick.large.delete(L); });
+
+      var newMid = new Set();
+      pick.mid.forEach(function (k) {
+        var p = k.split(HB_SEP);
+        if (p.length >= 2 && pick.large.has(p[0])) newMid.add(k);
+      });
+      pick.mid = newMid;
+
+      var newS = new Set();
+      pick.small.forEach(function (k) {
+        var p = k.split(HB_SEP);
+        if (p.length >= 3 && pick.large.has(p[0]) && pick.mid.has(hbKeyMid(p[0], p[1]))) newS.add(k);
+      });
+      pick.small = newS;
+    }
+
+    function hbAggregateLarge(rows) {
+      var map = {};
+      (rows || []).forEach(function (r) {
+        var n = hbNormRow(r);
+        map[n.L] = (map[n.L] || 0) + 1;
+      });
+      return Object.keys(map).sort().map(function (L) { return { L: L, count: map[L] }; });
+    }
+
+    function hbListMidOptions(rows, pick) {
+      var map = {};
+      (rows || []).forEach(function (r) {
+        var n = hbNormRow(r);
+        if (!pick.large.has(n.L)) return;
+        var k = hbKeyMid(n.L, n.M);
+        map[k] = (map[k] || 0) + 1;
+      });
+      return Object.keys(map).sort().map(function (k) {
+        var p = k.split(HB_SEP);
+        return { key: k, L: p[0], M: p[1], count: map[k] };
+      });
+    }
+
+    function hbListSmallOptions(rows, pick) {
+      var map = {};
+      (rows || []).forEach(function (r) {
+        var n = hbNormRow(r);
+        if (!pick.large.has(n.L)) return;
+        if (!pick.mid.has(hbKeyMid(n.L, n.M))) return;
+        var k = hbKeySmall(n.L, n.M, n.S);
+        map[k] = (map[k] || 0) + 1;
+      });
+      return Object.keys(map).sort().map(function (k) {
+        var p = k.split(HB_SEP);
+        return { key: k, L: p[0], M: p[1], S: p[2], count: map[k] };
+      });
+    }
+
+    function hbFilterRowsByPick(rows, pick) {
+      if (!pick || !pick.large.size || !pick.mid.size || !pick.small.size) return [];
+      return (rows || []).filter(function (r) {
+        var n = hbNormRow(r);
+        return pick.large.has(n.L) && pick.mid.has(hbKeyMid(n.L, n.M)) && pick.small.has(hbKeySmall(n.L, n.M, n.S));
+      });
+    }
+
+    function buildCategoryCascadePreview(rows) {
+      if (!window._hbCatPick) {
+        window._hbCatPick = hbInitCatPickFromRows(rows);
+      }
+      hbPruneCatPick(rows);
+      var pick = window._hbCatPick;
+
+      var root = document.createElement('div');
+      root.className = 'hb-cascade';
+
+      var tip = document.createElement('div');
+      tip.className = 'preview-foot-tip';
+      tip.style.marginTop = '0';
+      var t1 = document.createElement('strong');
+      t1.textContent = '逻辑说明：';
+      tip.appendChild(t1);
+      tip.appendChild(document.createTextNode('与后端预览接口一致——每行 SKU 已带大类/中类/小类。此处先勾选大类 → 仅展示这些大类下的中类供多选 → 再展示对应小类 → 表格仅显示「大类+中类+小类」组合均被选中的 SKU。'));
+
+      root.appendChild(tip);
+
+      function rerender() {
+        renderPreview();
+      }
+
+      var p1 = document.createElement('div');
+      p1.className = 'hb-cascade-panel';
+      var h1 = document.createElement('h3');
+      h1.textContent = '① 大类（可多选）';
+      var s1 = document.createElement('p');
+      s1.className = 'hb-cascade-sub';
+      s1.textContent = '勾选至少一个大类后，下一栏会出现这些大类下的中类（仅当前预览结果中的组合）。';
+      p1.appendChild(h1);
+      p1.appendChild(s1);
+      var tb1 = document.createElement('div');
+      tb1.className = 'hb-cascade-toolbar';
+      var btnLAll = document.createElement('button');
+      btnLAll.type = 'button';
+      btnLAll.textContent = '品类全选（重置）';
+      btnLAll.addEventListener('click', function () {
+        window._hbCatPick = hbInitCatPickFromRows(rows);
+        rerender();
+      });
+      var btnLClear = document.createElement('button');
+      btnLClear.type = 'button';
+      btnLClear.textContent = '清空大类';
+      btnLClear.addEventListener('click', function () {
+        pick.large.clear();
+        pick.mid.clear();
+        pick.small.clear();
+        rerender();
+      });
+      tb1.appendChild(btnLAll);
+      tb1.appendChild(btnLClear);
+      p1.appendChild(tb1);
+      var g1 = document.createElement('div');
+      g1.className = 'hb-cascade-grid';
+      hbAggregateLarge(rows).forEach(function (x) {
+        var lab = document.createElement('label');
+        lab.className = 'hb-cascade-item';
+        var inp = document.createElement('input');
+        inp.type = 'checkbox';
+        inp.checked = pick.large.has(x.L);
+        inp.addEventListener('change', function () {
+          if (inp.checked) pick.large.add(x.L);
+          else pick.large.delete(x.L);
+          hbPruneCatPick(rows);
+          rerender();
+        });
+        var sp = document.createElement('span');
+        sp.appendChild(document.createTextNode(x.L + ' '));
+        var cc = document.createElement('span');
+        cc.className = 'hb-cascade-count';
+        cc.textContent = '(' + x.count + ' SKU)';
+        lab.appendChild(inp);
+        lab.appendChild(sp);
+        lab.appendChild(cc);
+        g1.appendChild(lab);
+      });
+      p1.appendChild(g1);
+      root.appendChild(p1);
+
+      var p2 = document.createElement('div');
+      p2.className = 'hb-cascade-panel';
+      var h2 = document.createElement('h3');
+      h2.textContent = '② 中类（在已选大类下，可多选）';
+      var s2 = document.createElement('p');
+      s2.className = 'hb-cascade-sub';
+      s2.textContent = '仅列出已勾选大类所包含的中类；勾选后，下一栏会出现这些中类下的小类。';
+      p2.appendChild(h2);
+      p2.appendChild(s2);
+      if (pick.large.size === 0) {
+        var m2 = document.createElement('div');
+        m2.className = 'hb-cascade-muted';
+        m2.textContent = '请先在「① 大类」中至少勾选一项，此处才会显示中类列表。';
+        p2.appendChild(m2);
+      } else {
+        var mids = hbListMidOptions(rows, pick);
+        var tb2 = document.createElement('div');
+        tb2.className = 'hb-cascade-toolbar';
+        var btnMAll = document.createElement('button');
+        btnMAll.type = 'button';
+        btnMAll.textContent = '全选当前可见中类';
+        btnMAll.addEventListener('click', function () {
+          mids.forEach(function (x) { pick.mid.add(x.key); });
+          pick.small.clear();
+          (rows || []).forEach(function (r) {
+            var n = hbNormRow(r);
+            if (pick.large.has(n.L) && pick.mid.has(hbKeyMid(n.L, n.M))) {
+              pick.small.add(hbKeySmall(n.L, n.M, n.S));
+            }
+          });
+          rerender();
+        });
+        var btnMClear = document.createElement('button');
+        btnMClear.type = 'button';
+        btnMClear.textContent = '清空中类与小类';
+        btnMClear.addEventListener('click', function () {
+          pick.mid.clear();
+          pick.small.clear();
+          rerender();
+        });
+        tb2.appendChild(btnMAll);
+        tb2.appendChild(btnMClear);
+        p2.appendChild(tb2);
+        var g2 = document.createElement('div');
+        g2.className = 'hb-cascade-grid';
+        mids.forEach(function (x) {
+          var lab = document.createElement('label');
+          lab.className = 'hb-cascade-item';
+          var inp = document.createElement('input');
+          inp.type = 'checkbox';
+          inp.checked = pick.mid.has(x.key);
+          inp.addEventListener('change', function () {
+            if (inp.checked) pick.mid.add(x.key);
+            else {
+              pick.mid.delete(x.key);
+              pick.small.forEach(function (sk) {
+                var p = sk.split(HB_SEP);
+                if (p.length >= 2 && hbKeyMid(p[0], p[1]) === x.key) pick.small.delete(sk);
+              });
+            }
+            hbPruneCatPick(rows);
+            rerender();
+          });
+          var sp = document.createElement('span');
+          sp.appendChild(document.createTextNode(x.L + ' / ' + x.M + ' '));
+          var cc = document.createElement('span');
+          cc.className = 'hb-cascade-count';
+          cc.textContent = '(' + x.count + ' SKU)';
+          lab.appendChild(inp);
+          lab.appendChild(sp);
+          lab.appendChild(cc);
+          g2.appendChild(lab);
+        });
+        p2.appendChild(g2);
+      }
+      root.appendChild(p2);
+
+      var p3 = document.createElement('div');
+      p3.className = 'hb-cascade-panel';
+      var h3 = document.createElement('h3');
+      h3.textContent = '③ 小类（在已选中类下，可多选）';
+      var s3 = document.createElement('p');
+      s3.className = 'hb-cascade-sub';
+      s3.textContent = '仅列出「已选大类 + 已选中类」下出现过的小类。';
+      p3.appendChild(h3);
+      p3.appendChild(s3);
+      if (pick.large.size === 0 || pick.mid.size === 0) {
+        var m3 = document.createElement('div');
+        m3.className = 'hb-cascade-muted';
+        m3.textContent = '请先勾选大类，并在「② 中类」中至少勾选一项，此处才会显示小类列表。';
+        p3.appendChild(m3);
+      } else {
+        var smalls = hbListSmallOptions(rows, pick);
+        if (smalls.length === 0) {
+          var m3b = document.createElement('div');
+          m3b.className = 'hb-cascade-muted';
+          m3b.textContent = '当前勾选下暂无小类数据。';
+          p3.appendChild(m3b);
+        } else {
+          var tb3 = document.createElement('div');
+          tb3.className = 'hb-cascade-toolbar';
+          var btnSAll = document.createElement('button');
+          btnSAll.type = 'button';
+          btnSAll.textContent = '全选当前可见小类';
+          btnSAll.addEventListener('click', function () {
+            smalls.forEach(function (x) { pick.small.add(x.key); });
+            rerender();
+          });
+          var btnSClear = document.createElement('button');
+          btnSClear.type = 'button';
+          btnSClear.textContent = '清空小类';
+          btnSClear.addEventListener('click', function () {
+            pick.small.clear();
+            rerender();
+          });
+          tb3.appendChild(btnSAll);
+          tb3.appendChild(btnSClear);
+          p3.appendChild(tb3);
+          var g3 = document.createElement('div');
+          g3.className = 'hb-cascade-grid';
+          smalls.forEach(function (x) {
+            var lab = document.createElement('label');
+            lab.className = 'hb-cascade-item';
+            var inp = document.createElement('input');
+            inp.type = 'checkbox';
+            inp.checked = pick.small.has(x.key);
+            inp.addEventListener('change', function () {
+              if (inp.checked) pick.small.add(x.key);
+              else pick.small.delete(x.key);
+              rerender();
+            });
+            var sp = document.createElement('span');
+            sp.appendChild(document.createTextNode(x.S + ' '));
+            var cc = document.createElement('span');
+            cc.className = 'hb-cascade-count';
+            cc.textContent = '(' + x.count + ' SKU)';
+            lab.appendChild(inp);
+            lab.appendChild(sp);
+            lab.appendChild(cc);
+            g3.appendChild(lab);
+          });
+          p3.appendChild(g3);
+        }
+      }
+      root.appendChild(p3);
+
+      var p4 = document.createElement('div');
+      p4.className = 'hb-cascade-panel';
+      var h4 = document.createElement('h3');
+      h4.textContent = '④ 商品明细（勾选导出）';
+      var s4 = document.createElement('p');
+      s4.className = 'hb-cascade-sub';
+      s4.textContent = '仅展示大类、中类、小类均与上面勾选组合一致的 SKU；导出仍由「选」列与「仅导出已勾选」控制。';
+      p4.appendChild(h4);
+      p4.appendChild(s4);
+      var filtered = hbFilterRowsByPick(rows, pick);
+      if (filtered.length === 0) {
+        var m4 = document.createElement('div');
+        m4.className = 'hb-cascade-muted';
+        m4.textContent = '请在「大类 → 中类 → 小类」中均至少勾选一项后显示表格；或点击「品类全选（重置）」恢复默认全选。';
+        p4.appendChild(m4);
+      } else {
+        var stat = document.createElement('p');
+        stat.className = 'hb-cascade-sub';
+        stat.style.marginBottom = '10px';
+        stat.appendChild(document.createTextNode('当前表格共 '));
+        var cn = document.createElement('span');
+        cn.className = 'hb-cascade-count';
+        cn.textContent = String(filtered.length);
+        stat.appendChild(cn);
+        stat.appendChild(document.createTextNode(' 条 SKU。'));
+        p4.appendChild(stat);
+        p4.appendChild(buildHbProductTable(filtered, { n: 1 }));
+      }
+      root.appendChild(p4);
+
+      return root;
+    }
+
+    function renderPreview() {
+      var mount = document.getElementById('previewMount');
+      if (!mount) return;
+      mount.innerHTML = '';
+      var rows = window._fullPreviewRows || [];
+      if (document.getElementById('chkGrouped').checked) {
+        mount.appendChild(buildCategoryCascadePreview(rows));
+      } else {
+        mount.appendChild(buildFlatPreview(rows));
+      }
+    }
+
+    async function doPreview() {
+      const msg = document.getElementById('msg');
+      msg.innerHTML = '加载中…';
+      const data = await fetchJSON('/api/channel/hongbeilou/preview?' + qs());
+      if (!data) return;
+      if (!data.ok) {
+        msg.innerHTML = '<span class="err">' + (data.error || '失败') + '</span>';
+        return;
+      }
+      msg.innerHTML = '<span class="ok">预览已加载。导出文件不含「大类」列；勾选「仅导出已勾选」可只导出选中 SKU。</span>';
+      if (data.logic) renderLogic(data.logic);
+
+      var n = (data.rows || []).length;
+      document.getElementById('previewSummaryCard').style.display = 'block';
+      document.getElementById('previewSummaryMain').innerHTML =
+        '预览 <strong>共 ' + n + ' 条</strong>；平铺最多显示 <strong>200</strong> 行，<strong>分组展示显示全部</strong> ' + n + ' 条。';
+      var mke = (data.logic && typeof data.logic.markup_ratio_effective === 'number') ? data.logic.markup_ratio_effective : 0;
+      var snap = (data.logic && data.logic.latest_stock_date) ? data.logic.latest_stock_date : '—';
+      var sr = (data.logic && data.logic.applied_filters) ? (data.logic.applied_filters.share_ratio * 100).toFixed(0) : '?';
+      var ex = (data.logic && data.logic.applied_filters) ? (data.logic.applied_filters.exclude_expired ? '是' : '否') : '—';
+      document.getElementById('previewSummaryDetail').textContent =
+        '库存快照日：' + snap + '；共享比例 ' + sr + '%；排除已过期：' + ex +
+        '；本次加价率（解析后）=' + mke + '（供货价=参考价×(1+' + mke + ')）。';
+
+      document.getElementById('previewCard').style.display = 'block';
+
+      window._hbCatPick = null;
+      syncSelectionFromRows(data.rows || []);
+      renderPreview();
+    }
+
+    function exportNeedPost() {
+      return document.getElementById('chkExportSelected').checked;
+    }
+
+    async function doExport() {
+      if (exportNeedPost()) {
+        if (!window._fullPreviewRows || !window._fullPreviewRows.length) {
+          alert('请先点击「预览清单」，再勾选要导出的商品。');
+          return;
+        }
+        if (!window._selectedSkus.size) {
+          alert('当前没有勾选任何商品。');
+          return;
+        }
+        var ts = new Date();
+        var fn = 'hongbeilou_' + ts.getFullYear() + String(ts.getMonth() + 101).slice(1) + String(ts.getDate() + 100).slice(1) + '_' +
+          String(ts.getHours() + 100).slice(1) + String(ts.getMinutes() + 100).slice(1) + String(ts.getSeconds() + 100).slice(1) + '.csv';
+        await postHongbeilouExport('/api/channel/hongbeilou/export', buildExportJsonBody(false), fn);
+        return;
+      }
+      window.open('/api/channel/hongbeilou/export?' + qs(), '_blank');
+    }
+
+    async function doExportPdf() {
+      if (exportNeedPost()) {
+        if (!window._fullPreviewRows || !window._fullPreviewRows.length) {
+          alert('请先点击「预览清单」，再勾选要导出的商品。');
+          return;
+        }
+        if (!window._selectedSkus.size) {
+          alert('当前没有勾选任何商品。');
+          return;
+        }
+        var ts = new Date();
+        var fn = 'hongbeilou_' + ts.getFullYear() + String(ts.getMonth() + 101).slice(1) + String(ts.getDate() + 100).slice(1) + '_' +
+          String(ts.getHours() + 100).slice(1) + String(ts.getMinutes() + 100).slice(1) + String(ts.getSeconds() + 100).slice(1) + '.pdf';
+        await postHongbeilouExport('/api/channel/hongbeilou/export_pdf', buildExportJsonBody(false), fn);
+        return;
+      }
+      window.open('/api/channel/hongbeilou/export_pdf?' + qs(), '_blank');
+    }
+
+    async function doExportPdfWm() {
+      if (exportNeedPost()) {
+        if (!window._fullPreviewRows || !window._fullPreviewRows.length) {
+          alert('请先点击「预览清单」，再勾选要导出的商品。');
+          return;
+        }
+        if (!window._selectedSkus.size) {
+          alert('当前没有勾选任何商品。');
+          return;
+        }
+        var ts = new Date();
+        var fn = 'hongbeilou_' + ts.getFullYear() + String(ts.getMonth() + 101).slice(1) + String(ts.getDate() + 100).slice(1) + '_' +
+          String(ts.getHours() + 100).slice(1) + String(ts.getMinutes() + 100).slice(1) + String(ts.getSeconds() + 100).slice(1) + '_watermark.pdf';
+        await postHongbeilouExport('/api/channel/hongbeilou/export_pdf', buildExportJsonBody(true), fn);
+        return;
+      }
+      window.open('/api/channel/hongbeilou/export_pdf?' + qs() + '&watermark=1', '_blank');
+    }
+
+    function doSelectAll() {
+      (window._fullPreviewRows || []).forEach(function (r) {
+        var s = (r.sku_code || '').toString().trim();
+        if (s) window._selectedSkus.add(s);
+      });
+      renderPreview();
+    }
+
+    function doSelectNone() {
+      window._selectedSkus.clear();
+      renderPreview();
+    }
+
+    document.getElementById('selLarge').addEventListener('change', function () { loadMid(); });
+    document.getElementById('selMid').addEventListener('change', function () { loadSmall(); });
+    document.getElementById('shareRatio').addEventListener('change', loadLogic);
+    document.getElementById('minStock').addEventListener('change', loadLogic);
+    document.getElementById('markup').addEventListener('change', loadLogic);
+    document.getElementById('excludeExpired').addEventListener('change', loadLogic);
+    document.getElementById('btnPreview').addEventListener('click', doPreview);
+    document.getElementById('btnExport').addEventListener('click', doExport);
+    document.getElementById('btnExportPdf').addEventListener('click', doExportPdf);
+    document.getElementById('btnExportPdfWm').addEventListener('click', doExportPdfWm);
+    document.getElementById('btnRefreshLogic').addEventListener('click', loadLogic);
+    document.getElementById('chkGrouped').addEventListener('change', function () {
+      if (!document.getElementById('chkGrouped').checked) {
+        window._hbCatPick = null;
+      }
+      if (document.getElementById('previewCard').style.display !== 'none') renderPreview();
+    });
+    document.getElementById('btnSelectAll').addEventListener('click', doSelectAll);
+    document.getElementById('btnSelectNone').addEventListener('click', doSelectNone);
+
+    (function () {
+      var t = document.getElementById('navbarToggle');
+      var m = document.getElementById('navbarMenu');
+      if (t && m) t.addEventListener('click', function () { m.classList.toggle('open'); });
+    })();
+
+    loadLarge();
+  </script>
+</body>
+</html>

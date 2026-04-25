@@ -21,6 +21,9 @@ if [ "$CODE" = "404" ]; then
 fi
 # 200=有数据或空数组，401=未登录，均表示路由已存在
 echo "    /api/brand_categories -> HTTP $CODE（非 404 表示新路由已生效）"
+CODE2=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 3 "$BASE/tax_analysis" 2>/dev/null) || echo "000"
+echo "    /tax_analysis（税务分析） -> HTTP $CODE2"
 echo "=============================================="
 echo "完成。外网访问: https://htma.greatagain.com.cn"
+echo "税务分析: https://htma.greatagain.com.cn/tax_analysis"
 echo "=============================================="

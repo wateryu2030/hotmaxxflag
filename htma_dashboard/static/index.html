@@ -381,6 +381,7 @@
   <div class="navbar" id="mainNavbar">
     <div class="navbar-brand">宝赞商业BI@振鸿</div>
     <div class="navbar-user">
+      <span id="authUserBar"></span>
       <button type="button" class="navbar-toggle" id="navbarToggle" aria-label="菜单">☰</button>
     </div>
     <div class="navbar-menu" id="navbarMenu">
@@ -390,6 +391,8 @@
       <a href="/labor_analysis">人力分析</a>
       <a href="/product_master">商品档案</a>
       <a href="/profit_share">收益评估</a>
+      <a href="/tax_analysis" id="linkTaxAnalysis" style="display:none;">税务分析</a>
+      <a href="/hongbeilou">红背篓选品</a>
       <a href="/login">登录</a>
       <a href="/api/auth/logout">退出</a>
     </div>
@@ -405,7 +408,6 @@
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;" id="desktopHeaderRow">
     <div>
       <h1>好特卖沈阳超级仓运营看板</h1>
-      <p class="subtitle" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">临期折扣零售 · 数据来自 MySQL htma_dashboard · <a href="/import" id="linkImport" style="color:#38bdf8;">数据导入</a> · <a href="/labor" id="linkLabor" style="color:#38bdf8;">人力成本</a> · <a href="/labor_analysis" id="linkLaborAnalysis" style="color:#38bdf8;">人力分析</a> · <a href="/product_master" id="linkProductMaster" style="color:#38bdf8;">商品档案</a> · <a href="/profit_share" id="linkProfitShare" style="color:#38bdf8;">收益评估</a>（与 KPI 周期无关） · <a href="/login" style="color:#38bdf8;">登录</a> <span id="authUserBar"></span></p>
     </div>
     <div style="display:flex;gap:8px;">
       <button id="btnAiInsight" class="btn-ai" title="按当前筛选周期与品类生成建议，结论带 1、2、3 数据出处">
@@ -1463,14 +1465,19 @@
           const canProductMaster = perms.can_product_master !== false;
           const canProfit = perms.can_profit !== false;
           const canProfitShare = perms.can_profit_share !== false;
+          const canTaxAnalysis = perms.can_tax_analysis !== false;
           const linkImport = document.getElementById('linkImport');
           const linkLabor = document.getElementById('linkLabor');
           const linkProductMaster = document.getElementById('linkProductMaster');
           const linkProfitShare = document.getElementById('linkProfitShare');
+          const linkTaxAnalysis = document.getElementById('linkTaxAnalysis');
+          const linkTaxAnalysisSub = document.getElementById('linkTaxAnalysisSub');
           if (linkImport && !canImport) linkImport.style.display = 'none';
           if (linkLabor && !canLabor) linkLabor.style.display = 'none';
           if (linkProductMaster && !canProductMaster) linkProductMaster.style.display = 'none';
           if (linkProfitShare && !canProfitShare) linkProfitShare.style.display = 'none';
+          if (linkTaxAnalysis != null) linkTaxAnalysis.style.display = canTaxAnalysis ? '' : 'none';
+          if (linkTaxAnalysisSub != null) linkTaxAnalysisSub.style.display = canTaxAnalysis ? '' : 'none';
           // 预留：后续可根据 canProfit 控制经营分析/AI 报告等入口
         }
       } catch (e) {}

@@ -1,0 +1,34 @@
+# 飞书机器人技术配置（与代码、.env 配合使用）
+# 敏感信息（App Secret、数据库密码）请只写在项目根 .env，不要写在本文件。
+
+feishu:
+  # 实际回调路径以看板为准（需公网 HTTPS，与开放平台「请求地址」完全一致）
+  # 任选其一：
+  event_callback_path: "/api/feishu/bot/event"
+  event_callback_path_alt: "/feishu/callback"
+  # 完整 URL 示例：https://htma.greatagain.com.cn/api/feishu/bot/event
+  # 或：https://htma.greatagain.com.cn/feishu/callback（穿透/反代需转发到本机 Flask 端口，默认 5002）
+  api_base_url: "https://open.feishu.cn/open-apis"
+  request_timeout_sec: 15
+
+database:
+  # true：使用项目 db_config（.env 中 MYSQL_*）；建议在库侧单独建只读账号后通过环境变量覆盖
+  use_project_db_config: true
+  # 可选：只读账号（若设置则机器人连库时用下列变量，需在 .env 中配置）
+  # 对应环境变量：FEISHU_BOT_MYSQL_USER / FEISHU_BOT_MYSQL_PASSWORD（未设置则仍用 MYSQL_USER）
+
+features:
+  project_intro: true
+  db_overview: true
+  db_stock_threshold_query: true
+
+security:
+  # 是否必须配置 open_id 白名单才允许库查询（建议 true）
+  db_require_allowlist: true
+  # 白名单优先读环境变量 FEISHU_BOT_DB_ALLOWED_OPEN_IDS（逗号分隔）；填 * 表示不校验（仅内网测试，生产禁用）
+  db_allow_open_ids: []
+
+logging:
+  file: "logs/feishu_bot.log"
+  max_bytes: 2097152
+  backup_count: 7

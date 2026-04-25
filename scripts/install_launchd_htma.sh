@@ -132,11 +132,17 @@ $(echo -e "$ENV_BLOCK")
 PLISTEOF
 
 # 隧道服务（锁屏后继续运行，保证 htma.greatagain.com.cn 可访问）
-# 项目在外置卷时 launchd 无法读项目路径，改为从 HOME 运行并读 ~/.htma-tunnel-token
-if [[ "$PROJECT_ROOT" == /Volumes/* ]] && [ "$HAS_TOKEN" = "1" ]; then
+# 只要有 .tunnel-token：同步到 ~/.htma-tunnel-token，并用 ~/.htma-tunnel-run.sh 启动。
+# launchd 的 ProgramArguments 不依赖项目路径，外置卷卸载、项目目录改名或搬家后仍可单独 load com.htma.tunnel（本机 5002 有服务即可）。
+if [ "$HAS_TOKEN" = "1" ]; then
   cp "$TOKEN_FILE" "$HOME/.htma-tunnel-token" 2>/dev/null || true
-  if [ -f "$HOME/.htma-tunnel-token" ] && [ -s "$HOME/.htma-tunnel-token" ]; then
-    cat > "$HOME/.htma-tunnel-run.sh" << 'TUNNELRUN'
+  if [ ! -f "$HOME/.htma-tunnel-token" ] || [ ! -s "$HOME/.htma-tunnel-token" ]; then
+    echo "警告: 无法写入 ~/.htma-tunnel-token，本次不启用隧道；请检查 HOME 目录权限后重试 install。" >&2
+    HAS_TOKEN=0
+  fi
+fi
+if [ "$HAS_TOKEN" = "1" ]; then
+  cat > "$HOME/.htma-tunnel-run.sh" << 'TUNNELRUN'
 #!/bin/bash
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 TOKEN=$(cat "$HOME/.htma-tunnel-token" 2>/dev/null | tr -d '\n\r ')
@@ -144,8 +150,8 @@ TOKEN=$(cat "$HOME/.htma-tunnel-token" 2>/dev/null | tr -d '\n\r ')
 for i in 1 2 3 4 5 6 7 8 9 10; do lsof -i :5002 >/dev/null 2>&1 && break; sleep 1; done
 exec /usr/bin/caffeinate -s -i -- cloudflared tunnel run --token "$TOKEN"
 TUNNELRUN
-    chmod +x "$HOME/.htma-tunnel-run.sh"
-    cat > "$AGENTS/$TUNNEL_PLIST" << TUNNELPREF
+  chmod +x "$HOME/.htma-tunnel-run.sh"
+  cat > "$AGENTS/$TUNNEL_PLIST" << TUNNELPREF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -171,39 +177,6 @@ TUNNELRUN
 </dict>
 </plist>
 TUNNELPREF
-  else
-    HAS_TOKEN=0
-    cat > "$AGENTS/$TUNNEL_PLIST" << EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key>
-  <string>com.htma.tunnel</string>
-  <key>ProcessType</key>
-  <string>Background</string>
-  <key>WorkingDirectory</key>
-  <string>$PROJECT_ROOT</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/usr/bin/caffeinate</string>
-    <string>-s</string>
-    <string>-i</string>
-    <string>/bin/bash</string>
-    <string>$PROJECT_ROOT/scripts/run_tunnel_forever.sh</string>
-  </array>
-  <key>RunAtLoad</key>
-  <true/>
-  <key>KeepAlive</key>
-  <true/>
-  <key>StandardOutPath</key>
-  <string>$PROJECT_ROOT/logs/tunnel.out.log</string>
-  <key>StandardErrorPath</key>
-  <string>$PROJECT_ROOT/logs/tunnel.err.log</string>
-</dict>
-</plist>
-EOF
-  fi
 else
   cat > "$AGENTS/$TUNNEL_PLIST" << EOF
 <?xml version="1.0" encoding="UTF-8"?>

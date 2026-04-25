@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+  <title>税务分析 - 好特卖运营看板</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; padding: 24px; }
+    h1 { font-size: 1.4rem; margin-bottom: 8px; color: #f8fafc; }
+    .nav { margin-bottom: 24px; }
+    .nav a { color: #38bdf8; text-decoration: none; margin-right: 16px; }
+    .nav a:hover { text-decoration: underline; }
+    .section { background: #1e293b; border-radius: 12px; padding: 24px; margin-bottom: 20px; border: 1px solid #334155; max-width: 960px; }
+    .section h2 { font-size: 1rem; color: #94a3b8; margin-bottom: 16px; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+    .tabs .tab { padding: 10px 20px; border-radius: 8px; border: 1px solid #334155; background: #1e293b; color: #94a3b8; cursor: pointer; }
+    .tabs .tab:hover { background: #334155; color: #e2e8f0; }
+    .tabs .tab.active { background: #38bdf8; color: #0f172a; border-color: #38bdf8; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .btn { background: #38bdf8; color: #0f172a; border: none; padding: 10px 20px; border-radius: 8px; font-size: 0.95rem; cursor: pointer; font-weight: 600; }
+    .btn:hover { background: #0ea5e9; }
+    .btn:disabled { background: #64748b; cursor: not-allowed; }
+    .btn-secondary { background: #64748b; }
+    .btn-secondary:hover { background: #475569; }
+    .form-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+    .form-row label { min-width: 100px; color: #94a3b8; font-size: 0.9rem; }
+    .form-row input, .form-row select { padding: 8px 12px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font-size: 0.9rem; }
+    .form-row input[type="month"] { width: 140px; }
+    .result { margin-top: 16px; padding: 16px; background: #334155; border-radius: 8px; font-size: 0.9rem; white-space: pre-wrap; }
+    .result.success { border-left: 4px solid #34d399; }
+    .result.error { border-left: 4px solid #f87171; }
+    .tip { color: #64748b; font-size: 0.85rem; margin-top: 8px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #334155; }
+    th { color: #94a3b8; font-weight: 600; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px; }
+    .card { background: #0f172a; border-radius: 8px; padding: 14px; border: 1px solid #334155; }
+    .card .label { font-size: 0.8rem; color: #94a3b8; margin-bottom: 4px; }
+    .card .value { font-size: 1.2rem; font-weight: 700; color: #38bdf8; }
+    #noPerm { display: none; padding: 24px; text-align: center; color: #94a3b8; }
+    .flag-漏开 { color: #f87171; }
+    .flag-少开 { color: #fbbf24; }
+    .flag-不一致 { color: #f97316; }
+    .flag-一致 { color: #34d399; }
+    /* 比对表行底色：少开=浅红，漏开/多开（系统有数税务无）=浅黄，文字深色可读 */
+    #compareTableBody tr.flag-少开 { background: rgba(254,202,202,0.5); }
+    #compareTableBody tr.flag-少开 td { color: #1e293b; }
+    #compareTableBody tr.flag-漏开,
+    #compareTableBody tr.flag-多开 { background: rgba(254,243,199,0.6); }
+    #compareTableBody tr.flag-漏开 td,
+    #compareTableBody tr.flag-多开 td { color: #1e293b; }
+    .table-wrap { overflow-x: auto; max-height: 400px; overflow-y: auto; }
+    .invoice-table-wrap { max-height: 520px; }
+    .invoice-table { font-size: 0.85rem; }
+    .invoice-table th, .invoice-table td { padding: 6px 10px; border: 1px solid #334155; }
+    .invoice-table thead th { background: #0f172a; color: #94a3b8; }
+    .invoice-table tfoot td { background: #1e293b; font-weight: 600; color: #38bdf8; }
+    .ledger-sub { margin-top: 28px; padding-top: 20px; border-top: 1px solid #334155; }
+    .ledger-sub h3 { font-size: 0.95rem; color: #94a3b8; margin-bottom: 12px; }
+    #ledgerAnalysisWrap { display: none; margin-top: 16px; }
+    #ledgerAnalysisTable { font-size: 0.82rem; }
+    #ledgerAnalysisTable th, #ledgerAnalysisTable td { padding: 6px 8px; border: 1px solid #334155; vertical-align: top; }
+    #ledgerAnalysisTable th { background: #0f172a; color: #94a3b8; }
+  </style>
+  <link rel="stylesheet" href="/static/css/mobile.css">
+</head>
+<body>
+  <div class="navbar">
+    <div class="navbar-brand">好特卖运营看板</div>
+    <div class="navbar-user">
+      <span id="authUserBar" style="margin-right:8px;color:inherit;"></span>
+      <button type="button" class="navbar-toggle" id="navbarToggle" aria-label="菜单">☰</button>
+    </div>
+    <div class="navbar-menu" id="navbarMenu">
+      <a href="/">← 返回看板</a>
+      <a href="/import">数据导入</a>
+      <a href="/profit_share">收益评估</a>
+      <a href="/tax_analysis">税务分析</a>
+      <a href="/api/auth/logout">退出</a>
+    </div>
+  </div>
+  <h1>税务分析</h1>
+  <p class="tip" style="margin-bottom:16px;">发票比对与税负测算：导入当月发票明细后，可查看系统收入与开票差额、漏开/少开/不一致明细，以及增值税实际税负情况。仅指定人员可访问。</p>
+  <div id="noPerm">您暂无税务分析模块权限，请联系管理员。</div>
+  <div id="mainWrap">
+    <div class="tabs">
+      <button class="tab active" data-tab="import">发票导入</button>
+      <button class="tab" data-tab="detail">发票明细</button>
+      <button class="tab" data-tab="compare">比对结果与占比</button>
+      <button class="tab" data-tab="tax">实际税负测算</button>
+      <button class="tab" data-tab="ledger">开票台账</button>
+    </div>
+
+    <!-- Tab1: 发票导入 -->
+    <div id="panelImport" class="tab-panel active section">
+      <h2>上传当月发票 Excel</h2>
+      <p class="tip">支持按「三级类别」汇总的发票明细表（如 2025年12月发票.xlsx、2026年1月发票.xlsx）。表头需含「三级类别名称」「开票金额」等。</p>
+      <div class="form-row">
+        <label for="importPeriod">账期月份</label>
+        <input type="month" id="importPeriod" />
+        <label for="importFile">选择文件</label>
+        <input type="file" id="importFile" accept=".xls,.xlsx" />
+        <button class="btn" id="btnImport">导入</button>
+      </div>
+      <div id="importResult" class="result" style="display:none;"></div>
+    </div>
+
+    <!-- Tab2: 发票明细（PDF 样式） -->
+    <div id="panelDetail" class="tab-panel section">
+      <h2>已导入发票明细</h2>
+      <p class="tip">按增值税发票样式展示：项目名称（三级类别）、数量、金额、税率、税额。选择月份后点击「查询」或导入后自动跳转至此查看。</p>
+      <div class="form-row">
+        <label for="detailPeriod">选择月份</label>
+        <select id="detailPeriod"><option value="">请选择月份</option></select>
+        <button class="btn" id="btnDetail">查询</button>
+      </div>
+      <div id="detailInvoiceHead" class="invoice-head" style="display:none; margin-bottom:12px; padding:12px; background:#334155; border-radius:8px; border:1px solid #475569; color:#e2e8f0; font-size:0.85rem;">
+        <div>电子发票（增值税专用发票）</div>
+        <div style="margin-top:6px;">购方：沈阳宝赞商业有限公司 &nbsp; 销方：上海宝赞商业有限公司 &nbsp; 账期：<span id="detailPeriodLabel"></span></div>
+      </div>
+      <div id="detailTableWrap" class="table-wrap invoice-table-wrap" style="display:none;">
+        <table class="invoice-table">
+          <thead><tr><th>项目名称（三级类别）</th><th class="num">数量</th><th class="num">单价</th><th class="num">金额</th><th class="num">税率</th><th class="num">税额</th></tr></thead>
+          <tbody id="detailTableBody"></tbody>
+          <tfoot id="detailTableFoot"></tfoot>
+        </table>
+      </div>
+      <div id="detailEmpty" class="tip" style="display:none;">请选择月份并点击「查询」；若该月未导入发票，请先在「发票导入」上传。</div>
+    </div>
+
+    <!-- Tab3: 比对结果与占比 -->
+    <div id="panelCompare" class="tab-panel section">
+      <h2>系统 vs 开票 比对</h2>
+      <p class="tip" style="margin-bottom:12px;">合理开票率：开票占比在此区间内视为「一致」不标少开。例如基准 80%、上下 5% 即 75%～85% 为合理。</p>
+      <div class="form-row">
+        <label for="comparePeriod">选择月份</label>
+        <select id="comparePeriod"><option value="">请先导入发票或选择月份</option></select>
+        <label for="compareBaselinePct">合理开票率%</label>
+        <input type="number" id="compareBaselinePct" min="0" max="100" step="0.5" value="80" style="width:72px;" title="基准，如 80 表示 80%">
+        <label for="compareTolerancePct">上下浮动%</label>
+        <input type="number" id="compareTolerancePct" min="0" max="50" step="0.5" value="5" style="width:72px;" title="如 5 表示 ±5%，即合理区间 75%～85%">
+        <button class="btn" id="btnCompare">查询</button>
+      </div>
+      <div id="compareSummary" class="cards" style="display:none;"></div>
+      <div id="compareTableWrap" class="table-wrap" style="display:none;">
+        <table>
+          <thead><tr><th>品类</th><th class="num">系统销售额</th><th class="num">开票金额</th><th class="num">差额</th><th class="num">开票占比%</th><th>状态</th></tr></thead>
+          <tbody id="compareTableBody"></tbody>
+        </table>
+      </div>
+      <div id="compareEmpty" class="tip" style="display:none;">请选择月份并点击「查询」；若该月未导入发票，请先在「发票导入」Tab 上传。</div>
+    </div>
+
+    <!-- Tab: 实际税负测算 -->
+    <div id="panelTax" class="tab-panel section">
+      <h2>增值税实际税负</h2>
+      <div class="form-row">
+        <label for="taxPeriod">选择月份</label>
+        <select id="taxPeriod"><option value="">请选择月份</option></select>
+        <button class="btn" id="btnTax">查询</button>
+      </div>
+      <div id="taxSummary" class="cards" style="display:none;"></div>
+      <div id="taxEmpty" class="tip" style="display:none;">请选择月份并点击「查询」。</div>
+    </div>
+
+    <!-- Tab: 开票台账（模板下载 + 全量发票导入 + 未开票分析） -->
+    <div id="panelLedger" class="tab-panel section">
+      <h2>开票台账</h2>
+
+      <div class="ledger-sub">
+        <h3>一、空白台账模板（下载）</h3>
+        <p class="tip" style="margin-bottom:12px;">三类表格结构与线下台账一致。卖场默认「好特卖超级仓沈阳HAI乐园店」，可用环境变量 <code>HTMA_INVOICING_LEDGER_STORE_NAME</code> 覆盖。</p>
+        <div class="form-row">
+          <button type="button" class="btn" id="btnLedgerXlsx">下载 Excel（三工作表）</button>
+          <button type="button" class="btn btn-secondary" id="btnLedgerPdf">下载 PDF</button>
+        </div>
+      </div>
+
+      <div class="ledger-sub">
+        <h3>二、税务平台全量发票导出（上传入库）</h3>
+        <p class="tip" style="margin-bottom:12px;">文件须为 xlsx，且包含工作表「<strong>信息汇总表</strong>」（按商品明细行，27 列）与「<strong>发票基础信息</strong>」（按数电发票汇总，19 列）。与 WPS/电子税务局「全量发票查询导出」格式一致。同一卖场同一账期<strong>重复导入会覆盖</strong>该月已存全量数据。</p>
+        <div class="form-row">
+          <label for="ledgerImportPeriod">账期月份</label>
+          <input type="month" id="ledgerImportPeriod" />
+          <label for="ledgerImportFile">选择 xlsx</label>
+          <input type="file" id="ledgerImportFile" accept=".xlsx,.xls" />
+          <button type="button" class="btn" id="btnLedgerImport">导入</button>
+        </div>
+        <div id="ledgerImportResult" class="result" style="display:none;"></div>
+      </div>
+
+      <div class="ledger-sub">
+        <h3>三、系统销售 vs 发票明细（未开票/差异）</h3>
+        <p class="tip" style="margin-bottom:12px;">将当月 <code>t_htma_sale</code> 销售额（按品名归一化）与已导入发票明细「金额」列（不含税）汇总对比。归一化规则：去掉发票货物名称前「*大类*」前缀、去空格、小写；系统侧用 <code>product_name</code>（空则用 sku）同样归一化。<strong>与三级品类发票导入、税负表是互补关系</strong>：前者看品类汇总，此处看 SKU/品名粒度；税负测算仍用「实际税负测算」Tab 与 <code>t_htma_tax_burden</code>。</p>
+        <div class="form-row">
+          <label for="ledgerAnalysisPeriod">分析月份</label>
+          <select id="ledgerAnalysisPeriod"><option value="">请先全量导入或选择月份</option></select>
+          <button type="button" class="btn" id="btnLedgerAnalysis">生成比对表</button>
+        </div>
+        <div id="ledgerAnalysisWrap">
+          <div id="ledgerAnalysisSummary" class="cards" style="margin-bottom:12px;"></div>
+          <div class="table-wrap" style="max-height:480px;">
+            <table id="ledgerAnalysisTable">
+              <thead><tr>
+                <th>归一化键</th><th>发票侧样例品名</th><th class="num">系统销售额</th><th class="num">发票不含税</th><th class="num">差额</th><th>标记</th>
+              </tr></thead>
+              <tbody id="ledgerAnalysisBody"></tbody>
+            </table>
+          </div>
+          <p class="tip" style="margin-top:8px;">仅展示差额绝对值最大的前 300 行；名称差异较大的行会出现「有票无系统匹配」，需人工核对别名。</p>
+        </div>
+        <div id="ledgerAnalysisEmpty" class="tip" style="display:none;">请选择月份并点击「生成比对表」。</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function apiBase() {
+      const o = window.location.origin;
+      if (o && (o.startsWith('http://') || o.startsWith('https://'))) return o;
+      return 'http://127.0.0.1:5002';
+    }
+    const API = apiBase();
+
+    function fmtMoney(n) {
+      if (n == null || n === '' || isNaN(n)) return '-';
+      return Number(n).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    async function checkPerm() {
+      try {
+        const r = await fetch(API + '/api/auth/me');
+        if (!r.ok) { document.getElementById('noPerm').style.display = 'block'; document.getElementById('mainWrap').style.display = 'none'; return false; }
+        const d = await r.json();
+        if (d.permissions && d.permissions.can_tax_analysis === false) {
+          document.getElementById('noPerm').style.display = 'block'; document.getElementById('mainWrap').style.display = 'none'; return false;
+        }
+        if (d.name) document.getElementById('authUserBar').innerHTML = '欢迎，' + (d.name || '').replace(/</g, '&lt;') + ' <a href="/api/auth/logout" style="color:#38bdf8;">退出</a>';
+        return true;
+      } catch (e) {
+        document.getElementById('noPerm').style.display = 'block'; document.getElementById('mainWrap').style.display = 'none'; return false;
+      }
+    }
+
+    function setTab(panelId) {
+      document.querySelectorAll('.tabs .tab').forEach(x => x.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(x => x.classList.remove('active'));
+      const t = document.querySelector('.tabs .tab[data-tab="' + panelId + '"]');
+      const panelMap = { import: 'Import', detail: 'Detail', compare: 'Compare', tax: 'Tax', ledger: 'Ledger' };
+      const p = document.getElementById('panel' + (panelMap[panelId] || panelId));
+      if (t) t.classList.add('active');
+      if (p) p.classList.add('active');
+      if (panelId === 'detail') loadInvoiceMonths('detailPeriod');
+      if (panelId === 'compare') loadInvoiceMonths('comparePeriod').then(function() { autoSelectAndQuery('comparePeriod', 'btnCompare'); });
+      if (panelId === 'tax') loadInvoiceMonths('taxPeriod').then(function() { autoSelectAndQuery('taxPeriod', 'btnTax'); });
+      if (panelId === 'ledger') loadFullInvoiceMonths();
+    }
+
+    async function loadFullInvoiceMonths() {
+      var sel = document.getElementById('ledgerAnalysisPeriod');
+      if (!sel) return;
+      try {
+        var r = await fetch(API + '/api/tax_analysis/full_invoice_months', { credentials: 'include' });
+        var d = await r.json().catch(function() { return { months: [] }; });
+        var months = d.months || [];
+        sel.innerHTML = months.length
+          ? '<option value="">请选择月份</option>' + months.map(function(m) { return '<option value="' + m + '">' + m + '</option>'; }).join('')
+          : '<option value="">暂无全量发票导入记录</option>';
+      } catch (e) {
+        sel.innerHTML = '<option value="">加载失败</option>';
+      }
+    }
+
+    document.getElementById('btnLedgerImport').addEventListener('click', async function() {
+      var period = document.getElementById('ledgerImportPeriod').value;
+      var file = document.getElementById('ledgerImportFile').files[0];
+      var el = document.getElementById('ledgerImportResult');
+      el.style.display = 'block';
+      el.className = 'result';
+      if (!period) { el.textContent = '请选择账期月份'; el.classList.add('error'); return; }
+      if (!file) { el.textContent = '请选择 xlsx 文件'; el.classList.add('error'); return; }
+      var fd = new FormData();
+      fd.append('period_month', period);
+      fd.append('file', file);
+      try {
+        var r = await fetch(API + '/api/tax_analysis/import_full_invoice', { method: 'POST', body: fd, credentials: 'include' });
+        var d = await r.json().catch(function() { return {}; });
+        if (d.success) {
+          el.textContent = '导入成功：明细 ' + (d.line_rows || 0) + ' 行，票头 ' + (d.header_rows || 0) + ' 张。批次 ID ' + (d.batch_id || '') + '。';
+          el.classList.add('success');
+          loadFullInvoiceMonths();
+          var ap = document.getElementById('ledgerAnalysisPeriod');
+          if (ap) ap.value = period;
+        } else {
+          el.textContent = d.message || '导入失败';
+          el.classList.add('error');
+        }
+      } catch (e) {
+        el.textContent = '请求失败: ' + e.message;
+        el.classList.add('error');
+      }
+    });
+
+    document.getElementById('btnLedgerAnalysis').addEventListener('click', async function() {
+      var period = document.getElementById('ledgerAnalysisPeriod').value;
+      var wrap = document.getElementById('ledgerAnalysisWrap');
+      var empty = document.getElementById('ledgerAnalysisEmpty');
+      var body = document.getElementById('ledgerAnalysisBody');
+      var sumEl = document.getElementById('ledgerAnalysisSummary');
+      if (!period) {
+        empty.style.display = 'block';
+        wrap.style.display = 'none';
+        return;
+      }
+      empty.style.display = 'none';
+      try {
+        var r = await fetch(API + '/api/tax_analysis/uninvoiced_goods_analysis?period_month=' + encodeURIComponent(period), { credentials: 'include' });
+        var d = await r.json();
+        if (!d.success) {
+          sumEl.innerHTML = '<div class="card"><span class="label">错误</span><span class="value">' + (d.message || '') + '</span></div>';
+          sumEl.style.display = 'grid';
+          wrap.style.display = 'block';
+          body.innerHTML = '';
+          return;
+        }
+        var s = d.summary || {};
+        sumEl.innerHTML =
+          '<div class="card"><span class="label">系统销售合计</span><span class="value">' + fmtMoney(s.system_sale_total) + '</span></div>' +
+          '<div class="card"><span class="label">发票明细不含税合计</span><span class="value">' + fmtMoney(s.invoice_line_excl_total) + '</span></div>' +
+          '<div class="card"><span class="label">整月差额(系统−票)</span><span class="value">' + fmtMoney(s.month_gap) + '</span></div>';
+        sumEl.style.display = 'grid';
+        var rows = d.by_goods || [];
+        body.innerHTML = rows.map(function(row) {
+          var k = (row.goods_norm_key || '').replace(/</g, '&lt;');
+          var sg = (row.sample_invoice_goods || '').replace(/</g, '&lt;');
+          return '<tr><td>' + k + '</td><td>' + sg + '</td><td class="num">' + fmtMoney(row.system_sale_amount) + '</td><td class="num">' + fmtMoney(row.invoice_amount_excl_tax) + '</td><td class="num">' + fmtMoney(row.gap_amount) + '</td><td>' + (row.flag || '').replace(/</g, '&lt;') + '</td></tr>';
+        }).join('');
+        wrap.style.display = 'block';
+      } catch (e) {
+        sumEl.innerHTML = '<div class="card"><span class="label">错误</span><span class="value">' + e.message + '</span></div>';
+        sumEl.style.display = 'grid';
+        wrap.style.display = 'block';
+        body.innerHTML = '';
+      }
+    });
+
+    document.getElementById('btnLedgerXlsx').addEventListener('click', function() {
+      window.location.href = API + '/api/tax_analysis/invoicing_ledger_export?format=xlsx';
+    });
+    document.getElementById('btnLedgerPdf').addEventListener('click', function() {
+      window.location.href = API + '/api/tax_analysis/invoicing_ledger_export?format=pdf';
+    });
+
+    function autoSelectAndQuery(selectId, btnId) {
+      var sel = document.getElementById(selectId);
+      var btn = document.getElementById(btnId);
+      if (!sel || !btn || sel.options.length <= 1) return;
+      sel.value = sel.options[1].value;
+      btn.click();
+    }
+
+    document.querySelectorAll('.tabs .tab').forEach(t => {
+      t.addEventListener('click', function() {
+        setTab(this.getAttribute('data-tab'));
+      });
+    });
+
+    async function loadInvoiceMonths(selectId) {
+      const sel = document.getElementById(selectId);
+      if (!sel) return;
+      try {
+        const r = await fetch(API + '/api/tax_analysis/invoice_months');
+        if (r.status === 404) {
+          sel.innerHTML = '<option value="">接口未就绪，请重启看板</option>';
+          return [];
+        }
+        const d = await r.json().catch(function() { return { months: [] }; });
+        const months = (d.months || []);
+        sel.innerHTML = months.length ? '<option value="">请选择月份</option>' + months.map(m => '<option value="' + m + '">' + m + '</option>').join('') : '<option value="">暂无已导入月份</option>';
+        return months;
+      } catch (e) {
+        sel.innerHTML = '<option value="">加载失败</option>';
+        return [];
+      }
+    }
+
+    function autoSelectAndQuery(selectId, btnId) {
+      const sel = document.getElementById(selectId);
+      const btn = document.getElementById(btnId);
+      if (!sel || !btn || sel.options.length <= 1) return;
+      sel.value = sel.options[1].value;
+      btn.click();
+    }
+
+    document.getElementById('btnImport').addEventListener('click', async function() {
+      const period = document.getElementById('importPeriod').value;
+      const file = document.getElementById('importFile').files[0];
+      const resultEl = document.getElementById('importResult');
+      resultEl.style.display = 'block';
+      resultEl.className = 'result';
+      if (!period) {
+        resultEl.textContent = '请选择账期月份（YYYY-MM）';
+        resultEl.classList.add('error');
+        return;
+      }
+      if (!file) {
+        resultEl.textContent = '请选择发票 Excel 文件';
+        resultEl.classList.add('error');
+        return;
+      }
+      const fd = new FormData();
+      fd.append('period_month', period);
+      fd.append('file', file);
+      try {
+        const r = await fetch(API + '/api/tax_analysis/import_invoice', { method: 'POST', body: fd, credentials: 'include' });
+        const d = await r.json();
+        if (d.success) {
+          resultEl.textContent = d.message + '，共 ' + (d.rows || 0) + ' 条明细。';
+          resultEl.classList.add('success');
+          var importedPeriod = document.getElementById('importPeriod').value;
+          Promise.all([loadInvoiceMonths('detailPeriod'), loadInvoiceMonths('comparePeriod'), loadInvoiceMonths('taxPeriod')]).then(function() {
+            setTab('detail');
+            if (importedPeriod) {
+              var dp = document.getElementById('detailPeriod');
+              if (dp) dp.value = importedPeriod;
+              renderInvoiceDetail(importedPeriod);
+            }
+          });
+        } else {
+          resultEl.textContent = d.message || '导入失败';
+          resultEl.classList.add('error');
+        }
+      } catch (e) {
+        resultEl.textContent = '请求失败: ' + e.message;
+        resultEl.classList.add('error');
+      }
+    });
+
+    async function renderInvoiceDetail(period) {
+      var summaryEl = document.getElementById('detailInvoiceHead');
+      var tableWrap = document.getElementById('detailTableWrap');
+      var tableBody = document.getElementById('detailTableBody');
+      var tableFoot = document.getElementById('detailTableFoot');
+      var emptyEl = document.getElementById('detailEmpty');
+      if (!period) {
+        if (emptyEl) { emptyEl.style.display = 'block'; emptyEl.textContent = '请选择月份并点击「查询」。'; }
+        if (summaryEl) summaryEl.style.display = 'none';
+        if (tableWrap) tableWrap.style.display = 'none';
+        return;
+      }
+      if (emptyEl) emptyEl.style.display = 'none';
+      try {
+        var r = await fetch(API + '/api/tax_analysis/invoice_detail?period_month=' + encodeURIComponent(period), { credentials: 'include' });
+        if (r.status === 404) {
+          if (emptyEl) { emptyEl.innerHTML = '接口 404：当前看板未包含税务分析接口。<br/>请在看板所在机器执行 <strong>重启看板</strong>（见文档：新增API后需重启看板），或运行 <code>bash scripts/restart_dashboard_for_new_apis.sh</code> 后刷新本页重试。'; emptyEl.style.display = 'block'; }
+          if (summaryEl) summaryEl.style.display = 'none';
+          if (tableWrap) tableWrap.style.display = 'none';
+          return;
+        }
+        var d = await r.json().catch(function() { return {}; });
+        if (!d.success) {
+          if (emptyEl) { emptyEl.textContent = d.message || '加载失败'; emptyEl.style.display = 'block'; }
+          if (summaryEl) summaryEl.style.display = 'none';
+          if (tableWrap) tableWrap.style.display = 'none';
+          return;
+        }
+        var rows = d.rows || [];
+        var summary = d.summary || {};
+        var labelEl = document.getElementById('detailPeriodLabel');
+        if (labelEl) labelEl.textContent = period;
+        if (summaryEl) summaryEl.style.display = 'block';
+        if (tableBody) tableBody.innerHTML = rows.map(function(row) {
+          return '<tr><td>' + (row.category_small_name || '').replace(/</g, '&lt;') + '</td><td class="num">' + fmtMoney(row.sale_qty) + '</td><td class="num">' + (row.unit_price != null ? fmtMoney(row.unit_price) : '-') + '</td><td class="num">' + fmtMoney(row.invoice_amount) + '</td><td class="num">' + (row.tax_rate != null ? (row.tax_rate * 100) + '%' : '-') + '</td><td class="num">' + fmtMoney(row.tax_amount) + '</td></tr>';
+        }).join('');
+        if (tableFoot) tableFoot.innerHTML = '<tr><td>合计</td><td class="num">' + fmtMoney(summary.total_sale_qty) + '</td><td class="num">—</td><td class="num">' + fmtMoney(summary.total_invoice_amount) + '</td><td class="num">—</td><td class="num">' + fmtMoney(summary.total_tax_amount) + '</td></tr>';
+        if (tableWrap) tableWrap.style.display = 'block';
+      } catch (e) {
+        if (emptyEl) { emptyEl.textContent = '请求失败: ' + e.message; emptyEl.style.display = 'block'; }
+        if (summaryEl) summaryEl.style.display = 'none';
+        if (tableWrap) tableWrap.style.display = 'none';
+      }
+    }
+
+    document.getElementById('btnDetail').addEventListener('click', async function() {
+      var period = document.getElementById('detailPeriod').value;
+      await renderInvoiceDetail(period);
+    });
+
+    document.getElementById('btnCompare').addEventListener('click', async function() {
+      const period = document.getElementById('comparePeriod').value;
+      const summaryEl = document.getElementById('compareSummary');
+      const tableWrap = document.getElementById('compareTableWrap');
+      const tableBody = document.getElementById('compareTableBody');
+      const emptyEl = document.getElementById('compareEmpty');
+      if (!period) {
+        emptyEl.style.display = 'block';
+        summaryEl.style.display = 'none';
+        tableWrap.style.display = 'none';
+        return;
+      }
+      emptyEl.style.display = 'none';
+      var baseline = document.getElementById('compareBaselinePct');
+      var tolerance = document.getElementById('compareTolerancePct');
+      var baselinePct = (baseline && baseline.value !== '') ? parseFloat(baseline.value) : 80;
+      var tolerancePct = (tolerance && tolerance.value !== '') ? parseFloat(tolerance.value) : 5;
+      var qs = 'period_month=' + encodeURIComponent(period) + '&baseline_pct=' + baselinePct + '&tolerance_pct=' + tolerancePct;
+      try {
+        const r = await fetch(API + '/api/tax_analysis/compare?' + qs, { credentials: 'include' });
+        const d = await r.json();
+        if (!d.success) {
+          summaryEl.innerHTML = '<div class="card"><span class="label">错误</span><span class="value">' + (d.message || '') + '</span></div>';
+          summaryEl.style.display = 'block';
+          tableWrap.style.display = 'none';
+          return;
+        }
+        const s = d.summary || {};
+        var lowPct = (s.baseline_pct != null && s.tolerance_pct != null) ? (s.baseline_pct - s.tolerance_pct) : (baselinePct - tolerancePct);
+        var highPct = (s.baseline_pct != null && s.tolerance_pct != null) ? (s.baseline_pct + s.tolerance_pct) : (baselinePct + tolerancePct);
+        summaryEl.innerHTML =
+          '<div class="card"><span class="label">系统销售额</span><span class="value">' + fmtMoney(s.total_system_sale_amount) + '</span></div>' +
+          '<div class="card"><span class="label">开票金额</span><span class="value">' + fmtMoney(s.total_invoice_amount) + '</span></div>' +
+          '<div class="card"><span class="label">收入差额</span><span class="value">' + fmtMoney(s.total_amount_diff) + '</span></div>' +
+          '<div class="card"><span class="label">开票占比%</span><span class="value">' + (s.invoice_pct != null ? s.invoice_pct + '%' : '-') + '</span></div>' +
+          '<div class="card"><span class="label">合理区间</span><span class="value">' + lowPct + '%～' + highPct + '%</span></div>';
+        summaryEl.style.display = 'grid';
+        const rows = d.detail || [];
+        tableBody.innerHTML = rows.map(function(row) {
+          var flag = (row.flag || '').trim();
+          var trClass = flag ? ' flag-' + flag : '';
+          return '<tr class="' + trClass + '"><td>' + (row.category_small_name || '').replace(/</g, '&lt;') + '</td><td class="num">' + fmtMoney(row.system_sale_amount) + '</td><td class="num">' + fmtMoney(row.invoice_amount) + '</td><td class="num">' + fmtMoney(row.amount_diff) + '</td><td class="num">' + (row.invoice_pct != null ? row.invoice_pct + '%' : '-') + '</td><td>' + (flag || '-') + '</td></tr>';
+        }).join('');
+        tableWrap.style.display = 'block';
+      } catch (e) {
+        summaryEl.innerHTML = '<div class="card"><span class="label">错误</span><span class="value">' + e.message + '</span></div>';
+        summaryEl.style.display = 'block';
+        tableWrap.style.display = 'none';
+      }
+    });
+
+    document.getElementById('btnTax').addEventListener('click', async function() {
+      const period = document.getElementById('taxPeriod').value;
+      const summaryEl = document.getElementById('taxSummary');
+      const emptyEl = document.getElementById('taxEmpty');
+      if (!period) {
+        emptyEl.style.display = 'block';
+        summaryEl.style.display = 'none';
+        return;
+      }
+      emptyEl.style.display = 'none';
+      try {
+        const r = await fetch(API + '/api/tax_analysis/tax_summary?period_month=' + encodeURIComponent(period), { credentials: 'include' });
+        const d = await r.json();
+        if (!d.success) {
+          summaryEl.innerHTML = '<div class="card"><span class="label">错误</span><span class="value">' + (d.message || '') + '</span></div>';
+          summaryEl.style.display = 'grid';
+          return;
+        }
+        const s = d.summary || {};
+        summaryEl.innerHTML =
+          '<div class="card"><span class="label">应有税负（系统口径）</span><span class="value">' + fmtMoney(s.system_tax_amount) + '</span></div>' +
+          '<div class="card"><span class="label">已开票税负</span><span class="value">' + fmtMoney(s.invoice_tax_amount) + '</span></div>' +
+          '<div class="card"><span class="label">税负缺口</span><span class="value">' + fmtMoney(s.tax_gap) + '</span></div>' +
+          '<div class="card"><span class="label">已覆盖比例%</span><span class="value">' + (s.tax_coverage_pct != null ? s.tax_coverage_pct + '%' : '-') + '</span></div>';
+        summaryEl.style.display = 'grid';
+      } catch (e) {
+        summaryEl.innerHTML = '<div class="card"><span class="label">错误</span><span class="value">' + e.message + '</span></div>';
+        summaryEl.style.display = 'grid';
+      }
+    });
+
+    (async function init() {
+      if (!await checkPerm()) return;
+      loadInvoiceMonths('detailPeriod');
+      loadInvoiceMonths('comparePeriod');
+      loadInvoiceMonths('taxPeriod');
+      var now = new Date();
+      var ym = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+      document.getElementById('importPeriod').value = ym;
+      var lip = document.getElementById('ledgerImportPeriod');
+      if (lip) lip.value = ym;
+    })();
+  </script>
+</body>
+</html>

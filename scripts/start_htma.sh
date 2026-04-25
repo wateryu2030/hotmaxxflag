@@ -31,6 +31,7 @@ mysql -h "${MYSQL_HOST:-127.0.0.1}" -u "${MYSQL_USER:-root}" -p"${MYSQL_PASSWORD
 mysql -h "${MYSQL_HOST:-127.0.0.1}" -u "${MYSQL_USER:-root}" -p"${MYSQL_PASSWORD:-62102218}" htma_dashboard < "$ROOT/scripts/16_create_labor_category_mapping.sql" 2>/dev/null || true
 mysql -h "${MYSQL_HOST:-127.0.0.1}" -u "${MYSQL_USER:-root}" -p"${MYSQL_PASSWORD:-62102218}" htma_dashboard < "$ROOT/scripts/20_add_distribution_mode_if_missing.sql" 2>/dev/null || true
 mysql -h "${MYSQL_HOST:-127.0.0.1}" -u "${MYSQL_USER:-root}" -p"${MYSQL_PASSWORD:-62102218}" htma_dashboard < "$ROOT/scripts/21_add_consumer_insight_indexes.sql" 2>/dev/null || true
+mysql -h "${MYSQL_HOST:-127.0.0.1}" -u "${MYSQL_USER:-root}" -p"${MYSQL_PASSWORD:-62102218}" htma_dashboard < "$ROOT/scripts/26_full_invoice_raw_tables.sql" 2>/dev/null || true
 
 # 导出 .env 中的变量，确保飞书登录等配置被 Python 读到（含 launchd 等场景）
 if [ -f "$ROOT/.env" ]; then

@@ -9,12 +9,14 @@
 用法:
   python scripts/auto_import_from_downloads.py [目录]
   python scripts/auto_import_from_downloads.py [目录] --multi   # 导入目录内所有销售日报（多份）+ 销售汇总 + 库存
+  python scripts/auto_import_from_downloads.py --today          # 仅处理本机「今天」修改过的上述 Excel（默认 ~/Downloads）
   DOWNLOADS=/path/to/excel python scripts/auto_import_from_downloads.py
   bash scripts/run_auto_import.sh   # 使用 .venv 并默认 ~/Downloads
 """
 import os
 import sys
 import subprocess
+from datetime import date, datetime
 
 # 默认下载目录：优先环境变量，否则 ~/Downloads
 def _default_downloads():
@@ -26,8 +28,13 @@ def _default_downloads():
 STORE_ID = "沈阳超级仓"
 
 
-def find_excel_files(directory):
-    """在指定目录查找销售日报、销售汇总、实时库存/库存查询、分店商品档案（取最新，排除临时文件）"""
+def _mtime_local_date(path):
+    return datetime.fromtimestamp(os.path.getmtime(path)).date()
+
+
+def find_excel_files(directory, only_date=None):
+    """在指定目录查找销售日报、销售汇总、实时库存/库存查询、分店商品档案（取最新，排除临时文件）
+    only_date: 若指定，仅考虑该日期当天修改过的文件（本机时区）。"""
     if not os.path.isdir(directory):
         return {}
     files = {}
@@ -38,6 +45,8 @@ def find_excel_files(directory):
         if not os.path.isfile(path):
             continue
         low = f.lower()
+        if only_date is not None and _mtime_local_date(path) != only_date:
+            continue
         if "销售日报" in f and "品项" not in f and (low.endswith(".xls") or low.endswith(".xlsx")):
             if "sale_daily" not in files or os.path.getmtime(path) > os.path.getmtime(files["sale_daily"]):
                 files["sale_daily"] = path
@@ -53,8 +62,9 @@ def find_excel_files(directory):
     return files
 
 
-def find_excel_files_multi_sale_daily(directory):
-    """查找所有销售日报（列表，按修改时间升序）、销售汇总（最新）、库存（最新）、分店商品档案（最新），便于一次导入多份日报"""
+def find_excel_files_multi_sale_daily(directory, only_date=None):
+    """查找所有销售日报（列表，按修改时间升序）、销售汇总（最新）、库存（最新）、分店商品档案（最新），便于一次导入多份日报
+    only_date: 若指定，仅该日期当天修改过的文件。"""
     if not os.path.isdir(directory):
         return {"sale_daily_list": [], "sale_summary": None, "stock": None, "product_master": None}
     sale_daily_list = []
@@ -68,6 +78,8 @@ def find_excel_files_multi_sale_daily(directory):
         if not os.path.isfile(path):
             continue
         low = f.lower()
+        if only_date is not None and _mtime_local_date(path) != only_date:
+            continue
         if "销售日报" in f and "品项" not in f and (low.endswith(".xls") or low.endswith(".xlsx")):
             sale_daily_list.append(path)
         elif "销售汇总" in f and "品项" not in f and (low.endswith(".xls") or low.endswith(".xlsx")):
@@ -140,8 +152,10 @@ def data_quality_summary(conn, store_id):
 
 
 def main():
-    argv = [a for a in sys.argv[1:] if a != "--multi"]
+    argv = [a for a in sys.argv[1:] if a not in ("--multi", "--today")]
     use_multi = "--multi" in sys.argv[1:]
+    only_today = "--today" in sys.argv[1:]
+    only_date = date.today() if only_today else None
     directory = argv[0] if argv else _default_downloads()
     directory = os.path.abspath(os.path.expanduser(directory))
     if not os.path.isdir(directory):
@@ -150,6 +164,8 @@ def main():
 
     print("=== 好特卖自动导入（下载目录）===", flush=True)
     print(f"目录: {directory}", flush=True)
+    if only_today:
+        print(f"模式: 仅今天修改的文件（{only_date}）", flush=True)
     if use_multi:
         print("模式: 多份销售日报 + 销售汇总 + 库存", flush=True)
 
@@ -180,7 +196,7 @@ def main():
     has_sale_summary = False
 
     if use_multi:
-        multi = find_excel_files_multi_sale_daily(directory)
+        multi = find_excel_files_multi_sale_daily(directory, only_date=only_date)
         sale_daily_list = multi["sale_daily_list"]
         has_any = sale_daily_list or multi["sale_summary"] or multi["stock"] or multi.get("product_master")
         if not has_any:
@@ -212,7 +228,7 @@ def main():
             product_master_cnt, diag = import_product_master(multi["product_master"], conn)
             print(f"分店商品档案: {product_master_cnt} 条", diag or "", flush=True)
     else:
-        files = find_excel_files(directory)
+        files = find_excel_files(directory, only_date=only_date)
         if not files:
             print("未找到销售日报/销售汇总/实时库存/分店商品档案 Excel，跳过导入。", flush=True)
             conn.close()
@@ -261,6 +277,27 @@ def main():
             print("去重完成", flush=True)
         else:
             print("去重跳过或失败，数据仍以当前导入为准", flush=True)
+
+    print("清理误导入的合计/汇总行...", flush=True)
+    del_py = os.path.join(project_root, "scripts", "delete_summary_rows.py")
+    try:
+        r = subprocess.run(
+            [sys.executable, del_py],
+            cwd=project_root,
+            timeout=180,
+            capture_output=True,
+            text=True,
+        )
+        if r.stdout:
+            print(r.stdout, end="", flush=True)
+        if r.returncode != 0:
+            print(
+                "清理脚本异常（可手动执行: bash scripts/run_delete_summary_rows.sh）",
+                r.stderr or "",
+                flush=True,
+            )
+    except (subprocess.TimeoutExpired, OSError) as e:
+        print(f"清理合计行失败: {e}", flush=True)
 
     # 再次连接输出最终统计与数据质量
     conn2 = get_conn()

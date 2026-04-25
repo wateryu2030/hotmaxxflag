@@ -1,0 +1,12 @@
+{
+  "id": "test-plugin",
+  "name": "Test Plugin",
+  "version": "1.0.0",
+  "description": "测试插件",
+  "entry": "test-plugin.js",
+  "type": "commonjs",
+  "configSchema": {
+    "type": "object",
+    "properties": {}
+  }
+}

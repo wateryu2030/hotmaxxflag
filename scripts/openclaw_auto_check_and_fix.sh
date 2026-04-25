@@ -82,7 +82,7 @@ else
 fi
 
 echo ""
-echo ">>> [7/7] 消费洞察页（打开 ?page=insight&category=服装 检查无 500/加载失败）"
+echo ">>> [7/8] 消费洞察页（打开 ?page=insight&category=服装 检查无 500/加载失败）"
 echo ""
 if node scripts/openclaw_verify_consumer_insight_page.mjs "$LOCAL_URL" 2>/dev/null; then
   echo "消费洞察页校验通过。"
@@ -91,8 +91,18 @@ else
 fi
 
 echo ""
+echo ">>> [8/8] 税务分析（发票月份 + 12 月明细接口）"
+echo ""
+if bash scripts/openclaw_verify_tax_analysis.sh "$LOCAL_URL" 2>/dev/null; then
+  echo "税务分析接口校验已执行。"
+else
+  echo "可单独执行: bash scripts/openclaw_verify_tax_analysis.sh $LOCAL_URL"
+fi
+
+echo ""
 echo "=============================================="
 echo "OpenClaw 自动检查并修改完善 已完成。"
 echo "  看板: http://127.0.0.1:5002"
 echo "  若 [4] 明细表无数据，请到「数据导入」上传人力成本 Excel 或运行 scripts/openclaw_labor_import_and_notify.py"
+echo "  若税务分析导入 12 月后不显示明细，已改为导入后直接请求并渲染，请刷新页面重试。"
 echo "=============================================="
