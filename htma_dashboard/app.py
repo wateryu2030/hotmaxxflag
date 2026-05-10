@@ -3074,86 +3074,8 @@ def api_profit_share_preview():
         return jsonify({"error": str(col_err)}), 500
 
 
-@app.route("/api/import_labor_cost", methods=["POST", "OPTIONS"])
-def api_import_labor_cost():
-    """上传人力成本 Excel（组长+全职+兼职/小时工/保洁/管理岗），按报表月份导入。
-    支持单 sheet 或多 sheet，自动识别类目并清洗岗位名、归类写入。
-    表单: file=Excel, report_month=YYYY-MM。与 scripts/import_labor_excel_and_analyze.py 使用同一 import_labor_cost 逻辑。"""
-    if request.method == "OPTIONS":
-        return "", 204
-    if _auth_enabled() and not _has_module_access("labor"):
-        return jsonify({"success": False, "message": "无权访问人力成本模块，请联系管理员"}), 403
-    report_month = (request.form.get("report_month") or "").strip()
-    if not report_month:
-        return jsonify({"success": False, "message": "请提供 report_month，如 2026-01"}), 400
-    import re
-    if not re.match(r"^\d{4}-\d{2}$", report_month):
-        return jsonify({"success": False, "message": "report_month 格式为 YYYY-MM，如 2026-01"}), 400
-    f = request.files.get("file")
-    if not f or not f.filename:
-        return jsonify({"success": False, "message": "请上传 Excel 文件（file）"}), 400
-    if not (f.filename.lower().endswith(".xls") or f.filename.lower().endswith(".xlsx")):
-        return jsonify({"success": False, "message": "仅支持 .xls / .xlsx"}), 400
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(f.filename)[1]) as tmp:
-            f.save(tmp.name)
-            try:
-                conn = get_conn()
-                counts, diag, _ = import_labor_cost(tmp.name, report_month, conn)
-                try:
-                    refresh_labor_cost_analysis(conn)
-                except Exception:
-                    pass
-                conn.close()
-                # 按类目拼导入结果文案（仅列出有数据的类目）
-                labels = {"leader": "组长/职能", "fulltime": "全职", "parttime": "兼职", "hourly": "小时工", "cleaner": "保洁", "management": "管理岗"}
-                parts = [f"{labels.get(k, k)} {v} 条" for k, v in counts.items() if v and isinstance(v, int)]
-                msg = "导入完成：" + "，".join(parts) + "；已自动清洗并归类，已刷新汇总表。请在看板「人力成本」Tab 查看（报表月份留空即最近月份）。" if parts else "导入完成：已刷新汇总表。请在看板「人力成本」Tab 查看。"
-                return jsonify({
-                    "success": True,
-                    "report_month": report_month,
-                    "leader_count": counts.get("leader", 0),
-                    "fulltime_count": counts.get("fulltime", 0),
-                    "counts": counts,
-                    "message": msg,
-                    "diagnostics": diag or [],
-                })
-            finally:
-                try:
-                    os.unlink(tmp.name)
-                except Exception:
-                    pass
-    except Exception as e:
-        import traceback
-        return jsonify({"success": False, "message": str(e), "traceback": traceback.format_exc()[-1500:]}), 500
 
 
-@app.route("/api/import_labor_cost_image", methods=["POST", "OPTIONS"])
-def api_import_labor_cost_image():
-    """上传人力成本附表截图/照片，OCR 识别后写入 MySQL。表单: file=图片, report_month=YYYY-MM, position_type=leader|fulltime（必填：组长表/组员表二选一）"""
-    if request.method == "OPTIONS":
-        return "", 204
-    if _auth_enabled() and not _has_module_access("labor"):
-        return jsonify({"success": False, "message": "无权访问人力成本模块，请联系管理员"}), 403
-    report_month = (request.form.get("report_month") or "").strip()
-    if not report_month:
-        return jsonify({"success": False, "message": "请提供 report_month，如 2026-01"}), 400
-    import re
-    if not re.match(r"^\d{4}-\d{2}$", report_month):
-        return jsonify({"success": False, "message": "report_month 格式为 YYYY-MM"}), 400
-    position_type = (request.form.get("position_type") or "").strip().lower()
-    if position_type not in ("leader", "fulltime"):
-        return jsonify({"success": False, "message": "请选择表类型：组长表(leader) 或 组员表(fulltime)，与附图一一对应"}), 400
-    f = request.files.get("file")
-    if not f or not f.filename:
-        return jsonify({"success": False, "message": "请上传图片文件（file）"}), 400
-    low = f.filename.lower()
-    if not (low.endswith(".png") or low.endswith(".jpg") or low.endswith(".jpeg")):
-        return jsonify({"success": False, "message": "仅支持 .png / .jpg / .jpeg 图片"}), 400
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(f.filename)[1]) as tmp:
-            f.save(tmp.name)
-            tmp_path = tmp.name
         result = {"done": False, "leader_count": 0, "fulltime_count": 0, "diag": [], "err": None}
 
         def run_import():
@@ -4684,12 +4606,6 @@ def _labor_safe_response(f, fallback_success_json):
         return jsonify({**fallback_success_json, "success": False, "message": "人力成本服务暂时异常，请稍后重试或使用独立页 /labor。（" + str(e)[:200] + "）"})
 
 
-@app.route("/api/labor_cost_status", methods=["GET", "OPTIONS"])
-def api_labor_cost_status():
-    """人力成本数据状态：明细表条数、汇总表月份列表。独立于主看板 KPI 周期，异常时返回 200+success:false。"""
-    if request.method == "OPTIONS":
-        return "", 204
-    if _auth_enabled() and not _has_module_access("labor"):
         return jsonify({"success": False, "message": "无权访问人力成本模块，请联系管理员"}), 403
 
     def _do():
@@ -4743,24 +4659,8 @@ def _api_labor_cost_impl():
     return jsonify({"success": True, "report_month": report_month, "leaders": leaders, "fulltime": fulltime, "summary": summary})
 
 
-@app.route("/api/labor_cost", methods=["GET", "POST", "HEAD", "OPTIONS"])
-def api_labor_cost():
-    """人力成本分析（短路径）。独立于主看板 KPI 周期，仅按报表月份；异常时返回 200+success:false。"""
-    if request.method == "OPTIONS":
-        return "", 204
-    if _auth_enabled() and not _has_module_access("labor"):
-        return jsonify({"success": False, "message": "无权访问人力成本模块，请联系管理员"}), 403
-    return _labor_safe_response(_api_labor_cost_impl, {"report_month": None, "leaders": [], "fulltime": [], "summary": {}, "message": "人力成本服务暂时异常"})
 
 
-@app.route("/api/labor_cost_analysis", methods=["GET", "POST", "HEAD", "OPTIONS"])
-def api_labor_cost_analysis():
-    """人力成本分析（长路径，兼容旧地址）。独立于主看板，异常时返回 200+success:false。"""
-    if request.method == "OPTIONS":
-        return "", 204
-    if _auth_enabled() and not _has_module_access("labor"):
-        return jsonify({"success": False, "message": "无权访问人力成本模块，请联系管理员"}), 403
-    return _labor_safe_response(_api_labor_cost_impl, {"report_month": None, "leaders": [], "fulltime": [], "summary": {}, "message": "人力成本服务暂时异常"})
 
 
 def _labor_months_overview(limit=24):
@@ -5221,46 +5121,7 @@ def page_labor():
     return Response(html, mimetype="text/html; charset=utf-8")
 
 
-@app.route("/api/labor_cost_refresh_analysis", methods=["POST", "OPTIONS"])
-def api_labor_cost_refresh_analysis():
-    """从 t_htma_labor_cost 汇总刷新 t_htma_labor_cost_analysis，供 OpenClaw 或定时任务调用。"""
-    if request.method == "OPTIONS":
-        return "", 204
-    try:
-        conn = get_conn()
-        n = refresh_labor_cost_analysis(conn)
-        conn.close()
-        return jsonify({"success": True, "months_refreshed": n})
-    except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
 
-
-@app.route("/api/labor_cost_clear", methods=["POST", "OPTIONS"])
-def api_labor_cost_clear():
-    """清空人力明细与汇总表（仅当用户明确确认时执行）。部署脚本不会清空数据，需在此手工触发。"""
-    if request.method == "OPTIONS":
-        return "", 204
-    if _auth_enabled() and not _has_module_access("labor"):
-        return jsonify({"success": False, "message": "无权操作人力模块"}), 403
-    confirm = (request.form.get("confirm") or request.args.get("confirm") or "").strip()
-    try:
-        j = request.get_json(silent=True) or {}
-        if not confirm:
-            confirm = (j.get("confirm") or "").strip()
-    except Exception:
-        pass
-    if confirm != "yes":
-        return jsonify({"success": False, "message": "请传 confirm=yes 确认清空（将删除 t_htma_labor_cost 与 t_htma_labor_cost_analysis 全部数据）"}), 400
-    try:
-        conn = get_conn()
-        cur = conn.cursor()
-        cur.execute("TRUNCATE TABLE t_htma_labor_cost")
-        cur.execute("TRUNCATE TABLE t_htma_labor_cost_analysis")
-        conn.commit()
-        conn.close()
-        return jsonify({"success": True, "message": "已清空人力明细与汇总表，可重新导入 Excel"})
-    except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
 
 
 # ---------- 人力分析 Tab：时间段拆解、经营/管理、人效 ----------
@@ -5372,271 +5233,10 @@ def _labor_analysis_get_cost(row):
     return float(row.get("total_cost") or row.get("company_cost") or 0)
 
 
-@app.route("/api/labor_analysis/categories", methods=["GET", "OPTIONS"])
-def api_labor_analysis_categories():
-    """返回销售日报中的大类+中类（供配置映射，与 t_htma_sale 一致）。结构：categories 平铺大类；categories_tree 为大类下挂中类列表。"""
-    if request.method == "OPTIONS":
-        return "", 204
-    if _auth_enabled() and not _has_module_access("labor"):
-        return jsonify({"success": False, "message": "无权访问人力模块"}), 403
-    try:
-        conn = get_conn()
-        cur = conn.cursor()
-        try:
-            cur.execute("""
-                SELECT DISTINCT
-                    COALESCE(TRIM(category_large_code), '') AS category_large_code,
-                    COALESCE(TRIM(category_large), '') AS category_large,
-                    COALESCE(TRIM(category_mid_code), '') AS category_mid_code,
-                    COALESCE(TRIM(category_mid), '') AS category_mid
-                FROM t_htma_sale
-                WHERE (COALESCE(TRIM(category_large), '') != '' OR COALESCE(TRIM(category_large_code), '') != '')
-                ORDER BY category_large_code, category_large, category_mid_code, category_mid
-            """)
-            rows = cur.fetchall()
-        except Exception:
-            try:
-                cur.execute("""
-                    SELECT DISTINCT
-                        COALESCE(TRIM(category_large), '') AS category_large_code,
-                        COALESCE(TRIM(category_large), '') AS category_large,
-                        '' AS category_mid_code, '' AS category_mid
-                    FROM t_htma_sale
-                    WHERE (category_large IS NOT NULL AND TRIM(category_large) != '')
-                    ORDER BY category_large
-                """)
-                rows = cur.fetchall()
-            except Exception:
-                try:
-                    cur.execute("""
-                        SELECT DISTINCT COALESCE(TRIM(category), '') AS category_large_code,
-                               COALESCE(TRIM(category), '') AS category_large,
-                               '' AS category_mid_code, '' AS category_mid
-                        FROM t_htma_sale
-                        WHERE (category IS NOT NULL AND TRIM(category) != '')
-                        ORDER BY 1
-                    """)
-                    rows = cur.fetchall()
-                except Exception:
-                    rows = []
-        conn.close()
-        # 大类去重 + 每个大类下中类列表
-        large_seen = set()
-        categories = []
-        categories_tree = []
-        for r in rows:
-            lcode = (r.get("category_large_code") or "").strip()
-            lname = (r.get("category_large") or "").strip()
-            if not lname and lcode:
-                lname = lcode
-            if not lname:
-                continue
-            mcode = (r.get("category_mid_code") or "").strip()
-            mname = (r.get("category_mid") or "").strip()
-            if not mname and mcode:
-                mname = mcode
-            key = (lcode, lname)
-            if key not in large_seen:
-                large_seen.add(key)
-                categories.append({"category_large_code": lcode, "category_large": lname})
-                categories_tree.append({
-                    "category_large_code": lcode,
-                    "category_large": lname,
-                    "mids": []
-                })
-            # 找到对应大类节点并追加中类（去重）
-            for node in categories_tree:
-                if (node["category_large_code"], node["category_large"]) == (lcode, lname):
-                    if (mcode or mname) and not any(x.get("category_mid") == mname and x.get("category_mid_code") == mcode for x in node["mids"]):
-                        node["mids"].append({"category_mid_code": mcode, "category_mid": mname or "-"})
-                    break
-        return jsonify({"success": True, "categories": categories, "categories_tree": categories_tree})
-    except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
 
 
-@app.route("/api/labor_analysis/labor_positions", methods=["GET", "POST", "HEAD", "OPTIONS"])
-def api_labor_analysis_labor_positions():
-    """拉取所有人力成本汇总岗位列表，以组长表为准（组长/leader 优先，与薪资表、组长表岗位一致）。GET/POST 均返回同一列表。"""
-    if request.method == "OPTIONS":
-        return "", 204
-    if request.method == "HEAD":
-        return "", 200
-    if _auth_enabled() and not _has_module_access("labor"):
-        return jsonify({"success": False, "message": "无权访问人力模块"}), 403
-    try:
-        conn = get_conn()
-        cur = conn.cursor()
-        # 组长(leader) 优先，再全职、兼职等；岗位名去重，与 t_htma_labor_cost.position_name 一致
-        try:
-            cur.execute("""
-                SELECT DISTINCT COALESCE(TRIM(position_name), '') AS position_name,
-                       COALESCE(TRIM(position_type), '') AS position_type
-                FROM t_htma_labor_cost
-                WHERE (position_name IS NOT NULL AND TRIM(position_name) != '')
-                ORDER BY FIELD(position_type, 'leader', 'fulltime', 'parttime', 'hourly', 'cleaner', 'management'),
-                         position_name
-            """)
-            rows = cur.fetchall()
-        except Exception:
-            try:
-                cur.execute("""
-                    SELECT DISTINCT COALESCE(TRIM(position_name), '') AS position_name,
-                           COALESCE(TRIM(position_type), '') AS position_type
-                    FROM t_htma_labor_cost
-                    WHERE (position_name IS NOT NULL AND TRIM(position_name) != '')
-                    ORDER BY position_type, position_name
-                """)
-                rows = cur.fetchall()
-            except Exception:
-                rows = []
-        conn.close()
-        type_label = {"leader": "组长", "fulltime": "全职", "parttime": "兼职", "hourly": "小时工", "cleaner": "保洁", "management": "管理岗"}
-        positions = []
-        seen = set()
-        for r in rows:
-            name = (r.get("position_name") or "").strip()
-            if not name:
-                continue
-            if name in seen:
-                continue
-            seen.add(name)
-            ptype = (r.get("position_type") or "").strip().lower()
-            positions.append({
-                "position_name": name,
-                "position_type": ptype,
-                "position_type_label": type_label.get(ptype, ptype or "其他"),
-            })
-        return jsonify({"success": True, "positions": positions})
-    except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
 
 
-@app.route("/api/labor_analysis/mapping", methods=["GET", "POST", "OPTIONS"])
-def api_labor_analysis_mapping():
-    """获取或保存 销售类目–人力岗位 映射（含生效日期）。"""
-    if request.method == "OPTIONS":
-        return "", 204
-    if _auth_enabled() and not _has_module_access("labor"):
-        return jsonify({"success": False, "message": "无权访问人力模块"}), 403
-    try:
-        conn = get_conn()
-        cur = conn.cursor()
-        if request.method == "GET":
-            try:
-                cur.execute("""
-                    SELECT id, sales_category, sales_category_mid, sales_category_large_code, sales_category_mid_code,
-                           cost_type, labor_position_name, match_type,
-                           effective_from, effective_to, sort_order, created_at, updated_at
-                    FROM t_htma_labor_category_mapping
-                    ORDER BY cost_type, sort_order, id
-                """)
-                rows = cur.fetchall()
-            except Exception:
-                try:
-                    cur.execute("""
-                        SELECT id, sales_category, sales_category_mid, cost_type, labor_position_name, match_type,
-                               effective_from, effective_to, sort_order, created_at, updated_at
-                        FROM t_htma_labor_category_mapping
-                        ORDER BY cost_type, sort_order, id
-                    """)
-                    rows = cur.fetchall()
-                except Exception:
-                    try:
-                        cur.execute("""
-                            SELECT id, sales_category, cost_type, labor_position_name, match_type,
-                                   effective_from, effective_to, sort_order, created_at, updated_at
-                            FROM t_htma_labor_category_mapping
-                            ORDER BY cost_type, sort_order, id
-                        """)
-                        rows = cur.fetchall()
-                    except Exception:
-                        rows = []
-            conn.close()
-            items = []
-            for r in rows:
-                r = r or {}
-                items.append({
-                    "id": r.get("id"),
-                    "sales_category": r.get("sales_category") or "",
-                    "sales_category_mid": r.get("sales_category_mid") or "",
-                    "sales_category_large_code": r.get("sales_category_large_code") or "",
-                    "sales_category_mid_code": r.get("sales_category_mid_code") or "",
-                    "cost_type": r.get("cost_type") or "",
-                    "labor_position_name": r.get("labor_position_name") or "",
-                    "match_type": r.get("match_type") or "prefix",
-                    "effective_from": r.get("effective_from").strftime("%Y-%m-%d") if r.get("effective_from") else None,
-                    "effective_to": r.get("effective_to").strftime("%Y-%m-%d") if r.get("effective_to") else None,
-                    "sort_order": r.get("sort_order", 0),
-                })
-            return jsonify({"success": True, "items": items})
-        # POST: save one or list
-        data = request.get_json(silent=True) or {}
-        items = data.get("items")
-        if not items:
-            items = [data] if data.get("labor_position_name") or data.get("sales_category") or data.get("sales_category_large_code") else []
-        for it in items:
-            sid = it.get("id")
-            sales_category = (it.get("sales_category") or "").strip() or ""
-            sales_category_mid = (it.get("sales_category_mid") or "").strip() or ""
-            sales_category_large_code = (it.get("sales_category_large_code") or "").strip() or ""
-            sales_category_mid_code = (it.get("sales_category_mid_code") or "").strip() or ""
-            cost_type = (it.get("cost_type") or "operational").strip().lower()
-            if cost_type not in ("operational", "management"):
-                cost_type = "operational"
-            labor_position_name = (it.get("labor_position_name") or "").strip()
-            match_type = (it.get("match_type") or "prefix").strip().lower() or "prefix"
-            if match_type not in ("exact", "prefix"):
-                match_type = "prefix"
-            effective_from = (it.get("effective_from") or "").strip() or None
-            effective_to = (it.get("effective_to") or "").strip() or None
-            sort_order = int(it.get("sort_order", 0))
-            if not labor_position_name and not sales_category and not sales_category_large_code:
-                continue
-            try:
-                if sid:
-                    cur.execute("""
-                        UPDATE t_htma_labor_category_mapping
-                        SET sales_category=%s, sales_category_mid=%s, sales_category_large_code=%s, sales_category_mid_code=%s,
-                            cost_type=%s, labor_position_name=%s, match_type=%s,
-                            effective_from=%s, effective_to=%s, sort_order=%s, updated_at=NOW()
-                        WHERE id=%s
-                    """, (sales_category, sales_category_mid, sales_category_large_code, sales_category_mid_code,
-                          cost_type, labor_position_name, match_type,
-                          effective_from or None, effective_to or None, sort_order, sid))
-                else:
-                    cur.execute("""
-                        INSERT INTO t_htma_labor_category_mapping
-                        (sales_category, sales_category_mid, sales_category_large_code, sales_category_mid_code,
-                         cost_type, labor_position_name, match_type, effective_from, effective_to, sort_order)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                    """, (sales_category, sales_category_mid, sales_category_large_code, sales_category_mid_code,
-                          cost_type, labor_position_name, match_type, effective_from or None, effective_to or None, sort_order))
-            except Exception:
-                if sid:
-                    cur.execute("""
-                        UPDATE t_htma_labor_category_mapping
-                        SET sales_category=%s, sales_category_mid=%s, cost_type=%s, labor_position_name=%s, match_type=%s,
-                            effective_from=%s, effective_to=%s, sort_order=%s, updated_at=NOW()
-                        WHERE id=%s
-                    """, (sales_category, sales_category_mid, cost_type, labor_position_name, match_type,
-                          effective_from or None, effective_to or None, sort_order, sid))
-                else:
-                    cur.execute("""
-                        INSERT INTO t_htma_labor_category_mapping
-                        (sales_category, sales_category_mid, cost_type, labor_position_name, match_type, effective_from, effective_to, sort_order)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-                    """, (sales_category, sales_category_mid, cost_type, labor_position_name, match_type, effective_from or None, effective_to or None, sort_order))
-        conn.commit()
-        conn.close()
-        return jsonify({"success": True, "message": "已保存"})
-    except Exception as e:
-        if conn:
-            try:
-                conn.close()
-            except Exception:
-                pass
-        return jsonify({"success": False, "message": str(e)}), 500
 
 
 def _labor_analysis_overview(conn, start_date, end_date):
@@ -5720,24 +5320,6 @@ def _labor_analysis_overview(conn, start_date, end_date):
     }
 
 
-@app.route("/api/labor_analysis/overview", methods=["GET", "OPTIONS"])
-def api_labor_analysis_overview():
-    """人力分析总览：经营/管理成本、人数（全量）、销售、毛利、人效。参数 start_date, end_date。"""
-    if request.method == "OPTIONS":
-        return "", 204
-    if _auth_enabled() and not _has_module_access("labor"):
-        return jsonify({"success": False, "message": "无权访问人力模块"}), 403
-    start_date = (request.args.get("start_date") or "").strip()[:10]
-    end_date = (request.args.get("end_date") or "").strip()[:10]
-    if not start_date or not end_date:
-        return jsonify({"success": False, "message": "请提供 start_date 与 end_date"}), 400
-    try:
-        conn = get_conn()
-        data = _labor_analysis_overview(conn, start_date, end_date)
-        conn.close()
-        return jsonify({"success": True, "data": data})
-    except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
 
 
 def _labor_analysis_by_category(conn, start_date, end_date):
@@ -5834,24 +5416,6 @@ def _labor_analysis_by_category(conn, start_date, end_date):
     return out
 
 
-@app.route("/api/labor_analysis/by_category", methods=["GET", "OPTIONS"])
-def api_labor_analysis_by_category():
-    """按经营类目返回人力成本、人数、销售、毛利、人效及组长/全职/兼职分项。"""
-    if request.method == "OPTIONS":
-        return "", 204
-    if _auth_enabled() and not _has_module_access("labor"):
-        return jsonify({"success": False, "message": "无权访问人力模块"}), 403
-    start_date = (request.args.get("start_date") or "").strip()[:10]
-    end_date = (request.args.get("end_date") or "").strip()[:10]
-    if not start_date or not end_date:
-        return jsonify({"success": False, "message": "请提供 start_date 与 end_date"}), 400
-    try:
-        conn = get_conn()
-        data = _labor_analysis_by_category(conn, start_date, end_date)
-        conn.close()
-        return jsonify({"success": True, "data": data})
-    except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
 
 
 def _labor_analysis_management(conn, start_date, end_date):
@@ -5908,24 +5472,6 @@ def _labor_analysis_management(conn, start_date, end_date):
     }
 
 
-@app.route("/api/labor_analysis/management", methods=["GET", "OPTIONS"])
-def api_labor_analysis_management():
-    """管理人力：按岗位拆分，可下沉到具体人名。"""
-    if request.method == "OPTIONS":
-        return "", 204
-    if _auth_enabled() and not _has_module_access("labor"):
-        return jsonify({"success": False, "message": "无权访问人力模块"}), 403
-    start_date = (request.args.get("start_date") or "").strip()[:10]
-    end_date = (request.args.get("end_date") or "").strip()[:10]
-    if not start_date or not end_date:
-        return jsonify({"success": False, "message": "请提供 start_date 与 end_date"}), 400
-    try:
-        conn = get_conn()
-        data = _labor_analysis_management(conn, start_date, end_date)
-        conn.close()
-        return jsonify({"success": True, "data": data})
-    except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
 
 
 @app.route("/labor_analysis")
