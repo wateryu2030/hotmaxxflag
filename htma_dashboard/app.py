@@ -992,55 +992,6 @@ def api_import():
 
 
 # ---------- 分店商品档案（与数据导入、人力成本同级权限）----------
-@app.route("/api/import_product_master", methods=["POST", "OPTIONS"])
-def api_import_product_master():
-    """上传分店商品档案 Excel，导入 t_htma_product_master。表单: file=Excel。"""
-    if request.method == "OPTIONS":
-        return "", 204
-    if _auth_enabled() and not _has_module_access("product_master"):
-        return jsonify({"success": False, "message": "无权访问分店商品档案模块，请联系管理员"}), 403
-    f = request.files.get("file")
-    if not f or not f.filename:
-        return jsonify({"success": False, "message": "请上传 Excel 文件（file）"}), 400
-    if not (f.filename.lower().endswith(".xls") or f.filename.lower().endswith(".xlsx")):
-        return jsonify({"success": False, "message": "仅支持 .xls / .xlsx"}), 400
-    try:
-        import tempfile
-        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(f.filename)[1]) as tmp:
-            f.save(tmp.name)
-            try:
-                conn = get_conn()
-                cnt, msg = import_product_master(tmp.name, conn)
-                conn.close()
-                return jsonify({"success": True, "inserted": cnt, "message": msg})
-            finally:
-                try:
-                    os.unlink(tmp.name)
-                except Exception:
-                    pass
-    except Exception as e:
-        import traceback
-        return jsonify({"success": False, "message": str(e), "traceback": traceback.format_exc()[-1500:]}), 500
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 @app.route("/product_master")
 def page_product_master():
