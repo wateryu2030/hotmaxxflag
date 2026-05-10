@@ -7,14 +7,11 @@ import os, pymysql, pymysql.cursors
 
 from core.db import get_conn
 from core.utils import safe_str, safe_int
+from page_auth import _is_logged_in
 from auth import is_feishu_configured, get_feishu_authorize_url, feishu_exchange_code_and_user, _super_admin_open_id
 
 feishu_web_bp = Blueprint("feishu_web", __name__)
 
-
-def _is_logged_in():
-    """当前 session 是否有已登录用户。"""
-    return bool(session.get("user_id") or session.get("open_id"))
 
 
 def _is_super_admin():

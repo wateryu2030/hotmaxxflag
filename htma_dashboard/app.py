@@ -195,73 +195,26 @@ else:
 
 def _auth_enabled():
     """是否启用登录（配置了飞书应用则启用）；优先以 app.config 为准，避免进程未继承 shell 变量"""
-    try:
-        from auth import is_feishu_configured
-        return is_feishu_configured(
-            app_id=app.config.get("FEISHU_APP_ID"),
-            app_secret=app.config.get("FEISHU_APP_SECRET"),
-        )
-    except Exception:
-        return False
+    from page_auth import _auth_enabled as _pa_auth_enabled
+    return _pa_auth_enabled()
 
 
 def _parse_id_list(env_name):
     """从环境变量解析以逗号/分号分隔的 open_id / user_id 列表"""
-    raw = (os.environ.get(env_name) or "").strip()
-    if not raw:
-        return set()
-    parts = []
-    for token in raw.replace(";", ",").split(","):
-        t = token.strip()
-        if t:
-            parts.append(t)
-    return set(parts)
+    from page_auth import _parse_id_list as _pa_parse_id_list
+    return _pa_parse_id_list(env_name)
 
 
 def _has_module_access(module, user_id=None):
-    """基于环境变量控制模块访问权限。
-    - 超级管理员（HTMA_SUPER_ADMIN_OPEN_ID，默认余为军）拥有所有模块权限，便于通过飞书调试
-    - HTMA_ADMIN_FEISHU_OPEN_IDS 中的用户也拥有所有模块权限
-    - 各模块 env 为空时默认放行
-    - module: 'import' | 'labor' | 'profit' | 'product_master' | 'profit_share'"""
-    uid = (user_id or session.get("open_id") or session.get("user_id") or "").strip()
-    if not uid:
-        return False
-    # 超级管理员（余为军等）：拥有全部模块权限，便于飞书登录后调试
-    try:
-        from auth import _super_admin_open_id
-        admin_oid = (_super_admin_open_id() or "").strip()
-        if admin_oid:
-            def _norm(o):
-                return (o or "").strip().replace("ou_", "").lower()
-            if _norm(uid) == _norm(admin_oid):
-                return True
-    except Exception:
-        pass
-    # 额外管理员列表
-    admins = _parse_id_list("HTMA_ADMIN_FEISHU_OPEN_IDS")
-    if admins and uid in admins:
-        return True
-    env_map = {
-        "import": "HTMA_IMPORT_ALLOWED_FEISHU_OPEN_IDS",
-        "labor": "HTMA_LABOR_ALLOWED_FEISHU_OPEN_IDS",
-        "profit": "HTMA_PROFIT_ALLOWED_FEISHU_OPEN_IDS",
-        "product_master": "HTMA_PRODUCT_MASTER_ALLOWED_FEISHU_OPEN_IDS",
-        "profit_share": "HTMA_PROFIT_SHARE_ALLOWED_FEISHU_OPEN_IDS",
-        "tax_analysis": "HTMA_TAX_ANALYSIS_ALLOWED_FEISHU_OPEN_IDS",
-    }
-    env_name = env_map.get(module)
-    if not env_name:
-        return True
-    allowed = _parse_id_list(env_name)
-    # 未配置模块白名单时默认放行
-    if not allowed:
-        return True
-    return uid in allowed
+    """基于环境变量控制模块访问权限。"""
+    from page_auth import _has_module_access as _pa_has_module_access
+    return _pa_has_module_access(module, user_id)
 
 
 def _is_logged_in():
-    return bool(session.get("user_id") or session.get("open_id"))
+    """当前 session 是否有已登录用户"""
+    from page_auth import _is_logged_in as _pa_is_logged_in
+    return _pa_is_logged_in()
 
 
 @app.before_request
