@@ -375,6 +375,38 @@
       .page-panel .table-wrap::before { content: '← 左右滑动查看更多'; display: block; font-size: 0.7rem; color: #64748b; margin-bottom: 4px; }
     }
   </style>
+  <!-- 运维面板样式 -->
+  <style>
+    .ops-status-bar { background: #1e293b; border-radius: 8px; padding: 8px 10px; border: 1px solid #334155; border-left: 3px solid #22d3ee; }
+    .ops-card { background: #0f172a; border-radius: 6px; padding: 6px 8px; }
+    .ops-card:hover { background: #1a2332; }
+    .ops-label { font-size: 0.65rem; color: #64748b; margin-bottom: 2px; }
+    .ops-value { color: #e2e8f0; font-weight: 600; }
+    .ops-row { display: flex; gap: 4px; flex-wrap: wrap; }
+    .ops-badge { display: inline-block; padding: 1px 6px; border-radius: 10px; font-size: 0.65rem; font-weight: 600; }
+    .ops-badge.fresh { background: rgba(34,197,94,0.2); color: #22c55e; }
+    .ops-badge.warn { background: rgba(234,179,8,0.2); color: #eab308; }
+    .ops-badge.stale { background: rgba(239,68,68,0.2); color: #ef4444; }
+  </style>
+  <!-- 经营快报样式 -->
+  <style>
+    .biz-card { background: #0f172a; border-radius: 8px; padding: 12px; border: 1px solid #334155; }
+    .biz-card-title { font-size: 0.75rem; color: #94a3b8; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .biz-card-body { font-size: 0.85rem; line-height: 1.7; }
+    .biz-card-body .biz-kv { display: flex; justify-content: space-between; padding: 2px 0; }
+    .biz-card-body .biz-kv .biz-key { color: #94a3b8; }
+    .biz-card-body .biz-kv .biz-val { color: #f1f5f9; font-weight: 600; }
+    .biz-card-body .biz-kv .biz-val.up { color: #22c55e; }
+    .biz-card-body .biz-kv .biz-val.down { color: #ef4444; }
+    .biz-badge { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 600; }
+    .biz-badge.warn { background: rgba(239,68,68,0.15); color: #fca5a5; }
+    .biz-badge.ok { background: rgba(34,197,94,0.15); color: #86efac; }
+    .biz-item { font-size: 0.8rem; padding: 3px 0; color: #cbd5e1; }
+    @media (max-width: 768px) {
+      .biz-summary-grid { grid-template-columns: 1fr !important; }
+      .biz-insight-grid { grid-template-columns: 1fr !important; }
+    }
+  </style>
   <link rel="stylesheet" href="/static/css/mobile.css">
 </head>
 <body class="has-bottom-nav">
@@ -387,12 +419,13 @@
     <div class="navbar-menu" id="navbarMenu">
       <a href="/">返回看板</a>
       <a href="/import">数据导入</a>
-      <a href="/labor">人力成本</a>
-      <a href="/labor_analysis">人力分析</a>
+      <a href="#" onclick="switchToBizPersonCost();return false;">👥 人力成本</a>
       <a href="/product_master">商品档案</a>
       <a href="/profit_share">收益评估</a>
+      <a href="/attribution">销售额归因</a>
       <a href="/tax_analysis" id="linkTaxAnalysis" style="display:none;">税务分析</a>
       <a href="/hongbeilou">红背篓选品</a>
+      <a href="/api/ops/panel" target="_blank" style="color:#22d3ee;">⚙️ 运维面板</a>
       <a href="/login">登录</a>
       <a href="/api/auth/logout">退出</a>
     </div>
@@ -483,6 +516,7 @@
       <button class="nav-tab" data-page="insight">🔍 消费洞察</button>
     </div>
     <div class="export-btns">
+      <button type="button" class="btn-export" id="btnNegativeMarginCsv" title="网页查看负毛利明细" onclick="switchToInsightNegativeMargin()">🔻 负毛利</button>
       <a class="btn-export" id="btnExportProduct" href="#" download="htma_商品明细.csv">导出商品</a>
       <a class="btn-export" id="btnExportCategory" href="#" download="htma_品类明细.csv">导出品类</a>
     </div>
@@ -508,6 +542,7 @@
         <button type="button" class="more-drawer-item" data-page="tax">🧮 税率计算</button>
         <button type="button" class="more-drawer-item" data-page="biz">📌 经营分析</button>
         <button type="button" class="more-drawer-item" data-page="insight">🔍 消费洞察</button>
+        <a class="more-drawer-item" href="/api/ops/panel" target="_blank" style="color:#22d3ee;">⚙️ 运维面板</a>
         <a class="more-drawer-item" href="#" id="moreExportProduct" download="htma_商品明细.csv">导出商品</a>
         <a class="more-drawer-item" href="#" id="moreExportCategory" download="htma_品类明细.csv">导出品类</a>
       </div>
@@ -572,6 +607,7 @@
         <button id="btnGenReport" class="btn-query" style="padding:6px 14px;">生成并发送营销报告</button>
         <div id="reportSendError" class="report-send-err" style="display:none;margin-top:6px;padding:6px 10px;background:rgba(248,113,113,0.15);border:1px solid #334155;border-radius:6px;font-size:0.8rem;color:#fca5a5;"></div>
       </div>
+      <div id="marketingReturnGiftCards" class="dashboard-grid" style="margin-top:10px;"></div>
       <div id="reportHistoryWrap" class="section-inner report-section-inner">
         <h3>历史报告</h3>
         <div id="reportHistoryList" class="table-wrap" style="max-height:200px;overflow-y:auto;"></div>
@@ -593,10 +629,72 @@
 
   <div class="page-panel active" id="pageOverview" data-page="overview">
   <div class="kpi-row" id="kpiRow">
-    <div class="kpi-card"><div class="label">总销售额</div><div class="value" id="kpiSale">-</div></div>
-    <div class="kpi-card"><div class="label">总毛利</div><div class="value" id="kpiProfit">-</div></div>
+    <div class="kpi-card"><div class="label">总销售额</div><div class="value" id="kpiSale" style="color:#38bdf8;">-</div></div>
+    <div class="kpi-card"><div class="label">总毛利</div><div class="value" id="kpiProfit" style="color:#22c55e;">-</div></div>
     <div class="kpi-card"><div class="label">平均毛利率</div><div class="value" id="kpiRate">-</div></div>
-    <div class="kpi-card"><div class="label">库存总额</div><div class="value" id="kpiStock">-</div></div>
+    <div class="kpi-card"><div class="label">库存总额</div><div class="value" id="kpiStock" style="color:#a78bfa;">-</div></div>
+  </div>
+
+  <!-- 🔧 运维状态条 -->
+  <div id="opsStatusBar" class="ops-status-bar" style="display:none;margin-bottom:6px;">
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;">
+      <div class="ops-card" id="opsCardFreshness" style="cursor:pointer;" onclick="window.open('/api/ops/panel','_blank')">
+        <div class="ops-label">数据新鲜度</div>
+        <div class="ops-row">
+          <span class="ops-badge" id="opsSaleFresh">-</span>
+          <span class="ops-badge" id="opsStockFresh">-</span>
+          <span class="ops-badge" id="opsAiFresh">-</span>
+        </div>
+      </div>
+      <div class="ops-card" id="opsCardAlerts" style="cursor:pointer;" onclick="window.open('/api/ops/panel','_blank')">
+        <div class="ops-label">活跃预警</div>
+        <div class="ops-value" id="opsAlertCount" style="font-size:1.3rem;">-</div>
+      </div>
+      <div class="ops-card" id="opsCardInventory">
+        <div class="ops-label">库存金额</div>
+        <div class="ops-value" id="opsInvAmount" style="font-size:1.1rem;">-</div>
+      </div>
+      <div class="ops-card" id="opsCardAi">
+        <div class="ops-label">AI 报告</div>
+        <div class="ops-value" id="opsAiDate" style="font-size:0.9rem;">-</div>
+        <div style="font-size:0.65rem;color:#64748b;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="opsAiSummary"></div>
+      </div>
+    </div>
+    <div style="text-align:right;font-size:0.65rem;color:#475569;margin-top:2px;">
+      <a href="/api/ops/panel" target="_blank" style="color:#22d3ee;">⚙️ 运维面板 →</a>
+    </div>
+  </div>
+
+  <!-- 📊 经营快报（本月/环比/动销周转/品类洞察） -->
+  <div id="bizSummaryRow" class="biz-summary-row" style="display:none;margin-bottom:6px;">
+    <div class="biz-summary-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;">
+      <div class="biz-card">
+        <div class="biz-card-title">📅 本月经营</div>
+        <div class="biz-card-body" id="bizThisMonth">加载中...</div>
+      </div>
+      <div class="biz-card">
+        <div class="biz-card-title">📊 环比上月</div>
+        <div class="biz-card-body" id="bizMom">加载中...</div>
+      </div>
+      <div class="biz-card">
+        <div class="biz-card-title">🔄 动销 & 周转</div>
+        <div class="biz-card-body" id="bizInvHealth">加载中...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 📋 即时洞察：品类问题 -->
+  <div id="bizInsightRow" class="biz-insight-row" style="display:none;margin-bottom:6px;">
+    <div class="biz-insight-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;">
+      <div class="biz-card">
+        <div class="biz-card-title">🔻 负毛利品类</div>
+        <div class="biz-card-body" id="bizNegativeMargin">加载中...</div>
+      </div>
+      <div class="biz-card">
+        <div class="biz-card-title">⭐ 高毛利畅销品类</div>
+        <div class="biz-card-body" id="bizHighMargin">加载中...</div>
+      </div>
+    </div>
   </div>
 
   <div class="trend-section" id="trendSection">
@@ -614,6 +712,15 @@
       <h3>周几对比（周一 vs 周五等）</h3>
       <div id="dowChart" class="chart" style="height:180px;"></div>
       <p class="dow-note" id="dowNote">显示逻辑：在所选 KPI 周期内，按「星期几」汇总销售额，对比周日～周六各天表现。</p>
+    </div>
+  </div>
+
+  <div class="chart-row">
+    <div class="chart-box chart-box-trend" style="grid-column: 1 / -1;">
+      <div class="chart-box-header pie-chart-header">
+        <h3 class="chart-box-title">大类毛利率热力（近12月 × 大类）</h3>
+      </div>
+      <div id="categoryMarginHeatmap" class="chart" style="height:280px;"></div>
     </div>
   </div>
 
@@ -638,6 +745,15 @@
       <div id="barChart" class="chart"></div>
     </div>
   </div>
+  <div class="chart-row">
+    <div class="chart-box chart-box-trend" style="grid-column: 1 / -1;">
+      <div class="chart-box-header pie-chart-header">
+        <h3 class="chart-box-title">各大类销售贡献 vs 毛利贡献</h3>
+        <a href="#" class="btn-export" id="btnContributionCsv">下载 CSV</a>
+      </div>
+      <div id="contributionChart" class="chart" style="height:300px;"></div>
+    </div>
+  </div>
   </div>
 
   <div class="page-panel" id="pageCategory" data-page="category">
@@ -647,6 +763,7 @@
     <table id="categoryRankTable">
       <thead><tr>
         <th style="width:28px;"></th><th>排名</th><th>大类名称</th>
+        <th style="width:64px;">下钻</th>
         <th class="num sortable-th" data-sort="sale_amount">销售额 <span class="sort-arrow">↕</span></th>
         <th class="num sortable-th" data-sort="profit_amount">毛利 <span class="sort-arrow">↕</span></th>
         <th class="num sortable-th" data-sort="margin_pct">毛利率 <span class="sort-arrow">↕</span></th>
@@ -707,6 +824,17 @@
   </div>
 
   <div class="page-panel" id="pageInventory" data-page="inventory">
+  <!-- 🛑 滞销品TOP榜 -->
+  <div class="section scroll-table" id="slowMoverSection" style="display:none;margin-bottom:6px;">
+    <h2>🛑 滞销品TOP榜（库存>3000元且近60天无销售）</h2>
+    <p style="margin-bottom:6px;color:#94a3b8;font-size:0.75rem;">共 <strong id="slowMoverCount" style="color:#f87171;">-</strong> 个SKU，建议定期清理或做促销出清</p>
+    <div class="table-wrap" style="max-height:300px;overflow-y:auto;">
+      <table>
+        <thead><tr><th>商品</th><th>品类</th><th class="num">库存数量</th><th class="num">库存金额</th><th>最后变动</th></tr></thead>
+        <tbody id="slowMoverBody"></tbody>
+      </table>
+    </div>
+  </div>
   <div class="section scroll-table">
     <h2>低库存预警（库存&lt;50 的 SKU）</h2>
     <p style="margin-bottom:6px;color:#94a3b8;font-size:0.75rem;">共 <strong id="alertCount" style="color:#f87171;">-</strong> 个 SKU 需关注 · 按大类展示，点击展开查看明细</p>
@@ -755,6 +883,7 @@
       <button type="button" class="tab-btn insight-tab" data-insight-tab="brand">品牌与供应商</button>
       <button type="button" class="tab-btn insight-tab" data-insight-tab="price">价格与经销</button>
       <button type="button" class="tab-btn insight-tab" data-insight-tab="more">更多分析</button>
+      <button type="button" class="tab-btn insight-tab" data-insight-tab="negative_margin" style="color:#f87171;">🔻 负毛利</button>
       <button type="button" class="tab-btn insight-tab" data-insight-tab="advanced">高级查询</button>
     </div>
     <div id="insightTabOverview" class="insight-tab-panel active" data-insight-tab="overview">
@@ -826,6 +955,8 @@
     <div id="insightTabBrand" class="insight-tab-panel" data-insight-tab="brand">
     <h3 class="label" style="margin-top:0;">品牌贡献 Top10</h3>
     <div class="chart-box" style="height:240px;margin-bottom:8px;"><h3>品牌销售额 Top10（条形图）</h3><div id="insightBrandBarChart" class="chart"></div></div>
+    <h3 class="label" style="margin-top:8px;">品牌表现（/api/brand_performance，与 t_htma_sale 口径一致）</h3>
+    <div class="table-wrap" style="margin-bottom:8px;"><table><thead><tr><th>品牌</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">毛利率%</th></tr></thead><tbody id="brandPerformanceApiBody"><tr><td colspan="4" class="loading">加载中…</td></tr></tbody></table></div>
     <div class="table-wrap"><table data-insight-table="brand"><thead><tr><th class="insight-no">序号</th><th class="sortable" data-sort-key="brand">品牌</th><th class="num sortable" data-sort-key="sale_amount">销售额</th><th class="num sortable" data-sort-key="profit">毛利</th><th class="num sortable" data-sort-key="qty">销量</th><th class="num sortable" data-sort-key="sku_sold">动销SKU数</th><th class="num sortable" data-sort-key="margin_pct">毛利率%</th><th class="num sortable" data-sort-key="contrib_pct">贡献%</th></tr></thead><tbody id="insightBrandBody"></tbody></table></div>
     <h3 class="label" style="margin-top:12px;">单品销售 Top20</h3>
     <div class="table-wrap"><table data-insight-table="topSku"><thead><tr><th class="insight-no">序号</th><th class="sortable" data-sort-key="sku_code">货号</th><th class="sortable" data-sort-key="product_name">品名</th><th class="num sortable" data-sort-key="sale_amount">销售额</th><th class="num sortable" data-sort-key="profit">毛利</th><th class="num sortable" data-sort-key="qty">销量</th><th class="num sortable" data-sort-key="margin_pct">毛利率%</th></tr></thead><tbody id="insightTopSkuBody"></tbody></table></div>
@@ -862,6 +993,14 @@
     </div>
     <h3 class="label" style="margin-top:12px;">退货率（按品类，有退货的品类）</h3>
     <div class="table-wrap"><table data-insight-table="returnByCat"><thead><tr><th class="insight-no">序号</th><th class="sortable" data-sort-key="category">品类</th><th class="num sortable" data-sort-key="sale_amount">销售额</th><th class="num sortable" data-sort-key="return_amount">退货额</th><th class="num sortable" data-sort-key="return_rate_pct">退货率%</th></tr></thead><tbody id="insightReturnByCatBody"></tbody></table></div>
+    </div>
+    <div id="insightTabNegativeMargin" class="insight-tab-panel" data-insight-tab="negative_margin">
+      <h3 class="label" style="margin-top:0;">🔻 负毛利 SKU 明细（销售额>0 且毛利<0）</h3>
+      <p class="section-desc" style="margin-bottom:8px;">列表按毛利从低到高排列，数据周期与顶部 KPI 周期一致。</p>
+      <div class="table-wrap" style="max-height:420px;overflow-y:auto;">
+        <table><thead><tr><th>商品编码</th><th>品名</th><th>品类</th><th class="num">销量</th><th class="num">销售额</th><th class="num">成本</th><th class="num">毛利</th><th class="num">毛利率%</th></tr></thead>
+        <tbody id="insightNegativeMarginBody"></tbody></table>
+      </div>
     </div>
     <div id="insightTabAdvanced" class="insight-tab-panel" data-insight-tab="advanced">
       <h3 class="label" style="margin-top:0;">高级查询 · 大额商品/智能筛选</h3>
@@ -935,9 +1074,10 @@
       <button class="tab-btn biz-sub" data-biz="price_band">价格带</button>
       <button class="tab-btn biz-sub" data-biz="turnover">周转</button>
       <button class="tab-btn biz-sub" data-biz="abc">ABC</button>
-      <button class="tab-btn biz-sub" data-biz="negative_margin">负毛利明细</button>
       <button class="tab-btn biz-sub" data-biz="category_trend">品类趋势</button>
       <button class="tab-btn biz-sub" data-biz="inv_turnover">库存周转</button>
+      <button class="tab-btn biz-sub" data-biz="person_cost" style="color:#22d3ee;">👥 人力成本</button>
+      <button class="tab-btn biz-sub" data-biz="labor_efficiency" style="color:#fbbf24;">📊 人力效能</button>
       <button class="tab-btn biz-sub" data-biz="data_quality">数据质量</button>
     </div>
     <div id="bizDataStatusBar" class="data-status-bar" style="margin-bottom:8px;"></div>
@@ -964,10 +1104,6 @@
       <div class="kpi-row" style="margin-bottom:8px;" id="abcSummaryKpi"></div>
       <div class="table-wrap"><table id="abcSummaryTable"><thead><tr><th style="width:28px;"></th><th>分类</th><th class="num">该类 SKU 数</th><th class="num">本批销售额</th><th class="num">本批毛利</th><th class="num">累计贡献%</th></tr></thead><tbody id="skuAbcBody"></tbody></table></div>
     </div>
-    <div id="bizNegativeMargin" class="biz-block" style="display:none;">
-      <p style="margin-bottom:6px;"><a id="negativeMarginExport" class="btn-export" href="#">导出 CSV</a></p>
-      <div class="table-wrap"><table><thead><tr><th>商品编码</th><th>品名</th><th>品类</th><th class="num">销量</th><th class="num">销售额</th><th class="num">成本</th><th class="num">毛利</th><th class="num">毛利率%</th></tr></thead><tbody id="negativeMarginBody"></tbody></table></div>
-    </div>
     <div id="bizCategoryTrend" class="biz-block" style="display:none;">
       <div class="chart-tabs" style="margin-bottom:6px;"><button class="tab-btn cat-trend-gran active" data-gran="week">按周</button><button class="tab-btn cat-trend-gran" data-gran="month">按月</button></div>
       <div id="categoryTrendChart" class="chart" style="height:280px;"></div>
@@ -985,8 +1121,42 @@
       <div class="kpi-row" id="dataQualityKpi"></div>
       <p id="dataQualitySample" class="section-desc"></p>
     </div>
-  </div>
-
+    <!-- 人力成本区块 -->
+    <div id="bizPersonCost" class="biz-block" style="display:none;">
+      <h2>👥 人力成本分析</h2>
+      <div class="form-row" style="margin-bottom:12px;">
+        <label for="bizLaborMonth" style="color:#94a3b8;font-size:0.85rem;">月份：</label>
+        <input type="month" id="bizLaborMonth" style="padding:6px 10px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:0.85rem;" />
+        <button class="tab-btn" onclick="loadBizLaborCost()" style="padding:6px 14px;">查询</button>
+        <span id="bizLaborMonthNav" style="font-size:0.8rem;color:#64748b;"></span>
+      </div>
+      <div id="bizLaborStatus" style="font-size:0.8rem;color:#64748b;margin-bottom:8px;"></div>
+      <div class="kpi-row" id="bizLaborKpi" style="margin-bottom:10px;"></div>
+      <div id="bizLaborSummaryBox" style="margin-bottom:10px;"></div>
+      <h3 class="label" style="margin-top:12px;">组长/职能明细</h3>
+      <div class="table-wrap" style="max-height:200px;overflow-y:auto;margin-bottom:12px;">
+        <table><thead><tr><th>岗位</th><th class="num">工资合计</th><th class="num">税前工资</th><th class="num">奢品津贴</th><th class="num">实发</th><th class="num">公司承担</th><th class="num">总成本</th></tr></thead>
+        <tbody id="bizLaborLeadersBody"></tbody></table>
+      </div>
+      <h3 class="label" style="margin-top:12px;">全职/组员明细</h3>
+      <div class="table-wrap" style="max-height:200px;overflow-y:auto;">
+        <table><thead><tr><th>岗位</th><th class="num">工时</th><th class="num">底薪</th><th class="num">绩效</th><th class="num">岗位津贴</th><th class="num">工资合计</th><th class="num">奢品金额</th><th class="num">实发</th><th class="num">公司承担</th></tr></thead>
+        <tbody id="bizLaborFulltimeBody"></tbody></table>
+      </div>
+    </div>
+      </div>
+    </div>
+    <!-- 人力效能区块 -->
+    <div id="bizLaborEfficiency" class="biz-block" style="display:none;">
+      <h2>📊 人力效能分析</h2>
+      <div id="laborEffDiag" style="margin-bottom:10px;"></div>
+      <div id="laborEffMonths" style="margin-bottom:16px;">
+        <label for="laborEffMonthSelect" style="color:#94a3b8;font-size:0.85rem;">月份：</label>
+        <select id="laborEffMonthSelect" onchange="renderLaborEfficiency()" style="padding:6px 10px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:0.85rem;"></select>
+      </div>
+      <div id="laborEffOverview" class="kpi-row" style="margin-bottom:12px;"></div>
+      <div id="laborEffTableWrap"><div class="loading" style="color:#64748b;text-align:center;padding:40px;">加载中...</div></div>
+    </div>
   </div>
 
   <script>
@@ -999,6 +1169,28 @@
       if (o && o !== 'null' && o !== 'undefined' && (o.startsWith('http://') || o.startsWith('https://'))) return o;
       return 'http://127.0.0.1:5002';
     })();
+    console.log('[htma] API initialized:', API);
+    /** 看板数据请求：显式带 Cookie；若会话失效（401 + login_required）则跳登录，避免把错误 JSON 当数据导致「只有框架没有数」 */
+    function dashboardResolveUrl(url) {
+      if (typeof url === 'string' && url.startsWith('/')) return (window.location.origin || '') + url;
+      return url;
+    }
+    async function dashboardFetch(url, init) {
+      const o = Object.assign({ credentials: 'same-origin', headers: { 'Accept': 'application/json' } }, init || {});
+      const r = await fetch(dashboardResolveUrl(url), o);
+      if (r.status === 401) {
+        try {
+          const j = await r.clone().json();
+          if (j && j.login_required) {
+            window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname + window.location.search || '/');
+            throw new Error('请先登录');
+          }
+        } catch (e) {
+          if (e && e.message === '请先登录') throw e;
+        }
+      }
+      return r;
+    }
     let currentPeriod = 'recent30';
     let currentGranularity = 'day';
     let currentStartDate = '';
@@ -1091,7 +1283,13 @@
     async function loadKpi() {
       try {
         var qs = queryParams();
-        const r = await fetch(API + '/api/kpi?' + qs);
+        const r = await dashboardFetch(API + '/api/kpi?' + qs);
+        if (!r.ok) {
+          const t = await r.text();
+          var em = r.status + ' ' + (r.statusText || '');
+          try { var ej = JSON.parse(t); em = ej.message || ej.error || em; } catch (_) {}
+          throw new Error(em);
+        }
         const d = await r.json();
         document.getElementById('kpiSale').textContent = fmtNum(d.total_sale_amount);
         document.getElementById('kpiProfit').textContent = fmtNum(d.total_gross_profit);
@@ -1103,6 +1301,165 @@
           console.warn('[看板] 已选自定义 ' + currentStartDate + '~' + currentEndDate + ' 但接口未返回 start_date/end_date，可能请求未带上。请强制刷新(Ctrl+Shift+R)或清除缓存后重试。');
         }
       } catch (e) { document.getElementById('kpiRow').innerHTML = '<div class="error">KPI 加载失败: ' + e.message + '</div>'; }
+      // 每次加载 KPI 后同步刷新运维状态和经营快报（各自独立并行）
+      loadOpsStatus();
+      loadBizSummary();
+    }
+
+    /** 加载运维面板状态条 */
+    async function loadOpsStatus() {
+      try {
+        const r = await dashboardFetch((API || '') + '/api/ops/dashboard');
+        if (!r.ok) return;
+        const j = await r.json();
+        if (j.code !== 0 || !j.data) return;
+        var d = j.data;
+        var freshness = d.data_freshness || {};
+        var bar = document.getElementById('opsStatusBar');
+        if (!bar) return;
+
+        // 新鲜度：必须原地更新节点，禁止 outerHTML 换无 id 的 HTML，否则第二次 loadKpi 时 getElementById 为 null 整段抛错
+        function applyOpsFreshBadge(el, days, label) {
+          if (!el) return;
+          var txt = label + (days === 0 ? '今天' : days === 1 ? '昨天' : (days != null ? days + '天前' : ''));
+          if (days == null) {
+            el.className = 'ops-badge stale';
+            el.textContent = '无数据';
+            return;
+          }
+          el.className = 'ops-badge ' + (days <= 1 ? 'fresh' : days <= 3 ? 'warn' : 'stale');
+          el.textContent = txt;
+        }
+        applyOpsFreshBadge(document.getElementById('opsSaleFresh'), freshness.sale_days_ago, '销');
+        applyOpsFreshBadge(document.getElementById('opsStockFresh'), freshness.stock_days_ago, '库');
+        applyOpsFreshBadge(document.getElementById('opsAiFresh'), freshness.ai_report_days_ago, 'AI');
+
+        // 预警
+        var alerts = d.active_alerts || [];
+        var alertEl = document.getElementById('opsAlertCount');
+        if (alertEl) {
+          alertEl.textContent = alerts.length;
+          alertEl.style.color = alerts.length > 0 ? '#fbbf24' : '#22c55e';
+        }
+
+        // 库存
+        var inv = d.inventory_summary || {};
+        var invAmtEl = document.getElementById('opsInvAmount');
+        if (invAmtEl) invAmtEl.textContent = '¥' + ((inv.total_amount || 0) / 10000).toFixed(0) + '万';
+
+        // AI 报告
+        var ai = d.latest_ai_report || {};
+        var aiDateEl = document.getElementById('opsAiDate');
+        if (aiDateEl) aiDateEl.textContent = ai.date || '无';
+        if (ai.content) {
+          var sumEl = document.getElementById('opsAiSummary');
+          if (sumEl) sumEl.textContent = ai.content.replace(/<[^>]*>/g, '').slice(0, 60) + '…';
+        }
+
+        bar.style.display = 'block';
+      } catch (e) {
+        // 静默失败，不影响看板主流程
+        console.warn('[ops] loadOpsStatus error:', e);
+      }
+    }
+
+    /** 加载经营快报 — 完全并行，每个卡片独立渲染 */
+    function loadBizSummary() {
+      var rowSum = document.getElementById('bizSummaryRow');
+      var rowInsight = document.getElementById('bizInsightRow');
+      if (!rowSum || !rowInsight) return;
+      rowSum.style.display = 'block';
+      rowInsight.style.display = 'block';
+
+      function bizCardErr(msg) {
+        var m = msg || '加载失败';
+        var el1 = document.getElementById('bizThisMonth');
+        var el2 = document.getElementById('bizMom');
+        var el3 = document.getElementById('bizInvHealth');
+        var el4 = document.getElementById('bizNegativeMargin');
+        var el5 = document.getElementById('bizHighMargin');
+        var h = '<div class="biz-item" style="color:#fca5a5;">' + escHtml(m) + '</div>';
+        if (el1) el1.innerHTML = h;
+        if (el2) el2.innerHTML = h;
+        if (el3) el3.innerHTML = h;
+        if (el4) el4.innerHTML = h;
+        if (el5) el5.innerHTML = h;
+      }
+
+      // 卡片1~3: 全从 /api/biz/summary 来，一次请求三张卡（与 KPI 同 origin + Cookie；后端按当前门店聚合）
+      var _bizBase = (API || window.location.origin || '');
+      dashboardFetch(_bizBase + '/api/biz/summary').then(function(r) {
+        if (!r.ok) return Promise.reject(new Error('HTTP ' + r.status));
+        return r.json();
+      }).then(function(j){
+        if (!j || j.code !== 0) {
+          bizCardErr((j && j.msg) || (j && j.message) || '经营摘要接口异常');
+          return;
+        }
+        var d = j.data, tm = d.this_month || {}, lm = d.last_month || {}, mom = d.sale_mom_change_pct;
+
+        // 本月经营
+        var el1 = document.getElementById('bizThisMonth');
+        if (el1) el1.innerHTML =
+          '<div class="biz-kv"><span class="biz-key">销售额</span><span class="biz-val">' + fmtNum(tm.sales) + '</span></div>' +
+          '<div class="biz-kv"><span class="biz-key">毛利</span><span class="biz-val">' + fmtNum(tm.profit) + '</span></div>' +
+          '<div class="biz-kv"><span class="biz-key">毛利率</span><span class="biz-val" style="color:' + (tm.margin_pct >= 30 ? '#22c55e' : '#eab308') + '">' + (tm.margin_pct || 0) + '%</span></div>' +
+          '<div class="biz-kv" style="border-top:1px solid #1e293b;margin-top:6px;padding-top:6px;"><span class="biz-key">净利润（扣人力）</span><span class="biz-val" style="color:' + (d.net_profit >= 0 ? '#22c55e' : '#ef4444') + '">' + fmtNum(d.net_profit) + '</span></div>';
+
+        // 环比
+        var el2 = document.getElementById('bizMom');
+        if (el2) el2.innerHTML =
+          '<div class="biz-kv"><span class="biz-key">上月销售额</span><span class="biz-val">' + fmtNum(lm.sales) + '</span></div>' +
+          '<div class="biz-kv"><span class="biz-key">上月毛利</span><span class="biz-val">' + fmtNum(lm.profit) + '</span></div>' +
+          '<div class="biz-kv"><span class="biz-key">环比变动</span><span class="biz-val ' + (mom >= 0 ? 'up' : 'down') + '">' + (mom >= 0 ? '↑' : '↓') + ' ' + Math.abs(mom) + '%</span></div>' +
+          '<div class="biz-kv" style="border-top:1px solid #1e293b;margin-top:6px;padding-top:6px;"><span class="biz-key">人力成本</span><span class="biz-val">' + fmtNum(d.labor_cost) + '</span></div>';
+
+        // 动销周转
+        var el3 = document.getElementById('bizInvHealth');
+        if (el3) el3.innerHTML =
+          '<div class="biz-kv"><span class="biz-key">动销率</span><span class="biz-val" style="color:' + (d.turnover_rate >= 30 ? '#22c55e' : '#eab308') + '">' + d.turnover_rate + '%</span></div>' +
+          '<div class="biz-kv"><span class="biz-key">库存周转</span><span class="biz-val" style="color:' + (d.inv_turnover_days <= 90 ? '#22c55e' : '#eab308') + '">' + d.inv_turnover_days + '天</span></div>' +
+          '<div class="biz-kv"><span class="biz-key">库销比</span><span class="biz-val">' + d.stock_to_sales_ratio + '</span></div>' +
+          '<div style="display:flex;gap:6px;margin-top:6px;padding-top:6px;border-top:1px solid #1e293b;">' +
+          '<span class="biz-badge ' + (d.low_stock_with_sales > 100 ? 'warn' : 'ok') + '">缺货' + (d.low_stock_with_sales || 0) + '</span>' +
+          '<span class="biz-badge ' + (d.slow_mover_count > 0 ? 'warn' : 'ok') + '">滞销' + d.slow_mover_count + '</span></div>';
+      }).catch(function(e){
+        console.warn('[biz] summary error:', e);
+        bizCardErr(e && e.message ? e.message : '经营摘要请求失败');
+      });
+
+      // 卡片4~5: 品类洞察，独立并行
+      dashboardFetch(_bizBase + '/api/biz/category').then(function(r) {
+        if (!r.ok) return Promise.reject(new Error('HTTP ' + r.status));
+        return r.json();
+      }).then(function(j){
+        if (!j || j.code !== 0) {
+          var el4 = document.getElementById('bizNegativeMargin');
+          var el5 = document.getElementById('bizHighMargin');
+          var err = (j && j.msg) || '品类接口异常';
+          if (el4) el4.innerHTML = '<div class="biz-item" style="color:#fca5a5;">' + escHtml(err) + '</div>';
+          if (el5) el5.innerHTML = '<div class="biz-item" style="color:#fca5a5;">' + escHtml(err) + '</div>';
+          return;
+        }
+        var cd = j.data;
+        var el4 = document.getElementById('bizNegativeMargin');
+        if (el4) el4.innerHTML = cd.negative_margin_items && cd.negative_margin_items.length
+          ? cd.negative_margin_items.map(function(it){ return '<div class="biz-item" style="color:#fca5a5;">🔻 ' + escHtml(it.name) + ' 毛利率' + it.margin_pct + '%</div>'; }).join('')
+          : '<div class="biz-item" style="color:#22c55e;">✅ 无负毛利品类</div>';
+
+        var el5 = document.getElementById('bizHighMargin');
+        if (el5) el5.innerHTML = cd.high_margin_items && cd.high_margin_items.length
+          ? cd.high_margin_items.map(function(it){ return '<div class="biz-item" style="color:#86efac;">🟢 ' + escHtml(it.name) + ' 毛利' + it.margin_pct + '% 占比' + it.share_pct + '%</div>'; }).join('')
+          : '<div class="biz-item" style="color:#64748b;">暂无高毛利品类</div>';
+      }).catch(function(e){
+        console.warn('[biz] category error:', e);
+        var el4 = document.getElementById('bizNegativeMargin');
+        var el5 = document.getElementById('bizHighMargin');
+        var m = (e && e.message) ? e.message : '品类请求失败';
+        var h = '<div class="biz-item" style="color:#fca5a5;">' + escHtml(m) + '</div>';
+        if (el4) el4.innerHTML = h;
+        if (el5) el5.innerHTML = h;
+      });
     }
 
     let pieChartInstance = null;
@@ -1126,7 +1483,7 @@
       const el = document.getElementById('pieChart');
       const showData = document.getElementById('pieShowData');
       try {
-        const r = await fetch(API + '/api/category_pie?' + queryParams());
+        const r = await dashboardFetch(API + '/api/category_pie?' + queryParams());
         const data = await r.json();
         pieChartData = data.map(x => ({ name: String(x.category || ''), value: Number(x.sale_amount) || 0 }));
         ensureEcharts(function() {
@@ -1176,7 +1533,7 @@
       const el = document.getElementById('barChart');
       const noteEl = document.getElementById('barChartNote');
       try {
-        const r = await fetch(API + '/api/sales_trend?granularity=' + currentGranularity + '&' + queryParams());
+        const r = await dashboardFetch(API + '/api/sales_trend?granularity=' + currentGranularity + '&' + queryParams());
         if (!r.ok) {
           const errText = await r.text();
           let errMsg = r.status + ' ' + r.statusText;
@@ -1226,6 +1583,87 @@
       } catch (e) { el.innerHTML = '<div class="loading">加载失败: ' + (e.message || '').replace(/</g,'&lt;') + '</div>'; if (noteEl) noteEl.textContent = ''; }
     }
 
+    let contributionChartInstance = null;
+    let categoryHeatmapInstance = null;
+
+    async function loadContributionStructure() {
+      const el = document.getElementById('contributionChart');
+      if (!el || !API) return;
+      try {
+        const r = await dashboardFetch(API + '/api/contribution_structure?' + queryParams());
+        const d = await r.json();
+        if (!d.success || !d.items || !d.items.length) { el.innerHTML = '<div class="loading">暂无数据</div>'; return; }
+        ensureEcharts(function() {
+          if (typeof echarts === 'undefined') { el.innerHTML = '<div class="loading">图表库未加载</div>'; return; }
+          if (!contributionChartInstance) contributionChartInstance = echarts.init(el);
+          const cats = d.items.map(x => String(x.category_large || '').slice(0, 12));
+          contributionChartInstance.setOption({
+            tooltip: { trigger: 'axis' },
+            legend: { data: ['销售占比%', '毛利占比%'], textStyle: { color: '#94a3b8' }, bottom: 0 },
+            grid: { left: 100, right: 24, top: 28, bottom: 44 },
+            xAxis: { type: 'value', max: 100, axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: '#334155' } } },
+            yAxis: { type: 'category', data: cats, axisLabel: { color: '#94a3b8' } },
+            series: [
+              { name: '销售占比%', type: 'bar', data: d.items.map(x => x.sales_share), itemStyle: { color: '#38bdf8' } },
+              { name: '毛利占比%', type: 'bar', data: d.items.map(x => x.profit_share), itemStyle: { color: '#34d399' } }
+            ]
+          });
+        });
+      } catch (e) { el.innerHTML = '<div class="loading">加载失败</div>'; }
+    }
+
+    async function loadCategoryMarginHeatmap() {
+      const el = document.getElementById('categoryMarginHeatmap');
+      if (!el || !API) return;
+      try {
+        const r = await dashboardFetch(API + '/api/category_trend_heatmap?' + queryParams());
+        const d = await r.json();
+        if (!d.success || !(d.months || []).length) { el.innerHTML = '<div class="loading">暂无数据</div>'; return; }
+        const months = d.months;
+        const cats = (d.categories || []).slice(0, 24);
+        const raw = d.raw || [];
+        const data = [];
+        cats.forEach(function(cat, ci) {
+          months.forEach(function(m, mi) {
+            const row = raw.find(function(x) { return x.category_large === cat && x.month === m; });
+            if (row && row.margin_pct != null) data.push([mi, ci, row.margin_pct]);
+          });
+        });
+        ensureEcharts(function() {
+          if (typeof echarts === 'undefined') { el.innerHTML = '<div class="loading">图表库未加载</div>'; return; }
+          if (!categoryHeatmapInstance) categoryHeatmapInstance = echarts.init(el);
+          categoryHeatmapInstance.setOption({
+            tooltip: { position: 'top' },
+            grid: { height: '68%', top: '10%', left: 72, right: 12 },
+            xAxis: { type: 'category', data: months, splitArea: { show: true }, axisLabel: { color: '#94a3b8', rotate: 30 } },
+            yAxis: { type: 'category', data: cats, splitArea: { show: true }, axisLabel: { color: '#94a3b8' } },
+            visualMap: { min: 0, max: 45, calculable: true, orient: 'horizontal', left: 'center', bottom: '0%', inRange: { color: ['#0f172a', '#38bdf8', '#34d399'] }, textStyle: { color: '#94a3b8' } },
+            series: [{ name: '毛利率%', type: 'heatmap', data: data, emphasis: { itemStyle: { shadowBlur: 8, shadowColor: 'rgba(0,0,0,0.45)' } } }]
+          });
+        });
+      } catch (e) { el.innerHTML = '<div class="loading">加载失败</div>'; }
+    }
+
+    async function loadMarketingReturnGiftCards() {
+      const host = document.getElementById('marketingReturnGiftCards');
+      if (!host || !API) return;
+      try {
+        const r = await dashboardFetch(API + '/api/return_gift_share?' + queryParams());
+        const d = await r.json();
+        if (!d.success || d.skipped) {
+          host.innerHTML = '<p class="section-desc" style="margin:0;">退货/赠送按大类：' + (d.message || '无 return_amount 列或未配置') + '</p>';
+          return;
+        }
+        const items = d.items || [];
+        const byRet = [...items].sort((a, b) => (b.return_rate_pct || 0) - (a.return_rate_pct || 0)).slice(0, 5);
+        const byGift = [...items].sort((a, b) => (b.gift_rate_pct || 0) - (a.gift_rate_pct || 0)).slice(0, 5);
+        host.innerHTML = '<div class="kpi-card"><div class="label">退货率 Top5 大类</div><div class="value" style="font-size:0.78rem;line-height:1.35;">' +
+          byRet.map(x => (x.category_large || '-') + ' ' + (x.return_rate_pct != null ? x.return_rate_pct : 0) + '%').join('<br/>') + '</div></div>' +
+          '<div class="kpi-card"><div class="label">赠送率 Top5 大类</div><div class="value" style="font-size:0.78rem;line-height:1.35;">' +
+          byGift.map(x => (x.category_large || '-') + ' ' + (x.gift_rate_pct != null ? x.gift_rate_pct : 0) + '%').join('<br/>') + '</div></div>';
+      } catch (e) { host.innerHTML = ''; }
+    }
+
     function safeArray(data) {
       if (Array.isArray(data)) return data;
       if (data && Array.isArray(data.items)) return data.items;
@@ -1236,7 +1674,7 @@
     async function loadProfitDetail() {
       const tbody = document.getElementById('profitTableBody');
       try {
-        const r = await fetch(API + '/api/profit_summary?' + queryParams());
+        const r = await dashboardFetch(API + '/api/profit_summary?' + queryParams());
         if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
         const data = await r.json();
         profitDetailData = safeArray(data);
@@ -1301,7 +1739,7 @@
           }
           try {
             const q = queryParams({ expand_category: cat });
-            const r = await fetch(API + '/api/profit_detail?' + q + '&page_size=365');
+            const r = await dashboardFetch(API + '/api/profit_detail?' + q + '&page_size=365');
             const d = await r.json();
             const items = d.items || [];
             const detailHtml = items.map(row => `<tr class="detail-row">
@@ -1330,7 +1768,7 @@
       const pagEl = document.getElementById('productPagination');
       try {
         const q = queryParams({ page: page || currentDetailPage.product, page_size: PAGE_SIZE });
-        const r = await fetch(API + '/api/sale_summary?' + q);
+        const r = await dashboardFetch(API + '/api/sale_summary?' + q);
         if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
         const d = await r.json();
         const rows = safeArray(d);
@@ -1404,7 +1842,7 @@
           }
           try {
             const q = queryParams({ sku_code: sku });
-            const r = await fetch(API + '/api/sale_detail?' + q + '&page_size=365');
+            const r = await dashboardFetch(API + '/api/sale_detail?' + q + '&page_size=365');
             const d = await r.json();
             const items = d.items || [];
             const detailHtml = items.map(row => `<tr class="detail-row">
@@ -1455,7 +1893,7 @@
       const bar = document.getElementById('authUserBar');
       if (!bar) return;
       try {
-        const r = await fetch(API + '/api/auth/me');
+        const r = await dashboardFetch(API + '/api/auth/me');
         if (r.ok) {
           const d = await r.json();
           if (d.name) bar.innerHTML = '· 欢迎，' + (d.name || '').replace(/</g, '&lt;') + ' <a href="/api/auth/logout" style="color:#38bdf8;">退出</a>';
@@ -1489,7 +1927,7 @@
       var approvalLink = document.getElementById('adminReminderApprovalLink');
       if (!bar || !textEl) return;
       try {
-        var r = await fetch(API + '/api/auth/pending_count');
+        var r = await dashboardFetch(API + '/api/auth/pending_count');
         if (!r.ok) return; // 404 等：接口未部署或需重启看板，不展示管理员条
         var d = await r.json();
         if (!d.success || !d.is_super_admin) return;
@@ -1508,7 +1946,7 @@
       const el = document.getElementById('dataStatusText');
       if (!el) return;
       try {
-        const r = await fetch(API + '/api/data_status');
+        const r = await dashboardFetch(API + '/api/data_status');
         const d = await r.json();
         const range = (d.min_date && d.max_date) ? `${d.min_date} ~ ${d.max_date}` : '-';
         el.innerHTML = `销售 <strong>${d.sale_count || 0}</strong> 条 · 库存 <strong>${d.stock_count || 0}</strong> 条 · 毛利 <strong>${d.profit_count || 0}</strong> 条 · 日期范围 <strong>${range}</strong>`;
@@ -1522,7 +1960,7 @@
         if (currentCategoryMidCode) q.set('category_mid_code', currentCategoryMidCode);
         if (currentCategorySmallCode) q.set('category_small_code', currentCategorySmallCode);
         const url = API + '/api/products' + (q.toString() ? '?' + q : '');
-        const r = await fetch(url);
+        const r = await dashboardFetch(url);
         const list = await r.json();
         const sel = document.getElementById('productSelect');
         sel.innerHTML = '<option value="">全部商品</option>' + list.map(p =>
@@ -1537,14 +1975,14 @@
       const wrap = document.getElementById('categoryRankDetailWrap');
       wrap.style.display = 'none';
       try {
-        const r = await fetch(API + '/api/category_rank_by_large?' + queryParams());
+        const r = await dashboardFetch(API + '/api/category_rank_by_large?' + queryParams());
         if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
         const data = await r.json();
         categoryRankData = safeArray(data);
         renderCategoryRank();
         bindCategoryRankExpand();
         bindCategoryRankSort();
-      } catch (e) { tbody.innerHTML = '<tr><td colspan="8" class="error">加载失败: ' + e.message + '</td></tr>'; }
+      } catch (e) { tbody.innerHTML = '<tr><td colspan="9" class="error">加载失败: ' + e.message + '</td></tr>'; }
     }
 
     function renderCategoryRank() {
@@ -1556,15 +1994,20 @@
         const vb = b[key] != null ? Number(b[key]) : 0;
         return asc ? va - vb : vb - va;
       });
+      const qp = queryParams();
       tbody.innerHTML = sorted.length === 0
-        ? '<tr><td colspan="8" class="loading">暂无数据</td></tr>'
+        ? '<tr><td colspan="9" class="loading">暂无数据</td></tr>'
         : sorted.map((row, i) => {
             const code = (row.category_large_code || row.category_large || '').replace(/"/g, '&quot;');
             const name = (row.category_large || '未分类').replace(/</g, '&lt;');
+            const drillKey = encodeURIComponent((row.category_large_code || row.category_large || name || '').trim());
+            const drillHref = '/category_drill?large=' + drillKey + (qp ? ('&' + qp) : '');
+            const drillLink = '<a href="' + drillHref + '" style="color:#38bdf8;font-size:0.75rem;" onclick="event.stopPropagation();">中类</a>';
             return `<tr class="summary-row cat-rank-row" data-expanded="0" data-large-code="${code}" data-large-name="${name}">
               <td><span class="expand-icon">▶</span></td>
               <td>${i + 1}</td>
               <td>${name}</td>
+              <td>${drillLink}</td>
               <td class="num">${fmtMoney(row.sale_amount)}</td>
               <td class="num">${fmtMoney(row.profit_amount)}</td>
               <td class="num">${(row.margin_pct != null ? row.margin_pct : 0).toFixed(2)}%</td>
@@ -1620,12 +2063,12 @@
           productRow.dataset.expanded = '1';
           const loadTr = document.createElement('tr');
           loadTr.className = 'cat-sale-detail-wrap';
-          loadTr.innerHTML = '<td colspan="7"><div class="category-sale-detail"><table><thead><tr><th>日期</th><th class="num">销量</th><th class="num">销售额</th><th class="num">成本</th><th class="num">毛利</th><th class="num">毛利率</th></tr></thead><tbody><tr><td colspan="6" class="loading">加载销售明细...</td></tr></tbody></table></div></td>';
+          loadTr.innerHTML = '<td colspan="9"><div class="category-sale-detail"><table><thead><tr><th>日期</th><th class="num">销量</th><th class="num">销售额</th><th class="num">成本</th><th class="num">毛利</th><th class="num">毛利率</th></tr></thead><tbody><tr><td colspan="6" class="loading">加载销售明细...</td></tr></tbody></table></div></td>';
           productRow.after(loadTr);
           try {
             const base = queryParams();
             const q = (base ? base + '&' : '') + 'sku_code=' + encodeURIComponent(skuCode) + '&page=1&page_size=100';
-            const r = await fetch(API + '/api/sale_detail?' + q);
+            const r = await dashboardFetch(API + '/api/sale_detail?' + q);
             if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
             const d = await r.json();
             const items = d.items || [];
@@ -1664,7 +2107,7 @@
           try {
             const base = queryParams();
             const q = (base ? base + '&' : '') + 'category_large_code=' + encodeURIComponent(largeCode) + '&category_mid_code=' + encodeURIComponent(midCode) + '&category_small_code=' + encodeURIComponent(smallCode || smallName) + '&brand=' + encodeURIComponent(brand);
-            const r = await fetch(API + '/api/category_rank_products?' + q);
+            const r = await dashboardFetch(API + '/api/category_rank_products?' + q);
             if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
             const rows = safeArray(await r.json());
             const tbody = loadTr.querySelector('tbody');
@@ -1705,7 +2148,7 @@
           try {
             const base = queryParams();
             const q = (base ? base + '&' : '') + 'category_large_code=' + encodeURIComponent(largeCode) + '&category_mid_code=' + encodeURIComponent(midCode) + '&category_small_code=' + encodeURIComponent(smallCode || smallName);
-            const r = await fetch(API + '/api/category_rank_brands?' + q);
+            const r = await dashboardFetch(API + '/api/category_rank_brands?' + q);
             if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
             const rows = safeArray(await r.json());
             const tbody = loadTr.querySelector('tbody');
@@ -1747,7 +2190,7 @@
           try {
             const base = queryParams();
             const q = (base ? base + '&' : '') + 'category_large_code=' + encodeURIComponent(largeCode || largeName) + '&category_mid_code=' + encodeURIComponent(key);
-            const r = await fetch(API + '/api/category_rank_small?' + q);
+            const r = await dashboardFetch(API + '/api/category_rank_small?' + q);
             if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
             const rows = safeArray(await r.json());
             const smallTbody = loadRow.querySelector('tbody');
@@ -1789,12 +2232,12 @@
         if (!key) return;
         const wrapTr = document.createElement('tr');
         wrapTr.className = 'cat-rank-mid-wrap';
-        wrapTr.innerHTML = '<td colspan="8"><div class="category-mid-detail"><table class="cat-mid-table"><thead><tr><th style="width:28px;"></th><th>排名</th><th>中类</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">毛利率</th></tr></thead><tbody><tr><td colspan="6" class="loading">加载中类...</td></tr></tbody></table></div></td>';
+        wrapTr.innerHTML = '<td colspan="9"><div class="category-mid-detail"><table class="cat-mid-table"><thead><tr><th style="width:28px;"></th><th>排名</th><th>中类</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">毛利率</th></tr></thead><tbody><tr><td colspan="6" class="loading">加载中类...</td></tr></tbody></table></div></td>';
         largeRow.after(wrapTr);
         try {
           const base = queryParams();
           const q = (base ? base + '&' : '') + 'category_large_code=' + encodeURIComponent(key);
-          const r = await fetch(API + '/api/category_rank_mid?' + q);
+          const r = await dashboardFetch(API + '/api/category_rank_mid?' + q);
           if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
           const rows = safeArray(await r.json());
           const midTbody = wrapTr.querySelector('table.cat-mid-table tbody');
@@ -1823,8 +2266,8 @@
       try {
         const q = queryParams({ page: page || currentInvPage, page_size: PAGE_SIZE });
         const [r1, r2] = await Promise.all([
-          fetch(API + '/api/inv_alert?' + q),
-          fetch(API + '/api/inv_alert_by_category?level=large&' + q)
+          dashboardFetch(API + '/api/inv_alert?' + q),
+          dashboardFetch(API + '/api/inv_alert_by_category?level=large&' + q)
         ]);
         const cnt = r1.ok ? ((await r1.json()).alert_sku_count || 0) : 0;
         const byLarge = r2.ok ? safeArray(await r2.json()) : [];
@@ -1843,7 +2286,42 @@
               </tr>`;
             }).join('');
         bindInvExpand();
+        // 同时加载滞销品TOP榜
+        loadSlowMovers();
       } catch (e) { document.getElementById('invCategoryBody').innerHTML = '<tr><td colspan="4" class="error">加载失败</td></tr>'; }
+    }
+
+    function escHtml(s) {
+      if (!s || typeof s !== 'string') return s || '';
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    async function loadSlowMovers() {
+      try {
+        const r = await dashboardFetch((API || '') + '/api/biz/slow_movers');
+        if (!r.ok) return;
+        const j = await r.json();
+        if (j.code !== 0) return;
+        const items = j.data.items || [];
+        document.getElementById('slowMoverCount').textContent = j.data.count;
+        const body = document.getElementById('slowMoverBody');
+        if (items.length === 0) {
+          body.innerHTML = '<tr><td colspan="5" class="loading">暂无滞销品</td></tr>';
+        } else {
+          body.innerHTML = items.map(function(it) {
+            return '<tr>' +
+              '<td>' + escHtml(it.product_name) + '</td>' +
+              '<td>' + escHtml(it.category) + '</td>' +
+              '<td class="num">' + (it.qty || 0).toFixed(0) + '</td>' +
+              '<td class="num">' + fmtMoney(it.amount) + '</td>' +
+              '<td>' + it.last_change + '</td>' +
+              '</tr>';
+          }).join('');
+        }
+        document.getElementById('slowMoverSection').style.display = 'block';
+      } catch (e) {
+        console.warn('[inv] loadSlowMovers error:', e);
+      }
     }
 
     function bindInvExpand() {
@@ -1879,7 +2357,7 @@
         const pagEl = wrapTr.querySelector('.inv-detail-pagination');
         try {
           const q = queryParams({ category_large_code: largeCode, page: 1, page_size: PAGE_SIZE });
-          const r = await fetch(API + '/api/inv_alert_list?' + q);
+          const r = await dashboardFetch(API + '/api/inv_alert_list?' + q);
           const d = await r.json();
           const rows = (d.items || []).filter(r => (r.stock_qty != null && r.stock_qty !== 0) || (r.stock_amount != null && r.stock_amount !== 0));
           const total = d.total != null ? d.total : rows.length;
@@ -1917,7 +2395,7 @@
       if (!innerTbody || !pagEl) return;
       try {
         const q = queryParams({ category_large_code: code, page: page || 1, page_size: PAGE_SIZE });
-        const r = await fetch(API + '/api/inv_alert_list?' + q);
+        const r = await dashboardFetch(API + '/api/inv_alert_list?' + q);
         const d = await r.json();
         const rows = (d.items || []).filter(r => (r.stock_qty != null && r.stock_qty !== 0) || (r.stock_amount != null && r.stock_amount !== 0));
         const total = d.total != null ? d.total : rows.length;
@@ -1956,7 +2434,7 @@
       if (taxEl) taxEl.textContent = '-';
       if (rateEl) rateEl.textContent = '-';
       try {
-        const r = await fetch(API + '/api/tax_burden_summary?' + queryParams(), { method: 'GET' });
+        const r = await dashboardFetch(API + '/api/tax_burden_summary?' + queryParams(), { method: 'GET' });
         const text = await r.text();
         let d;
         try {
@@ -2038,7 +2516,7 @@
         if (insightChartInstances.insightCategoryTrendChart) { insightChartInstances.insightCategoryTrendChart.dispose(); insightChartInstances.insightCategoryTrendChart = null; }
       } catch (_) {}
       var qs = (typeof queryParams === 'function') ? queryParams() : '';
-      fetch((API || '') + '/api/consumer_insight_trend?granularity=' + encodeURIComponent(granularity) + '&days=90&' + qs, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+      dashboardFetch((API || '') + '/api/consumer_insight_trend?granularity=' + encodeURIComponent(granularity) + '&days=90&' + qs, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
         .then(function(r) { return r.json(); })
         .then(function(td) {
           if (myLoadId !== _insightTrendLoadId) return;
@@ -2185,7 +2663,7 @@
       window._insightSortState = window._insightSortState || {};
       try {
         var url = (API || '') + '/api/consumer_insight?' + queryParams();
-        var r = await fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
+        var r = await dashboardFetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
         var text = await r.text();
         var d;
         try { d = text ? JSON.parse(text) : {}; } catch (_) { throw new Error('返回数据格式异常'); }
@@ -2272,6 +2750,19 @@
             if (drillSkuTitle) drillSkuTitle.textContent = '四级看板 · 该款式下货号销售明细';
           }
         }
+        (function fillBrandPerformanceApi() {
+          var bpf = document.getElementById('brandPerformanceApiBody');
+          if (!bpf) return;
+          var qp = queryParams();
+          dashboardFetch((API || '') + '/api/brand_performance?' + qp, { credentials: 'same-origin' }).then(function(r) { return r.json(); }).then(function(j2) {
+            if (j2.success && j2.items && j2.items.length) {
+              bpf.innerHTML = j2.items.map(function(x) {
+                var bn = (x.brand_name || '').replace(/</g, '&lt;');
+                return '<tr><td>' + bn + '</td><td class="num">' + safeFmtMoney(x.sale_amount) + '</td><td class="num">' + safeFmtMoney(x.gross_profit) + '</td><td class="num">' + (x.margin_pct != null ? x.margin_pct : 0) + '%</td></tr>';
+              }).join('');
+            } else bpf.innerHTML = '<tr><td colspan="4" class="loading">—</td></tr>';
+          }).catch(function() { bpf.innerHTML = '<tr><td colspan="4" class="loading">加载失败</td></tr>'; });
+        })();
         loadConsumerInsightTrend('week');
         setTimeout(function() {
         ensureEcharts(function() {
@@ -2465,6 +2956,7 @@
           if (tab === 'advanced' && typeof loadAdvancedSearchOptions === 'function' && !window._advancedOptionsLoaded) {
             loadAdvancedSearchOptions().then(function() { window._advancedOptionsLoaded = true; });
           }
+          if (tab === 'negative_margin') loadInsightNegativeMargin();
           setTimeout(resizeInsightCharts, 100);
         });
       });
@@ -2606,8 +3098,38 @@
         return p;
       }
 
+    window.loadInsightNegativeMargin = function() {
+      var q = queryParams();
+      dashboardFetch(API + '/api/negative_margin_detail?' + q, { credentials: 'include' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          var body = document.getElementById('insightNegativeMarginBody');
+          if (!data || !Array.isArray(data) || data.length === 0) {
+            body.innerHTML = '<tr><td colspan="8" class="loading">✅ 当前条件下无负毛利商品</td></tr>';
+            return;
+          }
+          body.innerHTML = data.map(function(it) {
+            var mCls = it.margin_pct < 0 ? 'style="color:#f87171;"' : '';
+            return '<tr>' +
+              '<td>' + escHtml(it.sku_code) + '</td>' +
+              '<td>' + escHtml(it.product_name) + '</td>' +
+              '<td>' + escHtml(it.category) + '</td>' +
+              '<td class="num">' + it.qty.toFixed(1) + '</td>' +
+              '<td class="num">' + fmtMoney(it.sale_amount) + '</td>' +
+              '<td class="num">' + fmtMoney(it.cost) + '</td>' +
+              '<td class="num" ' + mCls + '>' + fmtMoney(it.profit) + '</td>' +
+              '<td class="num" ' + mCls + '>' + it.margin_pct + '%</td>' +
+              '</tr>';
+          }).join('');
+        })
+        .catch(function(e) {
+          document.getElementById('insightNegativeMarginBody').innerHTML =
+            '<tr><td colspan="8" class="error">加载失败</td></tr>';
+        });
+    };
+
       window.loadAdvancedSearchOptions = function() {
-        return fetch(API + '/api/consumer_insight/advanced_search_options', { credentials: 'include' })
+        return dashboardFetch(API + '/api/consumer_insight/advanced_search_options', { credentials: 'include' })
           .then(function(r) { return r.json(); })
           .then(function(d) {
             var brands = (d.brands || []);
@@ -2631,7 +3153,7 @@
         var tbody = document.getElementById('advancedResultBody');
         var paginationEl = document.getElementById('advancedPagination');
         if (tbody) tbody.innerHTML = '<tr><td colspan="11" class="loading" style="padding:24px;color:#94a3b8;">查询中...</td></tr>';
-        fetch(API + '/api/consumer_insight/advanced_search?' + qs, { credentials: 'include' })
+        dashboardFetch(API + '/api/consumer_insight/advanced_search?' + qs, { credentials: 'include' })
           .then(function(r) { return r.json(); })
           .then(function(res) {
             var data = res.data || {};
@@ -2702,7 +3224,7 @@
         emptyEl.style.display = 'none';
         if (chartEl) chartEl.innerHTML = '';
         modal.style.display = 'flex';
-        fetch(API + '/api/price_compare/history?sku_code=' + encodeURIComponent(skuCode) + '&days=30', { credentials: 'include' })
+        dashboardFetch(API + '/api/price_compare/history?sku_code=' + encodeURIComponent(skuCode) + '&days=30', { credentials: 'include' })
           .then(function(r) { return r.json(); })
           .then(function(d) {
             var name = (d.product_name || skuCode || '').replace(/</g, '&lt;');
@@ -2771,7 +3293,7 @@
       try {
         // 先请求状态并立即展示，再请求主数据（无需登录也可读）
         try {
-          const statusRes = await fetch(API + '/api/labor_cost_status', { method: 'GET', headers: { 'Accept': 'application/json' }, credentials: 'include' });
+          const statusRes = await dashboardFetch(API + '/api/labor_cost_status', { method: 'GET', headers: { 'Accept': 'application/json' }, credentials: 'include' });
           if (statusRes.ok) {
             const statusData = await statusRes.json();
             if (statusData.success && statusEl) {
@@ -2818,7 +3340,7 @@
         const timeoutId = setTimeout(function() { ctrl.abort(); }, 15000);
         let r;
         try {
-          r = await fetch(urlLaborCost, { ...opts, signal: ctrl.signal });
+          r = await dashboardFetch(urlLaborCost, { ...opts, signal: ctrl.signal });
         } catch (fetchErr) {
           clearTimeout(timeoutId);
           if (fetchErr.name === 'AbortError') {
@@ -2833,7 +3355,7 @@
         if (r.status === 405 || r.status === 404) {
           var legacyOpts = { method: opts.method, headers: opts.headers, credentials: 'include' };
           if (opts.body) legacyOpts.body = opts.body;
-          r = await fetch(urlLegacy, legacyOpts);
+          r = await dashboardFetch(urlLegacy, legacyOpts);
         }
         if (!r.ok) {
           const is401 = r.status === 401;
@@ -2948,12 +3470,144 @@
       }
     }
 
-    async function loadBizDataStatus() {
+    /** 经营分析Tab内的人力成本加载 */
+    window.loadBizLaborCost = function(month) {
+      var kpiEl = document.getElementById('bizLaborKpi');
+      var leadersBody = document.getElementById('bizLaborLeadersBody');
+      var fulltimeBody = document.getElementById('bizLaborFulltimeBody');
+      var monthInput = document.getElementById('bizLaborMonth');
+      if (!kpiEl) return;
+      var m = month || (monthInput ? monthInput.value.trim() : '');
+      kpiEl.innerHTML = '<div class="loading" style="color:#94a3b8;">加载中...</div>';
+      if (leadersBody) leadersBody.innerHTML = '<tr><td colspan="7" class="loading">加载中...</td></tr>';
+      if (fulltimeBody) fulltimeBody.innerHTML = '<tr><td colspan="9" class="loading">加载中...</td></tr>';
+
+      dashboardFetch(API + '/api/labor_cost' + (m ? '?month=' + encodeURIComponent(m) : ''), { credentials: 'include' })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (!d.success || !d.report_month) {
+            kpiEl.innerHTML = '<div class="loading" style="color:#64748b;">暂无数据：请先通过数据导入页面上传人力成本Excel</div>';
+            return;
+          }
+          var s = d.summary || {};
+          var byCat = s.by_category || [];
+          kpiEl.innerHTML = byCat.length === 0
+            ? '<div class="loading">暂无类目汇总</div>'
+            : byCat.map(function(c, i) {
+                var isTotal = (c.name || '') === '全口径';
+                return '<div class="kpi-card' + (isTotal ? ' labor-total-card' : '') + '"><div class="label">' + (c.name || '').replace(/</g,'&lt;') + '</div><div class="value">' + fmtMoney(c.total_wage) + '</div><div style="font-size:0.75rem;color:#94a3b8;">' + (c.position_count != null ? c.position_count : 0) + ' 岗位</div></div>';
+              }).join('');
+          if (monthInput && d.report_month) {
+            if (!month) monthInput.value = d.report_month;
+            monthInput.placeholder = d.report_month + '（留空即最近月份）';
+          }
+          document.getElementById('bizLaborStatus').textContent = '报表月份：' + (d.report_month || '') + ' · 数据状态：' + ((d.summary && d.summary.note) || '正常');
+
+          // 汇总摘要
+          var totalWage = parseFloat(s.total_labor_cost) || 0;
+              }).join('') : '';
+          document.getElementById('bizLaborSummaryBox').innerHTML = totalWage
+            ? '<div class="kpi-row" style="margin-top:8px;"><div class="kpi-card"><div class="label">人力总成本</div><div class="value">' + fmtMoney(totalWage) + '</div></div></div>'
+            : '';
+          var leaders = d.leaders || [];
+          if (leadersBody) {
+            leadersBody.innerHTML = leaders.length === 0
+              ? '<tr><td colspan="7" style="padding:12px;color:#64748b;text-align:center;">暂无组长明细</td></tr>'
+              : leaders.map(function(row) {
+                  return '<tr><td>' + String(row.position_name || '').replace(/</g,'&lt;') + '</td><td class="num">' + fmtMoney(row.total_salary) + '</td><td class="num">' + fmtMoney(row.actual_salary) + '</td><td class="num">' + fmtMoney(row.luxury_bonus) + '</td><td class="num">' + fmtMoney(row.actual_income) + '</td><td class="num">' + fmtMoney(row.company_cost) + '</td><td class="num">' + fmtMoney(row.total_cost) + '</td></tr>';
+                }).join('');
+          }
+          var fulltime = d.fulltime || [];
+          if (fulltimeBody) {
+            fulltimeBody.innerHTML = fulltime.length === 0
+              ? '<tr><td colspan="9" style="padding:12px;color:#64748b;text-align:center;">暂无组员明细</td></tr>'
+              : fulltime.map(function(row) {
+                  return '<tr><td>' + String(row.position_name || '').replace(/</g,'&lt;') + '</td><td class="num">' + (row.work_hours != null ? fmtNum(row.work_hours) : '-') + '</td><td class="num">' + fmtMoney(row.base_salary) + '</td><td class="num">' + fmtMoney(row.performance) + '</td><td class="num">' + fmtMoney(row.position_allowance) + '</td><td class="num">' + fmtMoney(row.total_salary) + '</td><td class="num">' + fmtMoney(row.luxury_amount) + '</td><td class="num">' + fmtMoney(row.actual_income) + '</td><td class="num">' + fmtMoney(row.company_cost) + '</td></tr>';
+                }).join('');
+          }
+        }
+        .catch(function(e) {
+          kpiEl.innerHTML = '<div class="error">加载失败</div>';
+        });
+    }
+
+    /** 人力效能分析加载与渲染 */
+    var _laborEffData = null;
+    window.loadBizLaborEfficiency = function() {
+      var wrap = document.getElementById('laborEffTableWrap');
+      if (!wrap) return;
+      wrap.innerHTML = '<div class="loading" style="color:#64748b;text-align:center;padding:40px;">加载中...</div>';
+      dashboardFetch(API + '/api/biz/labor_efficiency', { credentials: 'include' })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (d.code !== 0 || !d.data) { wrap.innerHTML = '<div class="error">暂无数据</div>'; return; }
+          _laborEffData = d.data;
+          var sel = document.getElementById('laborEffMonthSelect');
+          if (sel) {
+            sel.innerHTML = d.data.monthly.map(function(m) { return '<option value="' + m.month + '">' + m.month + '</option>'; }).join('');
+            if (d.data.monthly.length > 0) sel.value = d.data.monthly[d.data.monthly.length - 1].month;
+          }
+          var diagEl = document.getElementById('laborEffDiag');
+          if (diagEl) {
+            diagEl.innerHTML = d.data.diagnosis && d.data.diagnosis.length > 0
+              ? '<div class="data-status-bar">' + d.data.diagnosis.map(function(s) { return '<span>' + s + '</span>'; }).join('') + '</div>'
+              : '<div class="data-status-bar"><span style="color:#86efac;">&#10003; 人力效能表现正常</span></div>';
+          }
+          renderLaborEfficiency();
+        })
+        .catch(function(e) { wrap.innerHTML = '<div class="error">加载失败</div>'; });
+    };
+
+    window.renderLaborEfficiency = function() {
+      if (!_laborEffData) return;
+      var sel = document.getElementById('laborEffMonthSelect');
+      var month = sel ? sel.value : '';
+      if (!month && _laborEffData.monthly.length > 0) month = _laborEffData.monthly[_laborEffData.monthly.length - 1].month;
+      var mData = null;
+      for (var i = 0; i < _laborEffData.monthly.length; i++) {
+        if (_laborEffData.monthly[i].month === month) { mData = _laborEffData.monthly[i]; break; }
+      }
+      if (!mData) { document.getElementById('laborEffTableWrap').innerHTML = '<div class="error">无该月数据</div>'; return; }
+      var overviewEl = document.getElementById('laborEffOverview');
+      if (overviewEl) {
+        overviewEl.innerHTML =
+          '<div class="kpi-card"><div class="label">总人数</div><div class="value" style="color:#60a5fa;">' + mData.people + '</div></div>' +
+          '<div class="kpi-card"><div class="label">人力成本</div><div class="value" style="color:#f472b6;">' + fmtMoney(mData.cost) + '</div></div>' +
+          '<div class="kpi-card"><div class="label">销售额</div><div class="value" style="color:#34d399;">' + fmtMoney(mData.sales) + '</div></div>' +
+          '<div class="kpi-card"><div class="label">毛利</div><div class="value" style="color:#fbbf24;">' + fmtMoney(mData.profit) + '</div></div>' +
+          '<div class="kpi-card"><div class="label">人均产出</div><div class="value" style="color:#a78bfa;">' + fmtMoney(mData.rev_per_person) + '</div></div>';
+      }
+      var types = _laborEffData.type_detail && _laborEffData.type_detail[month] ? _laborEffData.type_detail[month] : {};
+      var typeRows = Object.keys(types).map(function(pt) {
+        var t = types[pt];
+        return '<tr><td>' + pt + '</td><td class="num">' + t.cnt + '</td><td class="num">' + fmtMoney(t.cost) + '</td><td class="num">' + (t.cnt > 0 ? fmtMoney(t.cost / t.cnt) : '-') + '</td></tr>';
+      }).join('');
+      var wrap = document.getElementById('laborEffTableWrap');
+      wrap.innerHTML =
+        '<div class="table-wrap" style="margin-bottom:16px;"><table><thead><tr><th>岗位类型</th><th class="num">人数</th><th class="num">总成本</th><th class="num">人均成本</th></tr></thead><tbody>' + typeRows + '</tbody></table></div>' +
+        '<div class="table-wrap"><table><thead><tr><th>月份</th><th class="num">人数</th><th class="num">人力成本</th><th class="num">销售额</th><th class="num">毛利</th><th class="num">毛利率</th><th class="num">人均产出</th><th class="num">人均毛利</th><th>成本占收入%</th><th class="num">成本占毛利%</th><th class="num">管理组%</th><th class="num">管理组成%</th><th class="num">管理幅度</th></tr></thead><tbody>' +
+        _laborEffData.monthly.map(function(m) {
+          var isSel = m.month === month;
+          return '<tr' + (isSel ? ' style="background:#1e293b;"' : '') + '><td' + (isSel ? ' style="color:#fbbf24;font-weight:bold;"' : '') + '>' + m.month + '</td>' +
+            '<td class="num">' + m.people + '</td><td class="num">' + fmtMoney(m.cost) + '</td><td class="num">' + fmtMoney(m.sales) + '</td><td class="num">' + fmtMoney(m.profit) + '</td><td class="num">' + m.margin_pct + '%</td>' +
+            '<td class="num">' + fmtMoney(m.rev_per_person) + '</td><td class="num">' + fmtMoney(m.profit_per_person) + '</td><td class="num">' + m.cost_to_rev_pct + '%</td><td class="num">' + m.cost_to_profit_pct + '%</td>' +
+            '<td class="num">' + m.mgmt_pct + '%</td><td class="num">' + m.mgmt_cost_pct + '%</td><td class="num">' + m.mgmt_span + ':1</td></tr>';
+        }).join('') +
+        '</tbody></table></div>' +
+        '<div style="margin-top:8px;"><div class="label" style="margin-bottom:6px;">岗位类型累计全览</div><div class="table-wrap"><table><thead><tr><th>岗位类型</th><th class="num">累计人次</th><th class="num">累计成本</th><th class="num">人均成本</th></tr></thead><tbody>' +
+        Object.keys(_laborEffData.type_overview).map(function(pt) {
+          var o = _laborEffData.type_overview[pt];
+          return '<tr><td>' + pt + '</td><td class="num">' + o.entries + '</td><td class="num">' + fmtMoney(o.accum_cost) + '</td><td class="num">' + fmtMoney(o.avg_cost) + '</td></tr>';
+        }).join('') +
+        '</tbody></table></div></div>';
+    };
+
+    /** 切换人力成本子Tab */
       const bar = document.getElementById('bizDataStatusBar');
       if (!bar) return;
       bar.textContent = '加载中...';
       try {
-        const r = await fetch(API + '/api/data_status');
+        const r = await dashboardFetch(API + '/api/data_status');
         const d = await r.json();
         const saleCount = d.sale_count != null ? d.sale_count : 0;
         const minDate = d.min_date || '';
@@ -2978,7 +3632,7 @@
       if (!kpiEl) return;
       kpiEl.innerHTML = '<div class="loading">加载中...</div>';
       try {
-        const r = await fetch(API + '/api/return_gift_summary?' + queryParams());
+        const r = await dashboardFetch(API + '/api/return_gift_summary?' + queryParams());
         const d = await r.json();
         kpiEl.innerHTML = `
           <div class="kpi-card"><div class="label">周期销售额</div><div class="value">${fmtNum(d.total_sale_amount || 0)}</div></div>
@@ -3004,7 +3658,7 @@
       if (!tbody) return;
       tbody.innerHTML = '<tr><td colspan="7" class="loading">加载中...</td></tr>';
       try {
-        const r = await fetch(API + '/api/brand_summary?' + queryParams());
+        const r = await dashboardFetch(API + '/api/brand_summary?' + queryParams());
         const data = await r.json();
         const list = safeArray(data);
         tbody.innerHTML = list.length === 0 ? '<tr><td colspan="7" class="loading">暂无数据</td></tr>' : list.map(row => {
@@ -3048,7 +3702,7 @@
           productRow.after(loadTr);
           try {
             const q = (queryParams() ? queryParams() + '&' : '') + 'sku_code=' + encodeURIComponent(skuCode) + '&page=1&page_size=100';
-            const r = await fetch(API + '/api/sale_detail?' + q);
+            const r = await dashboardFetch(API + '/api/sale_detail?' + q);
             if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
             const d = await r.json();
             const items = d.items || [];
@@ -3088,7 +3742,7 @@
           try {
             const base = queryParams();
             const q = (base ? base + '&' : '') + 'category_large_code=' + encodeURIComponent(largeCode) + '&category_mid_code=' + encodeURIComponent(midCode) + '&category_small_code=' + encodeURIComponent(smallCode) + '&brand=' + encodeURIComponent(brand);
-            const r = await fetch(API + '/api/category_rank_products?' + q);
+            const r = await dashboardFetch(API + '/api/category_rank_products?' + q);
             if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
             const rows = safeArray(await r.json());
             const dtbody = loadTr.querySelector('tbody');
@@ -3130,7 +3784,7 @@
         const innerTbody = wrapTr.querySelector('table.biz-brand-cat-table tbody');
         try {
           const q = (queryParams() ? queryParams() + '&' : '') + 'brand=' + encodeURIComponent(brand);
-          const r = await fetch(API + '/api/brand_categories?' + q);
+          const r = await dashboardFetch(API + '/api/brand_categories?' + q);
           if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
           const rows = safeArray(await r.json());
           innerTbody.innerHTML = rows.length === 0
@@ -3154,7 +3808,7 @@
       if (!tbody) return;
       tbody.innerHTML = '<tr><td colspan="7" class="loading">加载中...</td></tr>';
       try {
-        const r = await fetch(API + '/api/supplier_summary?' + queryParams());
+        const r = await dashboardFetch(API + '/api/supplier_summary?' + queryParams());
         const data = await r.json();
         const list = safeArray(data);
         tbody.innerHTML = list.length === 0 ? '<tr><td colspan="7" class="loading">暂无数据</td></tr>' : list.map(row => {
@@ -3197,7 +3851,7 @@
           productRow.after(loadTr);
           try {
             const q = (queryParams() ? queryParams() + '&' : '') + 'sku_code=' + encodeURIComponent(skuCode) + '&page=1&page_size=100';
-            const r = await fetch(API + '/api/sale_detail?' + q);
+            const r = await dashboardFetch(API + '/api/sale_detail?' + q);
             if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
             const d = await r.json();
             const items = d.items || [];
@@ -3237,7 +3891,7 @@
           try {
             const base = queryParams();
             const q = (base ? base + '&' : '') + 'supplier=' + encodeURIComponent(supplier) + '&category_large_code=' + encodeURIComponent(largeCode) + '&category_mid_code=' + encodeURIComponent(midCode) + '&category_small_code=' + encodeURIComponent(smallCode);
-            const r = await fetch(API + '/api/supplier_products?' + q);
+            const r = await dashboardFetch(API + '/api/supplier_products?' + q);
             if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
             const rows = safeArray(await r.json());
             const dtbody = loadTr.querySelector('tbody');
@@ -3279,7 +3933,7 @@
         const innerTbody = wrapTr.querySelector('table.biz-supplier-cat-table tbody');
         try {
           const q = (queryParams() ? queryParams() + '&' : '') + 'supplier=' + encodeURIComponent(supplier);
-          const r = await fetch(API + '/api/supplier_categories?' + q);
+          const r = await dashboardFetch(API + '/api/supplier_categories?' + q);
           if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
           const rows = safeArray(await r.json());
           innerTbody.innerHTML = rows.length === 0
@@ -3303,7 +3957,7 @@
       if (!tbody) return;
       tbody.innerHTML = '<tr><td colspan="8" class="loading">加载中...</td></tr>';
       try {
-        const r = await fetch(API + '/api/price_band_summary?' + queryParams());
+        const r = await dashboardFetch(API + '/api/price_band_summary?' + queryParams());
         const data = await r.json();
         const list = safeArray(data);
         tbody.innerHTML = list.length === 0 ? '<tr><td colspan="8" class="loading">暂无数据</td></tr>' : list.map(row => {
@@ -3357,7 +4011,7 @@
           productRow.after(loadTr);
           try {
             const q = (queryParams() ? queryParams() + '&' : '') + 'sku_code=' + encodeURIComponent(skuCode) + '&page=1&page_size=100';
-            const r = await fetch(API + '/api/sale_detail?' + q);
+            const r = await dashboardFetch(API + '/api/sale_detail?' + q);
             if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
             const d = await r.json();
             const items = d.items || [];
@@ -3397,7 +4051,7 @@
           try {
             const base = queryParams();
             const q = (base ? base + '&' : '') + 'band=' + encodeURIComponent(band) + '&category_large_code=' + encodeURIComponent(largeCode) + '&category_mid_code=' + encodeURIComponent(midCode) + '&category_small_code=' + encodeURIComponent(smallCode);
-            const r = await fetch(API + '/api/price_band_products?' + q);
+            const r = await dashboardFetch(API + '/api/price_band_products?' + q);
             if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
             const rows = safeArray(await r.json());
             const dtbody = loadTr.querySelector('tbody');
@@ -3439,7 +4093,7 @@
         const innerTbody = wrapTr.querySelector('table.biz-price-band-cat-table tbody');
         try {
           const q = (queryParams() ? queryParams() + '&' : '') + 'band=' + encodeURIComponent(band);
-          const r = await fetch(API + '/api/price_band_categories?' + q);
+          const r = await dashboardFetch(API + '/api/price_band_categories?' + q);
           if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
           const rows = safeArray(await r.json());
           innerTbody.innerHTML = rows.length === 0
@@ -3471,7 +4125,7 @@
       if (!tbody) return;
       tbody.innerHTML = '<tr><td colspan="7" class="loading">加载中...</td></tr>';
       try {
-        const r = await fetch(API + '/api/sku_turnover?' + queryParams());
+        const r = await dashboardFetch(API + '/api/sku_turnover?' + queryParams());
         const data = await r.json();
         const list = safeArray(data);
         tbody.innerHTML = list.length === 0 ? '<tr><td colspan="7" class="loading">暂无数据</td></tr>' : list.map(row => {
@@ -3487,7 +4141,7 @@
       tbody.innerHTML = '<tr><td colspan="6" class="loading">加载中...</td></tr>';
       if (kpiEl) kpiEl.innerHTML = '<div class="loading">加载中...</div>';
       try {
-        const r = await fetch(API + '/api/sku_abc?' + queryParams() + '&limit=500');
+        const r = await dashboardFetch(API + '/api/sku_abc?' + queryParams() + '&limit=500');
         const d = await r.json();
         const summary = d.summary || {};
         const list = safeArray(d.items);
@@ -3549,21 +4203,6 @@
         try { wrapTr.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e2) { wrapTr.scrollIntoView(); }
       };
     }
-    async function loadNegativeMarginDetail() {
-      const tbody = document.getElementById('negativeMarginBody');
-      const exportEl = document.getElementById('negativeMarginExport');
-      if (!tbody) return;
-      tbody.innerHTML = '<tr><td colspan="8" class="loading">加载中...</td></tr>';
-      try {
-        const r = await fetch(API + '/api/negative_margin_detail?' + queryParams());
-        const data = await r.json();
-        const list = safeArray(data);
-        tbody.innerHTML = list.length === 0 ? '<tr><td colspan="8" class="loading">暂无负毛利 SKU</td></tr>' : list.map(row => `
-          <tr><td>${(row.sku_code || '').replace(/</g,'&lt;')}</td><td>${(row.product_name || '').replace(/</g,'&lt;').slice(0,24)}</td><td>${(row.category || '').replace(/</g,'&lt;').slice(0,16)}</td><td class="num">${row.qty}</td><td class="num">${fmtMoney(row.sale_amount)}</td><td class="num">${fmtMoney(row.cost)}</td><td class="num" style="color:#f87171;">${fmtMoney(row.profit)}</td><td class="num" style="color:#f87171;">${row.margin_pct}%</td></tr>
-        `).join('');
-        if (exportEl) exportEl.href = API + '/api/negative_margin_detail?format=csv&' + queryParams();
-      } catch (e) { tbody.innerHTML = '<tr><td colspan="8" class="error">加载失败</td></tr>'; }
-    }
     let categoryTrendGran = 'week';
     let currentBizSub = 'return_gift';
     const CATEGORY_TREND_PAGE_SIZE = 25;
@@ -3594,7 +4233,7 @@
       tbody.innerHTML = '<tr><td colspan="6" class="loading">加载中...</td></tr>';
       if (pagEl) pagEl.style.display = 'none';
       try {
-        const r = await fetch(API + '/api/category_structure_trend?granularity=' + categoryTrendGran + '&' + queryParams());
+        const r = await dashboardFetch(API + '/api/category_structure_trend?granularity=' + categoryTrendGran + '&' + queryParams());
         const data = await r.json();
         const list = safeArray(data);
         categoryTrendRows = [];
@@ -3668,8 +4307,8 @@
       if (pagEl) pagEl.style.display = 'none';
       try {
         const [rSummary, rByCat] = await Promise.all([
-          fetch(API + '/api/inventory_turnover_summary?' + queryParams()),
-          fetch(API + '/api/inventory_turnover_by_category?' + queryParams())
+          dashboardFetch(API + '/api/inventory_turnover_summary?' + queryParams()),
+          dashboardFetch(API + '/api/inventory_turnover_by_category?' + queryParams())
         ]);
         const d = await rSummary.json();
         kpiEl.innerHTML = `
@@ -3693,7 +4332,7 @@
       if (!kpiEl) return;
       kpiEl.innerHTML = '<div class="loading">加载中...</div>';
       try {
-        const r = await fetch(API + '/api/data_quality');
+        const r = await dashboardFetch(API + '/api/data_quality');
         const d = await r.json();
         kpiEl.innerHTML = `
           <div class="kpi-card"><div class="label">成本缺失(有销无成本)条数</div><div class="value">${d.missing_cost_rows != null ? d.missing_cost_rows : 0}</div></div>
@@ -3704,7 +4343,7 @@
         if (sampleEl) sampleEl.textContent = sample.length > 0 ? '同 SKU 多品类示例编码: ' + sample.slice(0, 10).join(', ') : '无同 SKU 多品类异常样本。';
       } catch (e) { kpiEl.innerHTML = '<div class="error">加载失败</div>'; if (sampleEl) sampleEl.textContent = ''; }
     }
-    var bizBlockIds = { return_gift: 'bizReturnGift', brand: 'bizBrand', supplier: 'bizSupplier', price_band: 'bizPriceBand', turnover: 'bizTurnover', abc: 'bizAbc', negative_margin: 'bizNegativeMargin', category_trend: 'bizCategoryTrend', inv_turnover: 'bizInvTurnover', data_quality: 'bizDataQuality' };
+    var bizBlockIds = { return_gift: 'bizReturnGift', brand: 'bizBrand', supplier: 'bizSupplier', price_band: 'bizPriceBand', turnover: 'bizTurnover', abc: 'bizAbc', category_trend: 'bizCategoryTrend', inv_turnover: 'bizInvTurnover', person_cost: 'bizPersonCost', labor_efficiency: 'bizLaborEfficiency', data_quality: 'bizDataQuality' };
     function showBizBlock(id) {
       currentBizSub = id || currentBizSub;
       document.querySelectorAll('.biz-block').forEach(el => { el.style.display = 'none'; });
@@ -3713,9 +4352,8 @@
       document.querySelectorAll('.biz-sub').forEach(b => { b.classList.remove('active'); if (b.dataset.biz === id) b.classList.add('active'); });
     }
     function loadBizSub(sub) {
-      const f = { return_gift: loadReturnGiftSummary, brand: loadBrandSummary, supplier: loadSupplierSummary, price_band: loadPriceBandSummary, turnover: loadSkuTurnover, abc: loadSkuAbc, negative_margin: loadNegativeMarginDetail, category_trend: loadCategoryStructureTrend, inv_turnover: loadInventoryTurnoverSummary, data_quality: loadDataQuality }[sub];
+      const f = { return_gift: loadReturnGiftSummary, brand: loadBrandSummary, supplier: loadSupplierSummary, price_band: loadPriceBandSummary, turnover: loadSkuTurnover, abc: loadSkuAbc, category_trend: loadCategoryStructureTrend, inv_turnover: loadInventoryTurnoverSummary, person_cost: loadBizLaborCost, data_quality: loadDataQuality }[sub];
       if (f) f();
-      if (sub === 'brand') bindBrandExpand();
       if (sub === 'supplier') bindSupplierExpand();
       if (sub === 'price_band') bindPriceBandExpand();
     }
@@ -3729,7 +4367,7 @@
       const el = document.getElementById('dowChart');
       if (!el) return;
       try {
-        const r = await fetch(API + '/api/dow_sales?' + queryParams());
+        const r = await dashboardFetch(API + '/api/dow_sales?' + queryParams());
         const data = await r.json();
         ensureEcharts(function() {
           if (typeof echarts === 'undefined') { el.innerHTML = '<div class="loading">图表库加载失败，请刷新页面或检查网络</div>'; return; }
@@ -3763,7 +4401,7 @@
       try {
         // 环比与 KPI 周期联动（queryParams 含 period）；走势固定按日线显示每日变化趋势
         const q = queryParams();
-        const r = await fetch(API + '/api/trend_analysis?granularity=day&' + q);
+        const r = await dashboardFetch(API + '/api/trend_analysis?granularity=day&' + q);
         const d = await r.json();
         let popHtml = '';
         if (d.period_over_period) {
@@ -3818,7 +4456,7 @@
     }
 
     function refreshAll() {
-      Promise.all([loadKpi(), loadPie(), loadBar(), loadCategoryRank(), loadProfitDetail(), loadTrendAnalysis(), loadDowChart()]);
+      Promise.all([loadKpi(), loadPie(), loadBar(), loadCategoryRank(), loadProfitDetail(), loadTrendAnalysis(), loadDowChart(), loadContributionStructure(), loadCategoryMarginHeatmap()]);
     }
 
     function enhancedInsightParams() {
@@ -3894,16 +4532,17 @@
       if (filterBar) filterBar.innerHTML = '<span class="tab-label">当前筛选：</span><span id="aiFilterSummary">近30天 · 全部大类</span> <button type="button" class="tab-btn btn-query-inline" id="aiInsightRefresh">刷新</button>';
       try {
         const q = enhancedInsightParams();
-        const r = await fetch(API + '/api/enhanced_insights?' + q);
+        const r = await dashboardFetch(API + '/api/enhanced_insights?' + q);
         const d = await r.json();
         section.style.display = 'block';
+        loadMarketingReturnGiftCards();
         if (d && d.success && d.data) {
           content.innerHTML = renderEnhancedCards(d.data);
           if (document.getElementById('aiInsightRefresh')) {
             document.getElementById('aiInsightRefresh').onclick = function() { loadAiInsight(); };
           }
         } else {
-          const legacyR = await fetch(API + '/api/structured_report?' + queryParams());
+          const legacyR = await dashboardFetch(API + '/api/structured_report?' + queryParams());
           const legacyD = await legacyR.json();
           let insights = [];
           if (legacyD && legacyD.code === 0 && legacyD.data && legacyD.data.summary && Array.isArray(legacyD.data.summary.insights)) {
@@ -3930,7 +4569,7 @@
       const listEl = document.getElementById('reportHistoryList');
       if (!listEl) return;
       try {
-        const r = await fetch(API + '/api/report_history?limit=20');
+        const r = await dashboardFetch(API + '/api/report_history?limit=20');
         const data = await r.json();
         if (!r.ok) throw new Error(data?.error || '加载失败');
         const items = Array.isArray(data) ? data : (data?.items || []);
@@ -3960,7 +4599,7 @@
       const wrap = document.getElementById('reportDetailWrap');
       if (!wrap) return;
       try {
-        const r = await fetch(API + '/api/report_history/' + id);
+        const r = await dashboardFetch(API + '/api/report_history/' + id);
         const d = await r.json();
         wrap.style.display = 'block';
         wrap.textContent = d.report_content || '无内容';
@@ -3978,7 +4617,7 @@
       const errEl = document.getElementById('reportSendError');
       if (errEl) errEl.style.display = 'none';
       try {
-        const r = await fetch(API + '/api/marketing_report?send=1');
+        const r = await dashboardFetch(API + '/api/marketing_report?send=1');
         const d = await r.json();
         if (d.success) {
           btn.textContent = d.feishu_ok ? '✓ 已发送并保存' : '已保存（飞书发送失败）';
@@ -4019,7 +4658,7 @@
       messages.innerHTML += '<div style="margin-bottom:8px;"><span style="color:#38bdf8;">您：</span>' + txt.replace(/</g,'&lt;') + '</div>';
       messages.scrollTop = messages.scrollHeight;
       try {
-        const r = await fetch(API + '/api/ai_chat?message=' + encodeURIComponent(txt));
+        const r = await dashboardFetch(API + '/api/ai_chat?message=' + encodeURIComponent(txt));
         const ct = r.headers.get('content-type') || '';
         const text = await r.text();
         let d;
@@ -4048,8 +4687,8 @@
       if (capEl) capEl.style.display = 'none';
       try {
         const [productsRes, capabilityRes] = await Promise.all([
-          fetch(API + '/api/price_compare_products?days=30&limit=300'),
-          fetch(API + '/api/price_compare/capability')
+          dashboardFetch(API + '/api/price_compare_products?days=30&limit=300'),
+          dashboardFetch(API + '/api/price_compare/capability')
         ]);
         const d = await productsRes.json();
         if (!d.success) throw new Error(d.error || '加载失败');
@@ -4091,7 +4730,7 @@
             var link = this;
             link.textContent = '检测中…';
             link.style.pointerEvents = 'none';
-            fetch(API + '/api/price_compare/capability?check_runner=1').then(function(r) { return r.json(); }).then(function(c) {
+            dashboardFetch(API + '/api/price_compare/capability?check_runner=1').then(function(r) { return r.json(); }).then(function(c) {
               cap.supported_platforms = c.supported_platforms || cap.supported_platforms;
               cap.data_format_note = c.data_format_note || cap.data_format_note;
               cap.current_source = c.current_source;
@@ -4144,7 +4783,7 @@
       btn.disabled = true;
       btn.textContent = '执行中（约1-3分钟）...';
       try {
-        const r = await fetch(API + '/api/price_compare', {
+        const r = await dashboardFetch(API + '/api/price_compare', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ days: 30, sku_codes: selected })
@@ -4254,7 +4893,7 @@
       if (listEl) listEl.innerHTML = '<p class="loading" style="padding:16px;">正在生成报告并发送给余为军...</p>';
       document.getElementById('reportHistoryWrap')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       try {
-        const r = await fetch(API + '/api/marketing_report?send=1');
+        const r = await dashboardFetch(API + '/api/marketing_report?send=1');
         const d = await r.json();
         if (d.success) {
           btn.innerHTML = '<span class="btn-ai-icon">✓</span> 已发送';
@@ -4276,7 +4915,7 @@
 
     async function loadCategoryLarge() {
       try {
-        const r = await fetch(API + '/api/categories?level=large');
+        const r = await dashboardFetch(API + '/api/categories?level=large');
         const list = await r.json();
         const sel = document.getElementById('categoryLargeSelect');
         sel.innerHTML = '<option value="">全部大类</option>' + (list || []).map(x => `<option value="${(x.code||'').replace(/"/g,'&quot;')}">${(x.name||x.code||'').replace(/</g,'&lt;')}</option>`).join('');
@@ -4284,7 +4923,7 @@
     }
     async function loadCategoryMid() {
       try {
-        const r = await fetch(API + '/api/categories?level=mid&category_large_code=' + encodeURIComponent(currentCategoryLargeCode || ''));
+        const r = await dashboardFetch(API + '/api/categories?level=mid&category_large_code=' + encodeURIComponent(currentCategoryLargeCode || ''));
         const list = await r.json();
         const sel = document.getElementById('categoryMidSelect');
         sel.innerHTML = '<option value="">全部中类</option>' + (list || []).map(x => `<option value="${(x.code||'').replace(/"/g,'&quot;')}">${(x.name||x.code||'').replace(/</g,'&lt;')}</option>`).join('');
@@ -4293,7 +4932,7 @@
     async function loadCategorySmall() {
       try {
         const q = 'category_large_code=' + encodeURIComponent(currentCategoryLargeCode || '') + '&category_mid_code=' + encodeURIComponent(currentCategoryMidCode || '');
-        const r = await fetch(API + '/api/categories?level=small&' + q);
+        const r = await dashboardFetch(API + '/api/categories?level=small&' + q);
         const list = await r.json();
         const sel = document.getElementById('categorySmallSelect');
         sel.innerHTML = '<option value="">全部小类</option>' + (list || []).map(x => `<option value="${(x.code||'').replace(/"/g,'&quot;')}">${(x.name||x.code||'').replace(/</g,'&lt;')}</option>`).join('');
@@ -4308,7 +4947,7 @@
       var pickerMin = '2010-01-01';
       var pickerMax = '2030-12-31';
       try {
-        var r = await fetch(API + '/api/date_range');
+        var r = await dashboardFetch(API + '/api/date_range');
         if (r.ok) {
           var d = await r.json();
           if (d.data_min_date) { dateRangeData.data_min_date = d.data_min_date; pickerMin = d.data_min_date; }
@@ -4362,11 +5001,43 @@
       loadProductDetail(1);
       loadTrendAnalysis();
       loadDowChart();
+      loadContributionStructure();
+      loadCategoryMarginHeatmap();
+      loadMarketingReturnGiftCards();
       currentInvPage = 1;
       loadInvAlert(1);
       if (document.querySelector('.page-panel.active[data-page="biz"]')) loadBizSub(currentBizSub);
       if (document.querySelector('.page-panel.active[data-page="insight"]')) { loadConsumerInsight(); setTimeout(resizeInsightCharts, 200); }
     }
+
+    window.switchToInsightNegativeMargin = function() {
+      document.querySelectorAll('.nav-tab, .bottom-nav-item').forEach(function(b) {
+        b.classList.toggle('active', b.getAttribute('data-page') === 'insight');
+      });
+      document.querySelectorAll('.page-panel').forEach(function(p) {
+        p.classList.toggle('active', p.getAttribute('data-page') === 'insight');
+      });
+      document.querySelectorAll('.insight-tab').forEach(function(b) {
+        b.classList.toggle('active', b.getAttribute('data-insight-tab') === 'negative_margin');
+      });
+      document.querySelectorAll('.insight-tab-panel').forEach(function(p) {
+        p.classList.toggle('active', p.getAttribute('data-insight-tab') === 'negative_margin');
+      });
+      loadConsumerInsight();
+      loadInsightNegativeMargin();
+    };
+
+    /** 切换到经营分析Tab的人力成本子Tab */
+    window.switchToBizPersonCost = function() {
+      document.querySelectorAll('.nav-tab, .bottom-nav-item').forEach(function(b) {
+        b.classList.toggle('active', b.getAttribute('data-page') === 'biz');
+      });
+      document.querySelectorAll('.page-panel').forEach(function(p) {
+        p.classList.toggle('active', p.getAttribute('data-page') === 'biz');
+      });
+      showBizBlock('person_cost');
+      loadBizSub('person_cost');
+    };
 
     function updatePeriodTabActive() {
         const isCustom = (currentStartDate && currentEndDate) || currentPeriod === 'custom';
@@ -4420,7 +5091,7 @@
       loadAuthUser();
       updatePeriodTabActive();
       updateExportLinks();
-      await Promise.all([loadKpi(), loadPie(), loadBar(), loadCategoryRank(), loadProfitDetail(), loadProductDetail(1), loadInvAlert(), loadTrendAnalysis(), loadDowChart()]);
+      await Promise.all([loadKpi(), loadPie(), loadBar(), loadCategoryRank(), loadProfitDetail(), loadProductDetail(1), loadInvAlert(), loadTrendAnalysis(), loadDowChart(), loadContributionStructure(), loadCategoryMarginHeatmap(), loadMarketingReturnGiftCards()]);
 
       document.getElementById('btnQuery').addEventListener('click', function() {
         // 仅 KPI 周期相关查询（人力成本已剥离至「数据导入 · 人力成本」独立页 /labor，不参与此处）
@@ -4454,6 +5125,26 @@
         applyFilter();
         updatePeriodTabActive();
         if (typeof isMobileFilter === 'function' && isMobileFilter() && filterDrawer && filterDrawer.classList.contains('open')) closeFilterDrawer();
+      });
+      var bContribCsv = document.getElementById('btnContributionCsv');
+      if (bContribCsv) bContribCsv.addEventListener('click', function(ev) {
+        ev.preventDefault();
+        dashboardFetch(API + '/api/contribution_structure?' + queryParams()).then(function(r) { return r.json(); }).then(function(d) {
+          if (!d.items) return;
+          var lines = ['category_large,sales_amount,sales_share_pct,gross_profit,profit_share_pct'];
+          d.items.forEach(function(x) { lines.push([x.category_large, x.sales_amount, x.sales_share, x.gross_profit, x.profit_share].join(',')); });
+          var blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'contribution_structure.csv';
+          a.click();
+          URL.revokeObjectURL(a.href);
+        });
+      });
+      var bNegCsv = document.getElementById('btnNegativeMarginCsv');
+      if (bNegCsv) bNegCsv.addEventListener('click', function(ev) {
+        ev.preventDefault();
+        window.open((API || '') + '/api/negative_margin_items?export=1&' + queryParams(), '_blank');
       });
       function syncCustomDateFromInputs() {
         var startIn = document.getElementById('startDate');
@@ -4544,7 +5235,7 @@
         if (page === 'biz') { loadBizDataStatus(); showBizBlock('return_gift'); loadReturnGiftSummary(); }
         if (page === 'insight') { loadConsumerInsight(); setTimeout(resizeInsightCharts, 200); }
         if (page === 'overview') {
-          loadKpi(); loadPie(); loadBar(); loadCategoryRank(); loadProfitDetail(); loadTrendAnalysis(); loadDowChart();
+          loadKpi(); loadPie(); loadBar(); loadCategoryRank(); loadProfitDetail(); loadTrendAnalysis(); loadDowChart(); loadContributionStructure(); loadCategoryMarginHeatmap(); loadMarketingReturnGiftCards();
           if (typeof echarts !== 'undefined') {
             ['pieChart', 'barChart', 'dowChart'].forEach(id => {
               const el = document.getElementById(id);
@@ -4808,6 +5499,9 @@
           loadProductDetail(1);
           loadTrendAnalysis();
           loadDowChart();
+          loadContributionStructure();
+          loadCategoryMarginHeatmap();
+          loadMarketingReturnGiftCards();
           loadInvAlert(1);
           if (document.querySelector('.page-panel.active[data-page="insight"]')) { loadConsumerInsight(); setTimeout(resizeInsightCharts, 200); }
           if (document.querySelector('.page-panel.active[data-page="biz"]')) loadBizSub(currentBizSub);

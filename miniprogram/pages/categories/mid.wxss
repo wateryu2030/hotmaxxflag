@@ -1,0 +1,13 @@
+.wp-page--mid {
+  padding-bottom: calc(160rpx + env(safe-area-inset-bottom));
+}
+
+.mid-fallback {
+  padding: 40rpx 28rpx;
+  line-height: 1.6;
+}
+
+.mid-fallback-btn {
+  margin-top: 28rpx;
+  width: 100%;
+}

@@ -41,8 +41,13 @@
     .metric-badge.warn { background: #451a03; color: #fdba74; }
     .metric-badge.bad { background: #450a0a; color: #fecaca; }
     .metric-badge.neutral { background: #0f172a; color: #e2e8f0; border: 1px solid #334155; }
+    .mapping-warn { background: #450a0a; border: 1px solid #991b1b; color: #fecaca; padding: 12px 14px; border-radius: 8px; margin-bottom: 16px; font-size: 0.9rem; }
+    .btn-tab { margin-right: 8px; }
+    .btn-tab.active { background: #38bdf8; color: #0f172a; }
+    .footnote-mgmt { font-size: 0.75rem; color: #64748b; margin-top: 20px; line-height: 1.5; }
   </style>
   <link rel="stylesheet" href="/static/css/mobile.css">
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
 </head>
 <body>
   <div class="navbar">
@@ -75,20 +80,34 @@
     <p class="label" style="margin-top:8px;">选择日期区间后，系统将按月人力数据按天数比例分摊到该区间，并与该区间销售数据匹配计算人效。人数为全量（不去重）。</p>
   </div>
 
+  <div id="mappingWarning" class="mapping-warn" style="display:none;"></div>
+
   <div class="box" id="overviewBox">
     <h2>📊 经营 vs 管理 总览</h2>
     <div class="kpi-cards" id="overviewCards"></div>
   </div>
 
   <div class="box" id="byCategoryBox">
-    <h2>📈 经营类目明细</h2>
-    <p class="label" style="margin-bottom:8px;">按销售大类匹配的人力成本、人数、销售额、毛利及人效；可展开查看组长/全职/兼职分项。</p>
-    <div id="byCategoryTable"></div>
+    <div class="period-row" style="margin-bottom:12px;">
+      <button type="button" class="btn btn-tab active" id="tabBtnDetail">经营类目明细</button>
+      <button type="button" class="btn btn-secondary btn-tab" id="tabBtnQuad">四象限分析</button>
+    </div>
+    <div id="tabPanelDetail">
+      <h2>📈 经营类目明细</h2>
+      <p class="label" style="margin-bottom:8px;">按销售大类匹配的人力成本、人数、销售额、毛利及人效；可展开查看组长/全职/兼职分项。毛利率与人力占比为统一口径（与 t_htma_sale 一致）。</p>
+      <div id="byCategoryTable"></div>
+    </div>
+    <div id="tabPanelQuad" style="display:none;">
+      <h2>📐 四象限分析</h2>
+      <p class="label" style="margin-bottom:8px;">横轴：毛利率%；纵轴：人力强度（人力成本÷毛利）。仅毛利&gt;0 的大类参与；虚线为各自中位数。</p>
+      <div id="fourQuadChart" style="width:100%;height:420px;"></div>
+    </div>
   </div>
 
   <div class="box" id="managementBox">
     <h2>👥 管理人力（按岗位，可下沉到人名）</h2>
     <div id="managementContent"></div>
+    <p class="footnote-mgmt">*管理人力成本未参与大类分摊，上述「经营类目明细」中人力仅含已映射的经营岗位。如需全店视角，请联系数据组。</p>
   </div>
 
   <div class="box" id="configPanel">
@@ -181,6 +200,106 @@
     });
   }
 
+  function renderMappingWarning(res) {
+    var el = qs('mappingWarning');
+    if (!el) return;
+    var list = (res && res.success && res.unmapped) ? res.unmapped : [];
+    if (!list.length) {
+      el.style.display = 'none';
+      el.textContent = '';
+      return;
+    }
+    var names = list.map(function (x) {
+      return (x.category_large || x.category_large_code || '').trim() || '-';
+    }).filter(Boolean);
+    el.style.display = 'block';
+    el.innerHTML = '⚠️ 以下大类有销售但未配置经营人力映射，人效数据可能虚高：<strong>' + names.join('、') + '</strong>';
+  }
+
+  var fourQuadChart = null;
+  function loadFourQuadrant(q) {
+    if (typeof echarts === 'undefined') return;
+    fetchJson(base + '/api/four_quadrant' + q).then(function (d) {
+      if (!d.success || !d.points) return;
+      var pts = d.points;
+      var mx = d.median_margin_pct != null ? d.median_margin_pct : 0;
+      var my = d.median_labor_intensity != null ? d.median_labor_intensity : 0;
+      var data = pts.map(function (p) {
+        var qn = (p.margin_pct >= mx && p.labor_intensity < my) ? '高毛利低人力'
+          : (p.margin_pct >= mx && p.labor_intensity >= my) ? '高毛利高人力'
+          : (p.margin_pct < mx && p.labor_intensity < my) ? '低毛利低人力' : '低毛利高人力';
+        return {
+          value: [p.margin_pct, p.labor_intensity, p.sale, p.labor_cost, p.category_large, qn],
+          name: p.category_large
+        };
+      });
+      var dom = qs('fourQuadChart');
+      if (!dom) return;
+      if (!fourQuadChart) fourQuadChart = echarts.init(dom);
+      fourQuadChart.setOption({
+        title: { text: '大类：毛利率 vs 人力强度', left: 'center', textStyle: { color: '#94a3b8', fontSize: 14 } },
+        tooltip: {
+          formatter: function (x) {
+            var v = x.data.value;
+            return v[4] + '<br/>毛利率: ' + v[0] + '%<br/>人力强度: ' + v[1] + '<br/>销售额: ' + v[2] + '<br/>人力: ' + v[3] + '<br/>象限: ' + v[5];
+          }
+        },
+        grid: { left: 60, right: 24, top: 48, bottom: 48 },
+        xAxis: {
+          name: '毛利率%',
+          type: 'value',
+          splitLine: { lineStyle: { color: '#334155' } },
+          axisLabel: { color: '#94a3b8' },
+          axisLine: { lineStyle: { color: '#475569' } }
+        },
+        yAxis: {
+          name: '人力强度',
+          type: 'value',
+          splitLine: { lineStyle: { color: '#334155' } },
+          axisLabel: { color: '#94a3b8' },
+          axisLine: { lineStyle: { color: '#475569' } }
+        },
+        series: [{
+          type: 'scatter',
+          symbolSize: function (val) { return Math.min(28, 10 + Math.sqrt(val[2] || 0) / 80); },
+          data: data,
+          itemStyle: {
+            color: function (x) {
+              var v = x.data.value;
+              if (v[0] >= mx && v[1] < my) return '#34d399';
+              if (v[0] >= mx && v[1] >= my) return '#38bdf8';
+              if (v[0] < mx && v[1] < my) return '#94a3b8';
+              return '#f87171';
+            }
+          },
+          markLine: {
+            silent: true,
+            lineStyle: { type: 'dashed', color: '#64748b' },
+            data: [{ xAxis: mx }, { yAxis: my }]
+          }
+        }]
+      });
+    }).catch(function () {});
+  }
+
+  qs('tabBtnDetail').onclick = function () {
+    qs('tabPanelDetail').style.display = 'block';
+    qs('tabPanelQuad').style.display = 'none';
+    qs('tabBtnDetail').classList.add('active');
+    qs('tabBtnQuad').classList.remove('active');
+    qs('tabBtnDetail').classList.remove('btn-secondary');
+    qs('tabBtnQuad').classList.add('btn-secondary');
+  };
+  qs('tabBtnQuad').onclick = function () {
+    qs('tabPanelDetail').style.display = 'none';
+    qs('tabPanelQuad').style.display = 'block';
+    qs('tabBtnQuad').classList.add('active');
+    qs('tabBtnDetail').classList.remove('active');
+    qs('tabBtnQuad').classList.remove('btn-secondary');
+    qs('tabBtnDetail').classList.add('btn-secondary');
+    if (fourQuadChart) fourQuadChart.resize();
+  };
+
   function renderOverview(data) {
     var d = data.data || {};
     var html = '';
@@ -253,9 +372,15 @@
       var sale = Number(row.sale || 0);
       var profit = Number(row.profit || 0);
       var perCapProfit = (head > 0 && profit !== 0) ? (profit / head) : 0;
-      var laborSaleRatio = (sale > 0 && labor >= 0) ? (labor / sale * 100) : null;
-      var laborProfitRatio = (profit > 0 && labor >= 0) ? (labor / profit * 100) : null;
-      var grossMargin = (sale > 0 && profit !== 0) ? (profit / sale * 100) : null;
+      var laborSaleRatio = (row.labor_cost_per_sale != null && row.labor_cost_per_sale !== '')
+        ? (Number(row.labor_cost_per_sale) * 100)
+        : ((sale > 0 && labor >= 0) ? (labor / sale * 100) : null);
+      var laborProfitRatio = (row.labor_cost_per_profit != null && row.labor_cost_per_profit !== '')
+        ? (Number(row.labor_cost_per_profit) * 100)
+        : ((profit > 0 && labor >= 0) ? (labor / profit * 100) : null);
+      var grossMargin = (row.margin_pct != null && row.margin_pct !== '')
+        ? Number(row.margin_pct)
+        : ((sale > 0 && profit !== 0) ? (profit / sale * 100) : null);
       var salesPerCost = (row.sales_per_cost != null) ? row.sales_per_cost : (labor > 0 ? (sale / labor) : null);
       var profitPerCost = (row.profit_cost_ratio != null) ? row.profit_cost_ratio : (labor > 0 ? (profit / labor) : null);
 
@@ -263,7 +388,7 @@
         return (v != null && !isNaN(v)) ? v.toLocaleString('zh-CN', { minimumFractionDigits: 2 }) : '-';
       }
       function fmtRatio(v) {
-        return (v != null && !isNaN(v)) ? v.toFixed(1) + '%' : '-';
+        return (v != null && !isNaN(v)) ? v.toFixed(2) + '%' : '-';
       }
       function fmtFloat(v) {
         return (v != null && !isNaN(v)) ? v.toFixed(4) : '-';
@@ -356,7 +481,8 @@
     Promise.all([
       fetchJson(base + '/api/labor_analysis/overview' + q),
       fetchJson(base + '/api/labor_analysis/by_category' + q),
-      fetchJson(base + '/api/labor_analysis/management' + q)
+      fetchJson(base + '/api/labor_analysis/management' + q),
+      fetchJson(base + '/api/labor_analysis/mapping_health' + q).catch(function () { return { success: false, unmapped: [] }; })
     ]).then(function (res) {
       if (res[0].success) renderOverview(res[0]);
       else qs('overviewCards').innerHTML = '<div class="empty">' + (res[0].message || '加载失败') + '</div>';
@@ -364,6 +490,8 @@
       else qs('byCategoryTable').innerHTML = '<p class="empty">' + (res[1].message || '加载失败') + '</p>';
       if (res[2].success) renderManagement(res[2]);
       else qs('managementContent').innerHTML = '<p class="empty">' + (res[2].message || '加载失败') + '</p>';
+      renderMappingWarning(res[3]);
+      loadFourQuadrant(q);
     }).catch(function (err) {
       qs('overviewCards').innerHTML = '<div class="empty">请求失败: ' + (err && err.message) + '</div>';
     }).then(function () { qs('btnQuery').disabled = false; });

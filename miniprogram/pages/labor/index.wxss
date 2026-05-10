@@ -1,0 +1,52 @@
+.lab-row {
+  margin-top: 16rpx;
+}
+
+.lab-val {
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.wp-muted-label {
+  font-size: 26rpx;
+  color: var(--text-secondary, #5c6370);
+}
+
+.idx-section {
+  padding: 16rpx 0 16rpx;
+  font-size: 30rpx;
+}
+
+.lab-cat-title {
+  display: block;
+  font-size: 28rpx;
+  font-weight: 600;
+  margin-bottom: 16rpx;
+}
+
+.lab-metric {
+  margin-top: 12rpx;
+}
+
+.lab-track {
+  margin-top: 8rpx;
+  height: 10rpx;
+}
+
+.lab-fill-margin {
+  background: linear-gradient(90deg, #faad14, #d48806);
+}
+
+.lab-fill-labor {
+  background: linear-gradient(90deg, #d83d4f, #c92539);
+}
+
+.lab-foot {
+  padding: 24rpx 0 16rpx;
+}
+
+.lab-note {
+  padding: 0 0 48rpx;
+  font-size: 22rpx;
+  line-height: 1.5;
+}

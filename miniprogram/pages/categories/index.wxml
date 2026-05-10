@@ -1,0 +1,70 @@
+<view class="wp-page wp-page--cats">
+  <view wx:if="{{loading}}" class="da-card wp-muted cat-loading">加载中…</view>
+  <block wx:else>
+    <view class="da-filter-surface cat-head-surface">
+      <view class="wp-title cat-hd-title">{{listTitle}}</view>
+      <view class="cat-bc" wx:if="{{breadcrumb.length}}">
+        <block wx:for="{{breadcrumb}}" wx:for-index="bi" wx:key="tapIndex">
+          <text
+            class="cat-bc-item {{bi<breadcrumb.length-1?'cat-bc-item--link':''}}"
+            data-i="{{item.tapIndex}}"
+            catchtap="onBreadcrumbTap"
+          >{{item.label}}</text>
+          <text wx:if="{{bi < breadcrumb.length - 1}}" class="cat-bc-sep">›</text>
+        </block>
+      </view>
+      <text class="wp-muted cat-hd-sub" wx:if="{{drillPath.length >= 3}}">近 30 天销售额排序 · 点行查看 SKU 详情</text>
+      <text class="wp-muted cat-hd-sub" wx:else>近 30 天销售额排序 · 点行继续下钻</text>
+    </view>
+
+    <view class="da-card cat-list-card">
+      <view class="cat-local-loading" wx:if="{{drillLoading}}">
+        <text class="wp-muted">加载中…</text>
+      </view>
+
+      <view class="cat-empty-panel" wx:if="{{listEmpty && !drillLoading}}">
+        <view class="cat-empty-ico" />
+        <text class="cat-empty-title">暂无下级分类</text>
+        <text class="wp-muted cat-empty-desc">{{emptyHint}}</text>
+      </view>
+
+      <view
+        class="da-list cat-list"
+        wx:if="{{items.length && !drillLoading}}"
+      >
+        <view
+          wx:for="{{items}}"
+          wx:key="_wk"
+          wx:for-item="row"
+          wx:for-index="rix"
+          class="da-row cat-lrow {{highlight==row.category_large_code && drillPath.length==0?'cat-lrow--hi':''}}"
+          data-idx="{{rix}}"
+          bindtap="onRowTap"
+        >
+          <view class="da-row-bg" style="width: {{row._bgPct}}%;" />
+          <view class="da-row-inner cat-lrow-inner">
+            <view
+              wx:if="{{row._rank<=3}}"
+              class="wp-rank {{row._rank===1?'wp-rank--1':''}} {{row._rank===2?'wp-rank--2':''}} {{row._rank===3?'wp-rank--3':''}}"
+            >{{row._rank}}</view>
+            <view wx:else class="da-rank-plain">{{row._rank}}</view>
+            <view class="cat-lrow-mid">
+              <text class="cat-lrow-name" wx:if="{{row.sku_code}}">{{row.name || row.sku_code}}</text>
+              <text class="cat-lrow-name" wx:elif="{{row.category_mid}}">{{row.category_mid}}</text>
+              <text class="cat-lrow-name" wx:elif="{{row.category_small}}">{{row.category_small}}</text>
+              <text class="cat-lrow-name" wx:elif="{{row.category_large}}">{{row.category_large}}</text>
+              <text class="cat-lrow-name" wx:else>—</text>
+              <text class="wp-muted cat-lrow-sub" wx:if="{{row.sku_code}}">SKU {{row.sku_code}}</text>
+              <text class="wp-muted cat-lrow-sub" wx:else>毛利 {{row.gross_profit}} · 毛利率 {{row.margin_pct}}% · 量 {{row.sale_qty}}</text>
+            </view>
+            <view class="cat-lrow-right">
+              <text class="wp-num cat-lrow-amt">{{row.sale_amount}}</text>
+              <text class="cat-lrow-chev">{{drillPath.length>=3?'⋯':'›'}}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+  </block>
+  <security-watermark />
+</view>

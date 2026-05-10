@@ -1,0 +1,49 @@
+{
+  "usingComponents": {
+    "security-watermark": "/components/security-watermark/security-watermark"
+  },
+  "pages": [
+    "pages/entry/index",
+    "pages/profile/login",
+    "pages/profile/feishu-web",
+    "pages/home/index",
+    "pages/analysis/index",
+    "pages/insight/index",
+    "pages/ops/index",
+    "pages/profile/index",
+    "pages/categories/index",
+    "pages/categories/mid",
+    "pages/trend/index",
+    "pages/alerts/index",
+    "pages/labor/index",
+    "pages/labor/web",
+    "pages/index/index",
+    "pages/tools/sku",
+    "pages/tools/tax",
+    "pages/tools/selection",
+    "pages/tools/ai",
+    "pages/tools/report"
+  ],
+  "window": {
+    "navigationBarTitleText": "好特卖超级仓",
+    "navigationBarBackgroundColor": "#C92539",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#F6F8FA"
+  },
+  "tabBar": {
+    "custom": true,
+    "color": "#BCC1CD",
+    "selectedColor": "#C92539",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "white",
+    "list": [
+      { "pagePath": "pages/home/index", "text": "总览" },
+      { "pagePath": "pages/analysis/index", "text": "品类" },
+      { "pagePath": "pages/insight/index", "text": "趋势" },
+      { "pagePath": "pages/ops/index", "text": "经营" },
+      { "pagePath": "pages/profile/index", "text": "我的" }
+    ]
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

@@ -1,0 +1,36 @@
+.wm-root {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 99990;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.wm-stage {
+  position: absolute;
+  left: -38%;
+  top: -32%;
+  width: 176%;
+  height: 168%;
+  transform: rotate(-17deg);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+  align-items: stretch;
+  opacity: 0.05;
+  color: #0a0a12;
+  font-size: 24rpx;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  line-height: 1.35;
+}
+
+.wm-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
+  padding-left: 6%;
+}

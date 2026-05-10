@@ -1,0 +1,77 @@
+<view class="wp-page">
+  <view class="htma-row idx-head">
+    <text class="htma-title">运营驾驶舱</text>
+    <text class="htma-muted idx-link" bindtap="goProfile">我的</text>
+  </view>
+  <view class="htma-seg">
+    <view class="htma-seg-item {{days==7 ? 'on' : ''}}" data-d="7" bindtap="onDays">7天</view>
+    <view class="htma-seg-item {{days==30 ? 'on' : ''}}" data-d="30" bindtap="onDays">30天</view>
+  </view>
+  <view class="htma-muted idx-range" wx:if="{{range}}">区间 {{range.start_date}} ~ {{range.end_date}}</view>
+
+  <view class="htma-card" wx:if="{{kpi}}">
+    <view class="htma-row">
+      <text class="wp-muted-label">销售额</text>
+      <text class="htma-kpi-big wp-num">{{kpi.total_sale_amount}}</text>
+    </view>
+    <view class="htma-row idx-kpi2">
+      <text class="wp-muted-label">毛利 / 毛利率</text>
+      <text>
+        <text class="wp-num wp-success" style="font-size:32rpx;font-weight:600;">{{kpi.total_gross_profit}}</text>
+        <text> / </text>
+        <text class="wp-num wp-brand">{{kpi.avg_profit_rate_pct}}%</text>
+      </text>
+    </view>
+  </view>
+  <view class="htma-card" wx:else>
+    <text class="htma-muted">加载中…</text>
+  </view>
+
+  <view class="htma-title idx-section">TOP 品类</view>
+  <view class="htma-card" wx:if="{{top.length}}">
+    <view
+      wx:for="{{top}}"
+      wx:for-index="tidx"
+      wx:key="name"
+      class="idx-top-row"
+    >
+      <view class="idx-top-left">
+        <view wx:if="{{tidx<3}}" class="wp-rank {{tidx===0?'wp-rank--1':''}} {{tidx===1?'wp-rank--2':''}} {{tidx===2?'wp-rank--3':''}}">{{tidx+1}}</view>
+        <view class="idx-top-name-wrap">
+          <text class="idx-top-name">{{item.name}}</text>
+          <text class="wp-num wp-brand idx-top-amt">{{item.sale_amount}}</text>
+        </view>
+      </view>
+      <view class="idx-top-bar-wrap">
+        <view class="wp-progress-track idx-bar-track">
+          <view class="wp-progress-fill" style="width:{{item._barPct}}%;"></view>
+        </view>
+        <text class="idx-bar-pct wp-num">{{item._barPct}}%</text>
+      </view>
+    </view>
+  </view>
+  <view wx:else class="htma-card htma-muted">暂无 TOP 数据</view>
+
+  <view class="htma-card idx-neg" wx:if="{{negSku>0}}">
+    <text class="wp-danger wp-num" style="font-weight:600;">负毛利 SKU 数：{{negSku}}</text>
+  </view>
+
+  <view class="htma-title idx-section">提醒</view>
+  <view class="htma-card idx-alerts" bindtap="goAlerts">
+    <block wx:if="{{alerts.length}}">
+      <view wx:for="{{alerts}}" wx:key="title" class="idx-alert-line">
+        <view class="idx-alert-dot" />
+        <text class="wp-brand">{{item.title}}</text>
+      </view>
+      <text class="htma-muted" style="margin-top:12rpx;display:block;">查看更多</text>
+    </block>
+    <text wx:else class="htma-muted">暂无提醒</text>
+  </view>
+
+  <view class="idx-actions">
+    <button class="htma-btn-primary wp-btn-primary" size="mini" bindtap="goCats">品类概览</button>
+    <button class="htma-btn-primary wp-btn-primary" size="mini" bindtap="goTrend">趋势</button>
+    <button class="htma-btn-primary wp-btn-primary" size="mini" bindtap="goAlerts">预警</button>
+  </view>
+  <security-watermark />
+</view>

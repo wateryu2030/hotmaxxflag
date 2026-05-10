@@ -1,0 +1,33 @@
+<view class="wp-page wp-page--tool">
+  <view class="da-filter-surface sel-surface" wx:if="{{note}}">
+    <text class="wp-muted sel-note">{{note}}</text>
+  </view>
+
+  <view
+    wx:for="{{items}}"
+    wx:key="sku_code"
+    class="da-row sel-row"
+  >
+    <view class="da-row-bg" style="width: {{item._bgPct}}%;" />
+    <view class="da-row-inner sel-inner">
+      <view class="sel-main">
+        <view class="tool-item-title">{{item.name}}</view>
+        <view class="wp-muted tool-item-meta">{{item.tag}} · 毛利率 {{item.margin_pct}}%</view>
+        <view class="tool-bar-block">
+          <text class="tool-bar-lab">毛利率刻度</text>
+          <view class="wp-progress-track tool-track">
+            <view class="wp-progress-fill tool-fill-margin" style="width:{{item._marginBar}}%;"></view>
+          </view>
+        </view>
+        <view class="tool-bar-block">
+          <text class="tool-bar-lab">本列表相对强度</text>
+          <view class="wp-progress-track tool-track">
+            <view class="wp-progress-fill" style="width:{{item._relBar}}%;"></view>
+          </view>
+          <text class="wp-num tool-bar-pct">{{item._relBar}}%</text>
+        </view>
+      </view>
+    </view>
+  </view>
+  <security-watermark />
+</view>

@@ -1,0 +1,21 @@
+<view class="tabbar-wrap">
+  <view class="tabbar-glass">
+    <view
+      wx:for="{{list}}"
+      wx:key="pagePath"
+      class="tab-item {{selected === index ? 'tab-item--on' : ''}}"
+      data-i="{{index}}"
+      bindtap="switchTab"
+    >
+      <view class="icon-slot">
+        <view wx:if="{{item.key==='home'}}" class="ico ico-home {{selected===index?'ico--fill':''}}" />
+        <view wx:elif="{{item.key==='cat'}}" class="ico ico-cat {{selected===index?'ico--fill':''}}" />
+        <view wx:elif="{{item.key==='trend'}}" class="ico ico-trend {{selected===index?'ico--fill':''}}" />
+        <view wx:elif="{{item.key==='ops'}}" class="ico ico-ops {{selected===index?'ico--fill':''}}" />
+        <view wx:else class="ico ico-me {{selected===index?'ico--fill':''}}" />
+      </view>
+      <text class="tab-text">{{item.text}}</text>
+      <view wx:if="{{selected === index}}" class="tab-dot" />
+    </view>
+  </view>
+</view>

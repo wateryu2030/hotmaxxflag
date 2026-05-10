@@ -1,0 +1,43 @@
+.entry-page {
+  padding-top: 48rpx;
+}
+
+.entry-hero {
+  margin-bottom: 40rpx;
+}
+
+.entry-sub {
+  display: block;
+  margin-top: 16rpx;
+}
+
+.entry-btn {
+  width: 100%;
+  margin-bottom: 24rpx;
+}
+
+.htma-btn-outline {
+  width: 100%;
+  margin-bottom: 24rpx;
+  padding: 24rpx 32rpx;
+  font-size: 30rpx;
+  line-height: 1.4;
+  color: var(--brand-red);
+  background: #fff;
+  border: 2rpx solid var(--brand-red);
+  border-radius: var(--radius-btn);
+  box-sizing: border-box;
+}
+
+.entry-note {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+  font-size: 24rpx;
+  line-height: 1.55;
+  margin-top: 8rpx;
+}
+
+.entry-note-line {
+  display: block;
+}

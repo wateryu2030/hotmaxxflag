@@ -24,4 +24,5 @@ for i in 1 2 3 4 5 6 7 8 9 10; do
   sleep 1
 done
 
+export TUNNEL_TRANSPORT_PROTOCOL="${TUNNEL_TRANSPORT_PROTOCOL:-http2}"
 exec caffeinate -s -i -- cloudflared tunnel run --token "$TOKEN"

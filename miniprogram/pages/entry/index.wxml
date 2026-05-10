@@ -1,0 +1,13 @@
+<view class="wp-page entry-page">
+  <view class="htma-card entry-hero">
+    <text class="htma-title">好特卖超级仓</text>
+    <text class="htma-muted entry-sub">请先选择登录方式，避免直接进入不存在的页面。</text>
+  </view>
+  <button class="htma-btn-primary wp-btn-primary entry-btn" bindtap="goWechat">微信用户登录</button>
+  <button class="htma-btn-outline entry-btn" bindtap="goFeishu">飞书用户登录</button>
+  <view class="entry-note wp-muted">
+    <text class="entry-note-line">• 微信登录：用于小程序内数据接口（与 wx.login 换 token）。</text>
+    <text class="entry-note-line">• 飞书登录：内嵌与电脑端相同的网页登录页，完成飞书扫码授权。</text>
+  </view>
+  <security-watermark />
+</view>

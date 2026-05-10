@@ -1,0 +1,6 @@
+{
+  "usingComponents": {},
+  "navigationBarTitleText": "看板 API 调试",
+  "enablePullDownRefresh": true,
+  "backgroundTextStyle": "dark"
+}

@@ -26,5 +26,6 @@ fi
 
 echo "正在启动隧道（外网地址: https://htma.greatagain.com.cn）..."
 echo "已启用防睡眠（锁屏/息屏不影响外网访问）。关闭本窗口将断开隧道。"
-# -s 防止系统睡眠 -i 防止空闲睡眠，锁屏后隧道不断线
+export TUNNEL_TRANSPORT_PROTOCOL="${TUNNEL_TRANSPORT_PROTOCOL:-http2}"
+# -s 防止系统睡眠 -i 防止空闲睡眠，锁屏后隧道不断线；HTTP/2 减轻 QUIC 在部分网络下断连
 exec caffeinate -s -i -- cloudflared tunnel run --token "$TOKEN"

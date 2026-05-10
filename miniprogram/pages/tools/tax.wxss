@@ -1,0 +1,68 @@
+.wp-page--tool {
+  padding-bottom: calc(120rpx + env(safe-area-inset-bottom));
+}
+
+.tax-card {
+  overflow: hidden;
+}
+
+.tax-bar-wrap {
+  position: relative;
+  margin-top: 16rpx;
+  border-radius: 16rpx;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.tax-bar-bg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 16rpx;
+  z-index: 0;
+  pointer-events: none;
+  max-width: 100%;
+}
+
+.tax-bar-front {
+  position: relative;
+  z-index: 1;
+  padding: 16rpx 16rpx 20rpx;
+}
+
+.tax-rate-val {
+  margin-top: 8rpx;
+  display: block;
+  font-size: 32rpx;
+  font-weight: 700;
+}
+
+.tax-note {
+  margin-top: 16rpx;
+  line-height: 1.55;
+  font-size: 24rpx;
+}
+
+.tax-empty {
+  text-align: center;
+  padding: 48rpx 24rpx;
+}
+
+.tool-bar-block {
+  margin-top: 0;
+}
+
+.tool-bar-lab {
+  font-size: 22rpx;
+  color: var(--text-muted, #8c93a1);
+}
+
+.tool-track {
+  margin-top: 8rpx;
+  height: 10rpx;
+}
+
+.tool-fill-tax {
+  background: linear-gradient(90deg, #69b1ff, #1677ff);
+}

@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>销售额大类归因 - 好特卖运营看板</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; padding: 20px; }
+    h1 { font-size: 1.25rem; margin-bottom: 8px; color: #f8fafc; }
+    .tip { color: #64748b; font-size: 0.85rem; margin-bottom: 20px; line-height: 1.5; }
+    .nav a { color: #38bdf8; text-decoration: none; margin-right: 14px; }
+    .nav a:hover { text-decoration: underline; }
+    .form-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px; }
+    .form-row label { color: #94a3b8; font-size: 0.9rem; }
+    .form-row input { padding: 8px 10px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; }
+    .btn { background: #38bdf8; color: #0f172a; border: none; padding: 10px 18px; border-radius: 8px; font-weight: 600; cursor: pointer; }
+    .btn:hover { background: #0ea5e9; }
+    .section { background: #1e293b; border-radius: 12px; padding: 16px; margin-bottom: 16px; border: 1px solid #334155; max-width: 1100px; }
+    .section h2 { font-size: 0.95rem; color: #94a3b8; margin-bottom: 10px; }
+    #chart { width: 100%; height: 420px; }
+    .meta { font-size: 0.78rem; color: #64748b; margin-top: 8px; }
+    .err { color: #f87171; padding: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #334155; }
+    th { color: #94a3b8; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .pos { color: #34d399; }
+    .neg { color: #f87171; }
+  </style>
+</head>
+<body>
+  <div class="nav">
+    <a href="/">← 返回看板</a>
+    <a href="/tax_analysis">税务分析</a>
+  </div>
+  <h1>销售额 · 大类环比归因</h1>
+  <p class="tip">
+    选取本期日期区间后，系统以上一「等长」区间为对比期，按 <code>daily_category_stats</code> 大类聚合分解销售额增量；下图展示各大类对增量的贡献（条形）。
+    口径与小程序 <code>/api/mobile/analysis/attribution</code> 一致（Web 默认门店：<span id="storeHint">沈阳超级仓</span>）。
+  </p>
+  <div class="section">
+    <div class="form-row">
+      <label>本期起 <input type="date" id="d0" /></label>
+      <label>本期止 <input type="date" id="d1" /></label>
+      <button type="button" class="btn" id="btnLoad">加载</button>
+    </div>
+    <div id="err" class="err" style="display:none;"></div>
+    <div id="chart"></div>
+    <p class="meta" id="auditMeta"></p>
+  </div>
+  <div class="section">
+    <h2>明细（按 |Δ销售额| 排序）</h2>
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>大类</th>
+            <th class="num">上期销售</th>
+            <th class="num">本期销售</th>
+            <th class="num">增量</th>
+            <th class="num">占总额增量%</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+  <script>
+    function pad2(n) { return String(n).padStart(2, "0"); }
+    function defaultRange() {
+      var d = new Date();
+      var y = d.getFullYear();
+      var m = d.getMonth();
+      var first = new Date(y, m, 1);
+      var last = new Date(y, m + 1, 0);
+      return {
+        s: first.getFullYear() + "-" + pad2(first.getMonth() + 1) + "-" + pad2(first.getDate()),
+        e: last.getFullYear() + "-" + pad2(last.getMonth() + 1) + "-" + pad2(last.getDate()),
+      };
+    }
+    function buildDeltaBarOption(rows) {
+      var top = (rows || []).slice(0, 18);
+      var names = top.map(function (r) {
+        var n = (r.category_large || r.category_large_code || "").trim();
+        return n.length > 10 ? n.slice(0, 10) + "…" : n;
+      });
+      var vals = top.map(function (r) { return Number(r.delta) || 0; });
+      return {
+        title: { text: "各大类对销售额增量的贡献（Top18）", left: 0, textStyle: { color: "#94a3b8", fontSize: 13 } },
+        tooltip: { trigger: "axis" },
+        grid: { left: 8, right: 24, top: 36, bottom: 8, containLabel: true },
+        xAxis: { type: "value", axisLabel: { color: "#94a3b8" }, splitLine: { lineStyle: { color: "#334155" } } },
+        yAxis: { type: "category", data: names, inverse: true, axisLabel: { color: "#cbd5e1", fontSize: 11 } },
+        series: [
+          {
+            type: "bar",
+            data: vals,
+            itemStyle: {
+              color: function (p) {
+                return (p.value || 0) >= 0 ? "#34d399" : "#f87171";
+              },
+            },
+          },
+        ],
+      };
+    }
+    function load() {
+      var d0 = document.getElementById("d0").value;
+      var d1 = document.getElementById("d1").value;
+      var err = document.getElementById("err");
+      err.style.display = "none";
+      var q = "start_date=" + encodeURIComponent(d0) + "&end_date=" + encodeURIComponent(d1);
+      fetch("/api/analysis/attribution?" + q, { credentials: "same-origin" })
+        .then(function (r) {
+          if (r.status === 401) throw new Error("未登录，请先登录看板");
+          if (!r.ok) return r.json().then(function (b) { throw new Error(b.error || "请求失败"); });
+          return r.json();
+        })
+        .then(function (data) {
+          var chart = echarts.init(document.getElementById("chart"));
+          chart.setOption(buildDeltaBarOption(data.by_category || []), true);
+          window.addEventListener("resize", function () { chart.resize(); });
+          var audit = data.audit || {};
+          document.getElementById("auditMeta").textContent =
+            "trace_id=" + (audit.trace_id || "") + " · " + (audit.queried_at || "") +
+            " · 上期合计 " + (data.prev_total != null ? data.prev_total : "") +
+            " → 本期 " + (data.cur_total != null ? data.cur_total : "") +
+            "（Δ " + (data.delta_total != null ? data.delta_total : "") + "）";
+          var rows = data.by_category || [];
+          var tb = document.getElementById("tbody");
+          tb.innerHTML = rows.map(function (r) {
+            var cls = r.delta >= 0 ? "pos" : "neg";
+            return "<tr><td>" + escapeHtml(r.category_large || r.category_large_code) + "</td>" +
+              "<td class=\"num\">" + r.sale_prev + "</td><td class=\"num\">" + r.sale_cur + "</td>" +
+              "<td class=\"num " + cls + "\">" + r.delta + "</td><td class=\"num\">" + r.share_of_total_delta_pct + "</td></tr>";
+          }).join("");
+        })
+        .catch(function (e) {
+          err.textContent = e.message || String(e);
+          err.style.display = "block";
+        });
+    }
+    function escapeHtml(s) {
+      var d = document.createElement("div");
+      d.textContent = s;
+      return d.innerHTML;
+    }
+    (function init() {
+      var r = defaultRange();
+      document.getElementById("d0").value = r.s;
+      document.getElementById("d1").value = r.e;
+      document.getElementById("btnLoad").addEventListener("click", load);
+      load();
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,46 @@
+<view class="wp-page">
+  <view class="htma-card" wx:if="{{summary}}">
+    <view class="htma-title">人力摘要</view>
+    <view class="htma-row lab-row">
+      <text class="wp-muted-label">总人力成本</text>
+      <text class="wp-num lab-val">{{summary.total_labor_cost}}</text>
+    </view>
+    <view class="htma-row lab-row">
+      <text class="wp-muted-label">总销售额 / 总毛利</text>
+      <text class="wp-num lab-val">{{summary.total_sales}} / {{summary.total_gross_profit}}</text>
+    </view>
+    <view class="htma-row lab-row">
+      <text class="wp-muted-label">毛利/人力</text>
+      <text class="wp-num wp-success lab-val">{{summary.profit_cost_ratio}}</text>
+    </view>
+    <view class="htma-muted" style="margin-top:20rpx;line-height:1.55;">{{summary.quadrant_summary}}</view>
+  </view>
+
+  <view class="htma-title idx-section">低毛利 · 高人力 大类</view>
+  <view
+    class="htma-card"
+    wx:for="{{(summary && summary.low_margin_high_labor_categories) || []}}"
+    wx:key="_k"
+  >
+    <text class="lab-cat-title">{{item.category}}</text>
+    <view class="lab-metric">
+      <text class="htma-muted">毛利率 {{item.margin_pct}}%</text>
+      <view class="wp-progress-track lab-track">
+        <view class="wp-progress-fill lab-fill-margin" style="width:{{item._marginBar}}%;"></view>
+      </view>
+    </view>
+    <view class="lab-metric">
+      <text class="htma-muted">人力强度 {{item.labor_intensity}}</text>
+      <view class="wp-progress-track lab-track">
+        <view class="wp-progress-fill lab-fill-labor" style="width:{{item._laborBar}}%;"></view>
+      </view>
+    </view>
+  </view>
+  <view wx:if="{{summary && !summary.low_margin_high_labor_categories.length}}" class="htma-card htma-muted">无样本或暂无该类目</view>
+
+  <view class="lab-foot">
+    <button class="htma-btn-primary wp-btn-primary" type="default" bindtap="openWeb">Web 详细人力分析</button>
+  </view>
+  <view class="htma-muted lab-note">说明：H5 仍使用看板飞书/会话登录，小程序 token 仅拼在 URL 中供联调，生产需做对应适配。</view>
+  <security-watermark />
+</view>

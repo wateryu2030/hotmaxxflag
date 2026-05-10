@@ -20,7 +20,7 @@
   <key>EnvironmentVariables</key>
   <dict>
     <key>OPENCLAW_BAIDU_PROJECT_ROOT</key>
-    <string>/Volumes/ragflow/hotmaxx/hotmaxxflag</string>
+    <string>/Users/zhonglian/hotmaxxflag</string>
   </dict>
   <key>StandardOutPath</key>
   <string>/Users/zhonglian/.openclaw/logs/gateway.out.log</string>

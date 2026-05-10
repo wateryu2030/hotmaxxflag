@@ -1,0 +1,110 @@
+<view class="wp-page wp-page--insight">
+  <view class="da-filter-surface">
+    <view class="da-capsule-wrap">
+      <view class="da-capsule">
+        <view
+          class="da-cap {{gi===0?'da-cap--on':''}}"
+          data-i="0"
+          bindtap="setTabG"
+        >按日</view>
+        <view
+          class="da-cap {{gi===1?'da-cap--on':''}}"
+          data-i="1"
+          bindtap="setTabG"
+        >按周</view>
+        <view
+          class="da-cap {{gi===2?'da-cap--on':''}}"
+          data-i="2"
+          bindtap="setTabG"
+        >按月</view>
+      </view>
+    </view>
+    <view class="da-capsule-wrap">
+      <view class="da-capsule">
+        <view
+          class="da-cap {{mi===0?'da-cap--on':''}}"
+          data-i="0"
+          bindtap="setTabM"
+        >销售额</view>
+        <view
+          class="da-cap {{mi===1?'da-cap--on':''}}"
+          data-i="1"
+          bindtap="setTabM"
+        >毛利</view>
+        <view
+          class="da-cap {{mi===2?'da-cap--on':''}}"
+          data-i="2"
+          bindtap="setTabM"
+        >毛利率%</view>
+      </view>
+    </view>
+    <view class="ins-meta">区间：近30天（超 120 点已抽样） · 最小 {{stat.min}} / 最大 {{stat.max}}</view>
+  </view>
+
+  <view wx:if="{{loading}}" class="htma-center wp-muted">加载中…</view>
+
+  <block wx:else>
+    <view class="da-card ins-chart-card">
+      <view class="wp-title ins-chart-ttl">趋势图</view>
+      <view class="chart-box ins-chart">
+        <ec-canvas
+          id="insight-line"
+          canvas-id="insight-line"
+          ec="{{ ec }}"
+        ></ec-canvas>
+      </view>
+    </view>
+
+    <view
+      class="da-card"
+      wx:if="{{compareMom != null || compareSpan != null}}"
+    >
+      <view class="wp-title" style="margin-bottom:16rpx">区间对比</view>
+      <view class="ins-compare" wx:if="{{compareMom != null}}">
+        <text class="ins-compare-lab">近端变化（末点 vs 前一点）</text>
+        <view class="ins-compare-r">
+          <text
+            class="wp-num ins-compare-pct {{compareMom>=0?'ins-up':'ins-down'}}"
+          >{{compareMomStr}}</text>
+          <text class="ins-arrow">{{compareMom>=0?'▲':'▼'}}</text>
+        </view>
+      </view>
+      <view class="ins-compare ins-compare--2" wx:if="{{compareSpan != null}}">
+        <text class="ins-compare-lab">全区间（末点 vs 首点）</text>
+        <view class="ins-compare-r">
+          <text
+            class="wp-num ins-compare-pct {{compareSpan>=0?'ins-up':'ins-down'}}"
+          >{{compareSpanStr}}</text>
+          <text class="ins-arrow">{{compareSpan>=0?'▲':'▼'}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="da-card">
+      <view class="wp-title" style="margin-bottom:8rpx">数据列表</view>
+      <view class="da-list" wx:if="{{tableRows.length}}">
+        <view
+          wx:for="{{tableRows}}"
+          wx:for-index="ridx"
+          wx:key="_k"
+          class="da-row"
+        >
+          <view class="da-row-bg" style="width: {{item._bgPct}}%;" />
+          <view class="da-row-inner">
+            <view
+              wx:if="{{item._rank<=3}}"
+              class="wp-rank {{item._rank===1?'wp-rank--1':''}} {{item._rank===2?'wp-rank--2':''}} {{item._rank===3?'wp-rank--3':''}}"
+            >{{item._rank}}</view>
+            <view wx:else class="da-rank-plain">{{item._rank}}</view>
+            <view class="ins-row-mid">
+              <text class="ins-dt">{{item.dt}}</text>
+            </view>
+            <text class="ins-val wp-num da-val">{{item.v}}</text>
+          </view>
+        </view>
+      </view>
+      <view wx:else class="wp-muted" style="padding:24rpx 0">暂无行数据</view>
+    </view>
+  </block>
+  <security-watermark />
+</view>

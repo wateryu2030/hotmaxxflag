@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "趋势洞察",
+  "enablePullDownRefresh": true,
+  "usingComponents": {
+    "ec-canvas": "/components/ec-canvas/ec-canvas"
+  }
+}

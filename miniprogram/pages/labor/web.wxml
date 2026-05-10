@@ -1,0 +1,8 @@
+<view wx:if="{{!src}}" class="wp-page labor-web-fallback">
+  <view class="htma-card">
+    <view class="htma-title">人力分析</view>
+    <text class="htma-muted">未传入有效地址。请从「人力」页点击按钮进入。</text>
+  </view>
+  <security-watermark />
+</view>
+<web-view wx:else src="{{src}}"></web-view>

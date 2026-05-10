@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "品类分析",
+  "enablePullDownRefresh": true,
+  "usingComponents": {
+    "ec-canvas": "/components/ec-canvas/ec-canvas"
+  }
+}

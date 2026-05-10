@@ -1,0 +1,5 @@
+<view class="wm-root" pointer-events="none" aria-hidden="true">
+  <view class="wm-stage">
+    <view wx:for="{{rows}}" wx:key="*this" class="wm-line">{{text}}</view>
+  </view>
+</view>

@@ -1,0 +1,52 @@
+<view class="wp-page wp-page--alerts">
+  <view wx:if="{{loading}}" class="da-card wp-muted al-loading">加载中…</view>
+  <block wx:else>
+    <view class="da-filter-surface al-intro-surface">
+      <view class="wp-title al-intro-title">经营预警</view>
+      <text class="wp-muted al-intro-txt">红：高风险；黄：关注；默认优先展示异常类；行背景反映优先级</text>
+    </view>
+
+    <view wx:if="{{!displayList.length}}" class="da-card wp-muted al-empty">暂无预警</view>
+
+    <view class="da-list al-list" wx:if="{{displayList.length}}">
+      <view
+        wx:for="{{displayList}}"
+        wx:key="_k"
+        class="da-row al-row al-row--{{item._strip}}"
+        data-link="{{item.link}}"
+        bindtap="onTapItem"
+      >
+        <view class="da-row-bg" style="width: {{item._bgPct}}%;" />
+        <view class="da-row-inner al-row-inner">
+          <view
+            wx:if="{{item._idx<3}}"
+            class="wp-rank {{item._idx===0?'wp-rank--1':''}} {{item._idx===1?'wp-rank--2':''}} {{item._idx===2?'wp-rank--3':''}}"
+          >{{item._idx+1}}</view>
+          <view wx:else class="da-rank-plain">{{item._idx+1}}</view>
+          <view class="al-body">
+            <view class="al-title-row">
+              <text class="al-title">{{item.title}}</text>
+              <text class="al-badge" wx:if="{{item._strip==='danger'}}">紧急</text>
+              <text class="al-badge al-badge--warn" wx:elif="{{item._strip==='warn'}}">关注</text>
+            </view>
+            <view class="wp-muted al-detail">{{item.detail}}</view>
+            <view class="al-actions" wx:if="{{item.id}}">
+              <button class="al-ack-btn" size="mini" catchtap="onAck" data-id="{{item.id}}">一键处理</button>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{showExpandBtn}}" class="al-expand-wrap">
+      <button class="al-expand-btn" size="mini" bindtap="toggleExpand">
+        {{expandAll ? '收起' : '查看全部'}}
+      </button>
+    </view>
+
+    <view class="da-card al-sub-card">
+      <button class="htma-btn-primary wp-btn-primary al-sub-btn" bindtap="subscribe">订阅消息推送</button>
+    </view>
+  </block>
+  <security-watermark />
+</view>

@@ -1,0 +1,6 @@
+<view class="wp-page wp-page--mid">
+  <view class="da-card wp-muted mid-fallback">
+    <text>正在跳转统一下钻页…若停留过久，请返回后从「品类概览」进入。</text>
+  </view>
+  <security-watermark />
+</view>

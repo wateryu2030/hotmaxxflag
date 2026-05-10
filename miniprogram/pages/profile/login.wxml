@@ -1,0 +1,21 @@
+<view class="wp-page">
+<view class="htma-card">
+  <text class="htma-title">微信登录</text>
+  <view class="htma-muted" style="margin-top:12rpx;">先使用下方按钮换 token，再进入首页驾驶舱。</view>
+</view>
+<view class="login-back-row">
+  <text class="wp-muted login-back" bindtap="goEntry">← 返回登录方式选择</text>
+</view>
+<view style="padding: 32rpx 0;">
+  <button class="htma-btn-primary wp-btn-primary" type="default" bindtap="doLogin">微信登录</button>
+  <view style="height: 24rpx;"></view>
+  <button
+    class="htma-btn-primary wp-btn-primary"
+    type="default"
+    open-type="getPhoneNumber"
+    bindgetphonenumber="getPhone"
+  >绑定手机号</button>
+  <view class="htma-muted" style="margin-top: 24rpx;">绑定手机号前请先完成「微信登录」。</view>
+</view>
+  <security-watermark />
+</view>

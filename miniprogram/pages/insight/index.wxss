@@ -1,0 +1,79 @@
+.wp-page--insight {
+  padding-bottom: calc(200rpx + env(safe-area-inset-bottom));
+}
+
+.ins-meta {
+  font-size: 24rpx;
+  color: #6b7280;
+  line-height: 1.5;
+  margin-top: 4rpx;
+}
+.ins-chart-ttl {
+  margin-bottom: 8rpx;
+}
+
+.ins-chart {
+  height: 420rpx;
+  margin: 0;
+}
+
+.ins-chart .chart-box {
+  height: 100%;
+  margin: 0;
+}
+
+.ins-compare {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12rpx 0;
+  border-bottom: 1rpx solid rgba(0, 0, 0, 0.05);
+}
+.ins-compare--2 {
+  border-bottom: none;
+  margin-top: 4rpx;
+}
+.ins-compare-lab {
+  font-size: 26rpx;
+  color: #5c6370;
+  flex: 1;
+  min-width: 0;
+  padding-right: 16rpx;
+}
+.ins-compare-r {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-shrink: 0;
+}
+.ins-compare-pct {
+  font-size: 30rpx;
+  font-weight: 700;
+}
+.ins-up {
+  color: #52c41a;
+}
+.ins-down {
+  color: #c92539;
+}
+.ins-arrow {
+  margin-left: 6rpx;
+  font-size: 22rpx;
+  color: #8c8c8c;
+}
+
+.ins-row-mid {
+  flex: 1;
+  min-width: 0;
+  margin-right: 12rpx;
+}
+.ins-dt {
+  font-size: 24rpx;
+  color: #5c6370;
+}
+.ins-val {
+  text-align: right;
+  color: #1a1a1a;
+  flex-shrink: 0;
+}

@@ -1,0 +1,328 @@
+/* ========== 好特卖超级仓 · WP-Standard 全局视觉 ========== */
+page {
+  --brand-red: #c92539;
+  --brand-red-light: #d83d4f;
+  --brand-gradient: linear-gradient(135deg, #d83d4f 0%, #c92539 100%);
+  --bg-main: #f6f8fa;
+  --bg-card: #ffffff;
+  --color-success: #52c41a;
+  --color-warning: #faad14;
+  --color-danger: #c92539;
+  --text-primary: #1a1a1a;
+  --text-secondary: #5c6370;
+  --text-muted: #8c93a1;
+  --tab-inactive: #bcc1cd;
+  --hairline: rgba(0, 0, 0, 0.05);
+  --shadow-soft: 0 12rpx 32rpx -8rpx rgba(201, 37, 57, 0.08),
+    0 4rpx 12rpx -4rpx rgba(0, 0, 0, 0.02);
+  --radius-card: 24rpx;
+  --radius-btn: 16rpx;
+  --radius-tag: 8rpx;
+  --radius-bar: 10rpx;
+  --glass-bg: rgba(255, 255, 255, 0.82);
+  --glass-blur: blur(20px);
+
+  background: var(--bg-main);
+  color: var(--text-primary);
+  font-size: 28rpx;
+  box-sizing: border-box;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+}
+
+/* 经营数字：iOS 自带 DIN Alternate；其余回退系统数字体 */
+.wp-num,
+.htma-kpi-big,
+.t-v {
+  font-family: "DIN Alternate", DINAlternate-Bold, "Helvetica Neue", -apple-system, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ECharts 父容器 */
+.chart-box {
+  width: 100%;
+  height: 480rpx;
+  margin: 0 0 16rpx;
+}
+.chart-box.chart-tall {
+  height: 560rpx;
+}
+
+/* 页面呼吸：左右 40rpx，底部为自定义 Tab 预留 */
+.wp-page {
+  padding: 0 40rpx 140rpx;
+  box-sizing: border-box;
+}
+
+/* 主卡片：弥散阴影 + 极细描边 + 24rpx 圆角 */
+.htma-card,
+.wp-card {
+  background: var(--bg-card);
+  border-radius: var(--radius-card);
+  padding: 40rpx;
+  margin: 0 0 24rpx;
+  box-shadow: var(--shadow-soft);
+  border: 1px solid var(--hairline);
+  box-sizing: border-box;
+}
+
+.htma-title,
+.wp-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+}
+
+.htma-muted,
+.wp-muted {
+  color: var(--text-muted);
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+
+.htma-orange,
+.wp-brand {
+  color: var(--brand-red);
+}
+
+.htma-green,
+.wp-success {
+  color: var(--color-success);
+}
+
+.htma-warn,
+.wp-warning {
+  color: var(--color-warning);
+}
+
+.wp-danger {
+  color: var(--color-danger);
+}
+
+.htma-row,
+.wp-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.htma-kpi-big {
+  font-size: 44rpx;
+  font-weight: 700;
+  color: var(--brand-red);
+  margin-top: 8rpx;
+}
+
+.htma-kpi-big.htma-green {
+  color: var(--color-success);
+}
+
+.htma-btn-primary,
+.wp-btn-primary {
+  background: var(--brand-gradient);
+  color: #fff;
+  border-radius: var(--radius-btn);
+  padding: 20rpx 32rpx;
+  font-size: 28rpx;
+  border: none;
+  box-shadow: 0 8rpx 24rpx -6rpx rgba(201, 37, 57, 0.35);
+}
+
+.wp-btn-ghost {
+  background: #fff;
+  color: #c92539;
+  border: 1px solid rgba(201, 37, 57, 0.35);
+  border-radius: var(--radius-btn);
+  font-size: 28rpx;
+}
+
+.htma-seg,
+.wp-seg {
+  display: flex;
+  flex-direction: row;
+  margin: 16rpx 0 24rpx;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: var(--radius-btn);
+  padding: 6rpx;
+  border: 1px solid var(--hairline);
+}
+
+.htma-seg-item,
+.wp-seg-item {
+  flex: 1;
+  text-align: center;
+  padding: 14rpx 0;
+  font-size: 26rpx;
+  border-radius: 12rpx;
+  color: var(--text-secondary);
+}
+
+.htma-seg-item.on,
+.wp-seg-item.on {
+  background: var(--bg-card);
+  color: var(--brand-red);
+  font-weight: 600;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.06);
+}
+
+/* 圆角渐变进度条轨道（10rpx） */
+.wp-progress-track {
+  flex: 1;
+  height: 10rpx;
+  background: #f0f2f5;
+  border-radius: var(--radius-bar);
+  overflow: hidden;
+  margin: 0 16rpx;
+}
+.wp-progress-fill {
+  height: 100%;
+  border-radius: var(--radius-bar);
+  background: var(--brand-gradient);
+}
+
+/* 金属质感排名徽章 */
+.wp-rank {
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22rpx;
+  font-weight: 700;
+  color: #3d2c10;
+  margin-right: 16rpx;
+  flex-shrink: 0;
+  box-shadow: inset 0 2rpx 4rpx rgba(255, 255, 255, 0.45), 0 2rpx 8rpx rgba(0, 0, 0, 0.12);
+}
+.wp-rank--1 {
+  background: linear-gradient(145deg, #ffe566 0%, #ffd700 40%, #b8860b 100%);
+}
+.wp-rank--2 {
+  background: linear-gradient(145deg, #f5f5f5 0%, #c0c0c0 45%, #808080 100%);
+  color: #2a2a2a;
+}
+.wp-rank--3 {
+  background: linear-gradient(145deg, #e8a060 0%, #cd7f32 45%, #8b4513 100%);
+  color: #fff;
+}
+
+/* ——— 全站数据分析页：与「品类分析」对齐的壳层与列表行 ——— */
+.da-filter-surface {
+  background: #ffffff;
+  border-radius: 24rpx;
+  padding: 20rpx;
+  margin: 0 0 24rpx;
+  box-shadow: 0 8rpx 32rpx -12rpx rgba(201, 37, 57, 0.1), 0 4rpx 12rpx rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  box-sizing: border-box;
+}
+.da-capsule-wrap {
+  margin: 0 0 12rpx;
+  padding: 0;
+}
+.da-capsule-wrap:last-of-type {
+  margin-bottom: 0;
+}
+.da-capsule {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 8rpx;
+  background: #f0f2f5;
+  border-radius: 40rpx;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+}
+.da-cap {
+  flex: 1;
+  text-align: center;
+  padding: 16rpx 6rpx;
+  font-size: 26rpx;
+  color: #5c6370;
+  border-radius: 32rpx;
+}
+.da-cap--on {
+  background: #ffffff;
+  color: #c92539;
+  font-weight: 600;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.08), 0 2rpx 6rpx rgba(201, 37, 57, 0.08);
+}
+.da-card {
+  background: #ffffff;
+  border-radius: 24rpx;
+  padding: 32rpx 28rpx 36rpx;
+  margin: 0 0 24rpx;
+  box-shadow: 0 8rpx 32rpx -12rpx rgba(201, 37, 57, 0.1), 0 4rpx 12rpx rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  box-sizing: border-box;
+}
+.da-list {
+  margin-top: 8rpx;
+  padding-top: 12rpx;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+.da-row {
+  position: relative;
+  margin: 0 0 12rpx;
+  border-radius: 16rpx;
+  overflow: hidden;
+  min-height: 88rpx;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  box-sizing: border-box;
+}
+.da-row-bg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(201, 37, 57, 0.08) 0%,
+    rgba(201, 37, 57, 0.03) 100%
+  );
+  border-radius: 16rpx;
+  z-index: 0;
+  pointer-events: none;
+  max-width: 100%;
+}
+.da-row-inner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 16rpx 20rpx 16rpx 12rpx;
+  box-sizing: border-box;
+}
+.da-rank-plain {
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 50%;
+  background: #f0f2f5;
+  color: #6b7280;
+  font-size: 22rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 12rpx;
+  flex-shrink: 0;
+}
+.da-txt {
+  font-size: 24rpx;
+  color: #6b7280;
+}
+.da-val {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1f2937;
+  font-family: "DIN Alternate", DINAlternate-Bold, "Helvetica Neue", -apple-system, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+.htma-center {
+  text-align: center;
+  padding: 48rpx;
+  color: var(--text-muted);
+}

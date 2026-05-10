@@ -1,0 +1,24 @@
+{
+  "description": "本机私有配置（勿提交含密钥的改动）；须带 appid 否则部分 IDE 版本预览报 appid undefined",
+  "appid": "wx70848bef7dd74d99",
+  "libVersion": "3.7.12",
+  "projectname": "miniprogram_example",
+  "condition": {},
+  "setting": {
+    "urlCheck": false,
+    "coverView": true,
+    "lazyloadPlaceholderEnable": false,
+    "skylineRenderEnable": false,
+    "preloadBackgroundData": false,
+    "autoAudits": false,
+    "useApiHook": true,
+    "showShadowRootInWxmlPanel": false,
+    "useStaticServer": false,
+    "useLanDebug": false,
+    "showES6CompileOption": false,
+    "compileHotReLoad": true,
+    "checkInvalidKey": true,
+    "ignoreDevUnusedFiles": true,
+    "bigPackageSizeSupport": false
+  }
+}

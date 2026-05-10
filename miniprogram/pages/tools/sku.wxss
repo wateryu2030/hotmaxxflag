@@ -1,0 +1,73 @@
+.wp-page--tool {
+  padding-bottom: calc(120rpx + env(safe-area-inset-bottom));
+}
+
+.tool-surface-title {
+  margin-bottom: 4rpx;
+}
+
+.tool-surface .tool-input {
+  margin-top: 20rpx;
+  padding: 20rpx;
+  background: #f6f8fa;
+  border-radius: 16rpx;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  font-size: 28rpx;
+}
+
+.tool-search-btn {
+  margin-top: 24rpx;
+  width: 100%;
+}
+
+.tool-sku-row {
+  min-height: 0;
+}
+
+.tool-sku-inner {
+  flex-direction: column;
+  align-items: stretch;
+  padding: 20rpx 20rpx 18rpx;
+}
+
+.tool-sku-main {
+  width: 100%;
+}
+
+.tool-item-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--text-primary, #1a1a1a);
+}
+
+.tool-item-meta {
+  margin-top: 10rpx;
+  font-size: 24rpx;
+  line-height: 1.45;
+}
+
+.tool-bar-block {
+  margin-top: 16rpx;
+}
+
+.tool-bar-lab {
+  font-size: 22rpx;
+  color: var(--text-muted, #8c93a1);
+}
+
+.tool-track {
+  margin-top: 8rpx;
+  height: 10rpx;
+}
+
+.tool-bar-pct {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: var(--text-muted, #8c93a1);
+  text-align: right;
+}
+
+.tool-fill-margin {
+  background: linear-gradient(90deg, #95de64, #52c41a);
+}

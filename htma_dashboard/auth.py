@@ -42,6 +42,7 @@ def _is_internal_feishu_user(open_id, tenant_access_token):
             params={"user_id_type": "open_id"},
             headers={"Authorization": f"Bearer {tenant_access_token}"},
             timeout=5,
+            proxies={"http": "", "https": ""},
         )
         data = r.json() if r.status_code == 200 else {}
         if data.get("code") == 0:
@@ -75,6 +76,7 @@ def _tenant_access_token(app_id=None, app_secret=None):
         json={"app_id": app_id, "app_secret": app_secret},
         headers={"Content-Type": "application/json"},
         timeout=10,
+        proxies={"http": "", "https": ""},
     )
     if r.status_code != 200:
         return None, f"tenant_token 请求失败: {r.status_code}"
@@ -121,6 +123,7 @@ def feishu_exchange_code_and_user(code, redirect_uri, app_id=None, app_secret=No
         json={"grant_type": "authorization_code", "code": code, "redirect_uri": redirect_uri},
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {tenant_token}"},
         timeout=10,
+        proxies={"http": "", "https": ""},
     )
     if r.status_code != 200:
         return None, f"access_token 请求失败: {r.status_code}"
@@ -136,6 +139,7 @@ def feishu_exchange_code_and_user(code, redirect_uri, app_id=None, app_secret=No
         USER_INFO_URL,
         headers={"Authorization": f"Bearer {user_access_token}"},
         timeout=10,
+        proxies={"http": "", "https": ""},
     )
     if r2.status_code != 200:
         return None, f"user_info 请求失败: {r2.status_code}"

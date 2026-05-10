@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>运维管理面板 - 好特卖超级仓</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      max-width: 1200px;
+      margin: 0 auto 24px auto;
+    }
+    .header h1 {
+      font-size: 1.3rem;
+      color: #f8fafc;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .header h1::before {
+      content: '';
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      background: #22d3ee;
+      border-radius: 50%;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0% { opacity: 1; box-shadow: 0 0 0 0 rgba(34,211,238,.4); }
+      70% { opacity: .7; box-shadow: 0 0 0 6px rgba(34,211,238,0); }
+      100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34,211,238,0); }
+    }
+    .header-actions {
+      display: flex;
+      gap: 10px;
+    }
+    .btn {
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #e2e8f0;
+      padding: 8px 18px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: all .15s;
+    }
+    .btn:hover { border-color: #38bdf8; background: #334155; }
+    .btn-primary {
+      background: #0369a1;
+      border-color: #0ea5e9;
+      color: #f8fafc;
+    }
+    .btn-primary:hover { background: #0ea5e9; }
+    .btn-danger {
+      background: #7f1d1d;
+      border-color: #dc2626;
+      color: #f8fafc;
+    }
+    .btn-danger:hover { background: #dc2626; }
+    .btn-sm { padding: 4px 12px; font-size: 0.8rem; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 14px;
+      padding: 20px;
+    }
+    .card-full { grid-column: 1 / -1; }
+    .card-title {
+      font-size: 0.85rem;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .stat-group {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .stat-item {
+      flex: 1;
+      min-width: 100px;
+      padding: 12px;
+      background: #0f172a;
+      border-radius: 10px;
+      text-align: center;
+    }
+    .stat-value {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+    .stat-label {
+      font-size: 0.75rem;
+      color: #64748b;
+      margin-top: 4px;
+    }
+    .stat-value.good { color: #22c55e; }
+    .stat-value.warn { color: #eab308; }
+    .stat-value.bad { color: #ef4444; }
+
+    .alert-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      background: #0f172a;
+      border-radius: 8px;
+      border-left: 3px solid #475569;
+    }
+    .alert-item.warning { border-left-color: #eab308; }
+    .alert-item.critical { border-left-color: #ef4444; }
+    .alert-item.info { border-left-color: #38bdf8; }
+    .alert-icon { font-size: 1.1rem; }
+    .alert-body { flex: 1; }
+    .alert-title { font-size: 0.85rem; color: #f1f5f9; }
+    .alert-summary { font-size: 0.75rem; color: #94a3b8; margin-top: 2px; }
+    .alert-time { font-size: 0.7rem; color: #64748b; margin-top: 2px; }
+
+    .ai-report-box {
+      background: #0f172a;
+      border-radius: 10px;
+      padding: 14px;
+      font-size: 0.85rem;
+      line-height: 1.6;
+      color: #cbd5e1;
+      white-space: pre-wrap;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .ai-report-meta { font-size: 0.75rem; color: #64748b; margin-bottom: 8px; }
+
+    .config-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+    .config-table th {
+      text-align: left;
+      color: #64748b;
+      padding: 8px 8px 4px 0;
+      border-bottom: 1px solid #334155;
+      font-size: 0.75rem;
+    }
+    .config-table td {
+      padding: 6px 8px 6px 0;
+      border-bottom: 1px solid #1e293b;
+    }
+    .config-table input {
+      width: 100%;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 6px 10px;
+      color: #e2e8f0;
+      font-size: 0.85rem;
+    }
+    .config-table input:focus {
+      outline: none;
+      border-color: #38bdf8;
+    }
+    .config-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 12px;
+    }
+
+    .import-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid #1e293b;
+      font-size: 0.85rem;
+    }
+    .import-row:last-child { border-bottom: none; }
+    .import-label { color: #94a3b8; }
+    .import-value { color: #f1f5f9; font-weight: 600; }
+
+    .empty-state {
+      text-align: center;
+      padding: 24px;
+      color: #64748b;
+      font-size: 0.85rem;
+    }
+
+    .toast {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #065f46;
+      border: 1px solid #22c55e;
+      color: #f8fafc;
+      padding: 12px 20px;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      display: none;
+      z-index: 999;
+    }
+    .toast.error { background: #7f1d1d; border-color: #ef4444; }
+
+    .loading { opacity: 0.5; pointer-events: none; }
+
+    hr { border: none; border-top: 1px solid #1e293b; margin: 12px 0; }
+
+    @media (max-width: 768px) {
+      .grid { grid-template-columns: 1fr; }
+      .stat-group { flex-direction: column; }
+      .header { flex-direction: column; gap: 12px; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="toast" class="toast"></div>
+
+<div class="header">
+  <h1>好特卖超级仓 · 运维管理面板</h1>
+  <div class="header-actions">
+    <button class="btn" onclick="refreshAll()">🔄 刷新</button>
+    <button class="btn btn-primary" onclick="scanAnomaly()">🔍 异常扫描</button>
+    <button class="btn" onclick="saveConfig()">💾 保存配置</button>
+  </div>
+</div>
+
+<div class="grid" id="app">
+  <!-- 数据新鲜度 -->
+  <div class="card">
+    <div class="card-title">📦 数据新鲜度</div>
+    <div class="stat-group" id="freshness">
+      <div class="stat-item"><div class="stat-value good">--</div><div class="stat-label">销售数据</div></div>
+      <div class="stat-item"><div class="stat-value good">--</div><div class="stat-label">库存数据</div></div>
+      <div class="stat-item"><div class="stat-value good">--</div><div class="stat-label">AI 报告</div></div>
+    </div>
+  </div>
+
+  <!-- 库存摘要 -->
+  <div class="card">
+    <div class="card-title">🏪 库存摘要</div>
+    <div class="stat-group" id="inv-summary">
+      <div class="stat-item"><div class="stat-value">--</div><div class="stat-label">SKU 数</div></div>
+      <div class="stat-item"><div class="stat-value">--</div><div class="stat-label">总数量</div></div>
+      <div class="stat-item"><div class="stat-value">--</div><div class="stat-label">库存金额</div></div>
+    </div>
+  </div>
+
+  <!-- 导入状态 -->
+  <div class="card">
+    <div class="card-title">📥 导入状态</div>
+    <div id="import-status">
+      <div class="import-row"><span class="import-label">销售最新日期</span><span class="import-value" id="sale-latest">--</span></div>
+      <div class="import-row"><span class="import-label">库存最新日期</span><span class="import-value" id="stock-latest">--</span></div>
+      <div class="import-row"><span class="import-label">AI 报告最新</span><span class="import-value" id="ai-latest">--</span></div>
+    </div>
+  </div>
+
+  <!-- 活跃预警 -->
+  <div class="card card-full">
+    <div class="card-title">
+      ⚠️ 活跃预警
+      <span id="alert-count" style="color:#94a3b8;font-size:0.8rem">0 条</span>
+    </div>
+    <div id="alert-list"></div>
+  </div>
+
+  <!-- AI 快评 -->
+  <div class="card card-full">
+    <div class="card-title">🤖 AI 最新报告</div>
+    <div id="ai-report"></div>
+  </div>
+
+  <!-- 配置面板 -->
+  <div class="card card-full">
+    <div class="card-title">⚙️ 运维配置</div>
+    <table class="config-table" id="config-table">
+      <thead><tr><th>配置项</th><th>值</th><th>说明</th></tr></thead>
+      <tbody id="config-body"></tbody>
+    </table>
+    <div class="config-actions">
+      <button class="btn btn-sm" onclick="saveConfig()">💾 保存配置</button>
+      <button class="btn btn-sm btn-primary" onclick="refreshConfig()">🔄 重新加载</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const BASE = '';
+let configData = {};
+
+function showToast(msg, isError) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast' + (isError ? ' error' : '');
+  t.style.display = 'block';
+  setTimeout(() => { t.style.display = 'none'; }, 3000);
+}
+
+async function api(path, opts) {
+  const r = await fetch(BASE + '/api/ops' + path, {
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    ...opts,
+  });
+  const j = await r.json();
+  if (j.code !== 0) throw new Error(j.msg || '接口错误');
+  return j.data;
+}
+
+function fmtDaysAgo(dateStr) {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  const now = new Date();
+  const diff = Math.floor((now - d) / (86400000));
+  if (diff === 0) return '今天';
+  if (diff === 1) return '昨天';
+  return diff + ' 天前';
+}
+
+function freshnessClass(days) {
+  if (days == null) return '';
+  if (days <= 1) return 'good';
+  if (days <= 3) return 'warn';
+  return 'bad';
+}
+
+async function refreshAll() {
+  document.getElementById('app').classList.add('loading');
+  try {
+    const d = await api('/dashboard');
+    // 新鲜度
+    const f = d.data_freshness || {};
+    const fd = document.getElementById('freshness');
+    fd.innerHTML = `
+      <div class="stat-item"><div class="stat-value ${freshnessClass(f.sale_days_ago)}">${fmtDaysAgo(f.sale_latest_date)}</div><div class="stat-label">销售数据</div></div>
+      <div class="stat-item"><div class="stat-value ${freshnessClass(f.stock_days_ago)}">${fmtDaysAgo(f.stock_latest_date)}</div><div class="stat-label">库存数据</div></div>
+      <div class="stat-item"><div class="stat-value ${freshnessClass(f.ai_report_days_ago)}">${fmtDaysAgo(f.ai_report_latest_date)}</div><div class="stat-label">AI 报告</div></div>
+    `;
+    // 导入日期
+    document.getElementById('sale-latest').textContent = f.sale_latest_date || '—';
+    document.getElementById('stock-latest').textContent = f.stock_latest_date || '—';
+    document.getElementById('ai-latest').textContent = f.ai_report_latest_date || '—';
+
+    // 库存摘要
+    const inv = d.inventory_summary || {};
+    document.getElementById('inv-summary').innerHTML = `
+      <div class="stat-item"><div class="stat-value">${(inv.sku_count || 0).toLocaleString()}</div><div class="stat-label">SKU 数</div></div>
+      <div class="stat-item"><div class="stat-value">${(inv.total_qty || 0).toLocaleString()}</div><div class="stat-label">总数量</div></div>
+      <div class="stat-item"><div class="stat-value">¥${((inv.total_amount || 0)/10000).toFixed(1)}万</div><div class="stat-label">库存金额</div></div>
+    `;
+
+    // 预警
+    const alerts = d.active_alerts || [];
+    document.getElementById('alert-count').textContent = alerts.length + ' 条';
+    const al = document.getElementById('alert-list');
+    if (alerts.length === 0) {
+      al.innerHTML = '<div class="empty-state">✅ 暂无活跃预警</div>';
+    } else {
+      al.innerHTML = alerts.map(a => {
+        const level = a.level === 'critical' ? 'critical' : a.level === 'warning' ? 'warning' : 'info';
+        const icon = level === 'critical' ? '🔴' : level === 'warning' ? '🟡' : '🔵';
+        return `<div class="alert-item ${level}">
+          <div class="alert-icon">${icon}</div>
+          <div class="alert-body">
+            <div class="alert-title">${a.title}</div>
+            <div class="alert-summary">${a.summary || ''}</div>
+            <div class="alert-time">${a.created_at || ''}</div>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    // AI 报告
+    const ai = d.latest_ai_report;
+    const ar = document.getElementById('ai-report');
+    if (ai) {
+      ar.innerHTML = `<div class="ai-report-meta">📅 ${ai.date} · ${ai.created_at || ''}</div><div class="ai-report-box">${escapeHtml(ai.content)}</div>`;
+    } else {
+      ar.innerHTML = '<div class="empty-state">暂无 AI 报告。导入数据后会自动生成。</div>';
+    }
+  } catch (e) {
+    showToast('加载失败: ' + e.message, true);
+  } finally {
+    document.getElementById('app').classList.remove('loading');
+  }
+}
+
+function escapeHtml(text) {
+  const d = document.createElement('div');
+  d.textContent = text;
+  return d.innerHTML;
+}
+
+async function scanAnomaly() {
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = '⏳ 扫描中...';
+  try {
+    const d = await api('/anomaly/scan', { method: 'POST' });
+    const msg = `扫描完成，发现 ${d.event_count} 个异常事件` + (d.pushed_to_feishu ? '，已推送飞书 ✅' : '');
+    showToast(msg);
+  } catch (e) {
+    showToast('扫描失败: ' + e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔍 异常扫描';
+  }
+}
+
+const CONFIG_META = {
+  'BACKEND_PORT': ['后端端口', 'Flask 监听端口'],
+  'MYSQL_HOST': ['数据库主机', 'MySQL 地址'],
+  'MYSQL_PORT': ['数据库端口', ''],
+  'MYSQL_DATABASE': ['数据库名称', ''],
+  'WECHAT_MINI_ENABLED': ['微信登录', '1=启用 0=禁用'],
+  'HTMA_IMPORT_DOWNLOADS_DIR': ['导入下载目录', '收银 Excel 所在目录'],
+  'HTMA_FEISHU_ALERT_WEBHOOK': ['飞书预警 Webhook', '异常事件推送地址'],
+  'HTMA_MOBILE_CACHE_SECONDS': ['移动缓存秒数', 'API 缓存 TTL'],
+  'ANOMALY_SALE_DROP_PCT': ['销售额跌停阈值%', '环比/同比触发告警的百分比'],
+  'ANOMALY_SALE_DROP_DAYS': ['同比对比天数', '同比上周同日检查'],
+  'ANOMALY_MARGIN_DROP_PCT': ['毛利率跌停阈值%', ''],
+};
+
+async function refreshConfig() {
+  try {
+    configData = await api('/config');
+    const body = document.getElementById('config-body');
+    body.innerHTML = Object.keys(CONFIG_META).map(key => {
+      const [label, hint] = CONFIG_META[key];
+      const val = configData[key] || '';
+      return `<tr>
+        <td style="white-space:nowrap;color:#94a3b8;font-size:0.75rem">${key}</td>
+        <td><input data-key="${key}" value="${escapeHtml(val)}" placeholder="${hint || label}"></td>
+        <td style="color:#64748b;font-size:0.75rem">${hint || ''}</td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    showToast('加载配置失败: ' + e.message, true);
+  }
+}
+
+async function saveConfig() {
+  const inputs = document.querySelectorAll('#config-body input[data-key]');
+  const data = {};
+  inputs.forEach(inp => {
+    const key = inp.getAttribute('data-key');
+    data[key] = inp.value;
+  });
+  try {
+    const r = await fetch(BASE + '/api/ops/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const j = await r.json();
+    if (j.code === 0) {
+      showToast('配置已保存，重启看板后生效 ✅');
+    } else {
+      showToast('保存失败: ' + j.msg, true);
+    }
+  } catch (e) {
+    showToast('保存失败: ' + e.message, true);
+  }
+}
+
+// 启动
+refreshAll();
+refreshConfig();
+</script>
+</body>
+</html>

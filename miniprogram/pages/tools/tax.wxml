@@ -1,0 +1,20 @@
+<view class="wp-page wp-page--tool">
+  <view class="da-card tax-card" wx:if="{{t}}">
+    <view class="wp-title">税务摘要</view>
+    <view class="tax-bar-wrap">
+      <view class="tax-bar-bg da-row-bg" style="width: {{t._bgPct}}%;" />
+      <view class="tax-bar-front">
+        <view class="tool-bar-block">
+          <text class="tool-bar-lab">平均税负率</text>
+          <view class="wp-progress-track tool-track">
+            <view class="wp-progress-fill tool-fill-tax" style="width:{{t._rateBar}}%;"></view>
+          </view>
+          <text class="wp-num wp-brand tax-rate-val">{{t.avg_tax_rate_pct!=null?t.avg_tax_rate_pct+'%':'—'}}</text>
+        </view>
+        <view class="wp-muted tax-note">{{t.note}}</view>
+      </view>
+    </view>
+  </view>
+  <view wx:else class="da-card wp-muted tax-empty">暂无数据</view>
+  <security-watermark />
+</view>

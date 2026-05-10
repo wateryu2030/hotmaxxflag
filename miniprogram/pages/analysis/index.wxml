@@ -1,0 +1,323 @@
+<view class="wp-page wp-page--analysis">
+  <view class="an-filter-surface">
+    <view class="cat-capsule-wrap">
+      <view class="cat-capsule">
+        <view
+          class="cat-cap {{tab===0?'cat-cap--on':''}}"
+          data-i="0"
+          bindtap="setTab"
+        >占比</view>
+        <view
+          class="cat-cap {{tab===1?'cat-cap--on':''}}"
+          data-i="1"
+          bindtap="setTab"
+        >热力</view>
+        <view
+          class="cat-cap {{tab===2?'cat-cap--on':''}}"
+          data-i="2"
+          bindtap="setTab"
+        >贡献</view>
+        <view
+          class="cat-cap {{tab===3?'cat-cap--on':''}}"
+          data-i="3"
+          bindtap="setTab"
+        >下钻</view>
+        <view
+          class="cat-cap cat-cap--narrow {{tab===4?'cat-cap--on':''}}"
+          data-i="4"
+          bindtap="setTab"
+        >归因</view>
+      </view>
+    </view>
+    <view class="an-month-row">
+      <picker mode="selector" value="{{monthIndex}}" range="{{monthLabels}}" bindchange="onMonthChange">
+        <view class="cat-month-pill">
+          <text class="cat-month-txt">数据范围 · {{monthLabels.length ? monthLabels[monthIndex] : '选择月份'}}</text>
+          <text class="cat-month-arrow">▾</text>
+        </view>
+      </picker>
+    </view>
+  </view>
+
+  <view wx:if="{{loading}}" class="an-loading">加载中…</view>
+
+  <block wx:else>
+    <view class="an-card" wx:if="{{tab===0}}">
+      <view class="an-card-hd">大类销售额</view>
+      <text class="wp-muted an-tab-hint">轻点图例或列表进入下钻 · 长按图例定位饼图 · 点饼图看占比</text>
+      <view class="an-donut-wrap" wx:if="{{share.length}}">
+        <ec-canvas
+          id="analysis-pie"
+          canvas-id="analysis-pie"
+          class="an-ec"
+          ec="{{ ecPie }}"
+        ></ec-canvas>
+        <view class="an-pie-actions" wx:if="{{pieSelection.mode==='slice'}}">
+          <text class="an-reset-link" catchtap="resetPieSelection">显示总额</text>
+          <text class="an-pie-actions-sep">·</text>
+          <text class="an-reset-link" catchtap="onDrillFromPieSelection">此类下钻</text>
+        </view>
+        <view class="cat-legend" wx:if="{{share.length}}">
+          <view
+            wx:for="{{share}}"
+            wx:for-index="lidx"
+            wx:key="category_large_code"
+            class="cat-leg-item cat-leg-item--tap"
+            data-i="{{lidx}}"
+            data-code="{{item.category_large_code || item.category_large}}"
+            data-name="{{item.category_large}}"
+            bindtap="onLegendOpenDrill"
+            catchlongpress="onLegendHighlightPie"
+            hover-class="an-leg-pressed"
+            hover-stay-time="70"
+          >
+            <view
+              class="cat-leg-swatch"
+              style="background:{{legendColors[lidx % legendColors.length]}}"
+            />
+            <text class="cat-leg-name">{{item.category_large}}</text>
+            <text class="cat-leg-pct">{{item.percentage}}%</text>
+          </view>
+        </view>
+      </view>
+      <view wx:else class="an-empty">该月无数据</view>
+
+      <view class="an-list" wx:if="{{share.length}}">
+        <view
+          wx:for="{{share}}"
+          wx:for-index="sidx"
+          wx:key="category_large_code"
+          class="an-row"
+          bindtap="onShareRowDrill"
+          data-code="{{item.category_large_code || item.category_large}}"
+          data-name="{{item.category_large}}"
+          hover-class="an-row--pressed"
+          hover-stay-time="70"
+        >
+          <view class="an-row-bg" style="width: {{item._bgPct}}%;" />
+          <view class="an-row-inner">
+            <view wx:if="{{sidx<3}}" class="wp-rank {{sidx===0?'wp-rank--1':''}} {{sidx===1?'wp-rank--2':''}} {{sidx===2?'wp-rank--3':''}}">{{sidx+1}}</view>
+            <view wx:else class="an-rank-plain">{{sidx+1}}</view>
+            <view class="an-row-mid">
+              <text class="an-name">{{item.category_large}}</text>
+              <text class="an-sub wp-num" wx:if="{{item._hasMom}}">环比{{item._momStr}}</text>
+            </view>
+            <view class="an-row-right">
+              <text class="an-pct wp-num">{{item.percentage}}%</text>
+              <text
+                class="an-mom-ar"
+                wx:if="{{item._hasMom && item._momUp}}"
+              >▲</text>
+              <text
+                class="an-mom-ar an-mom-down"
+                wx:elif="{{item._hasMom && item._momDown}}"
+              >▼</text>
+              <text class="an-mom-ar an-mom-flat" wx:elif="{{item._hasMom}}">—</text>
+              <text class="an-row-chev">›</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view class="an-card" wx:if="{{tab===1}}">
+      <view class="an-card-hd">毛利率热力（月×大类）</view>
+      <text class="wp-muted an-tab-hint">点行按大类进入下钻</text>
+      <view class="an-list" wx:if="{{matrix.length}}">
+        <view
+          wx:for="{{matrix}}"
+          wx:key="_k"
+          class="an-row an-row--heat"
+          data-code="{{item.category_large_code || item.category_large}}"
+          data-name="{{item.category_large}}"
+          bindtap="onMatrixRowDrill"
+          hover-class="an-row--pressed"
+          hover-stay-time="70"
+        >
+          <view class="an-row-bg" style="width: {{item._bgPct}}%;" />
+          <view class="an-row-inner an-row-inner--heat">
+            <text class="an-heat-m">{{item.month}}</text>
+            <text class="an-heat-c">{{item.category_large}}</text>
+            <text class="an-heat-v wp-num">{{item.margin_pct}}%</text>
+            <text class="an-heat-chev">›</text>
+          </view>
+        </view>
+      </view>
+      <view wx:if="{{!matrix.length}}" class="an-empty">暂无</view>
+    </view>
+
+    <view class="an-card" wx:if="{{tab===2}}">
+      <view class="an-card-hd">销售 vs 毛利贡献</view>
+      <text class="wp-muted an-tab-hint">点行按大类进入下钻</text>
+      <view class="chart-box chart-tall an-chart-box">
+        <ec-canvas id="analysis-bar" canvas-id="analysis-bar" ec="{{ ecBar }}"></ec-canvas>
+      </view>
+      <view class="an-list" wx:if="{{contrib.length}}">
+        <view
+          wx:for="{{contrib}}"
+          wx:key="category_large_code"
+          class="an-row an-row--contrib"
+          data-code="{{item.category_large_code || item.large_category}}"
+          data-name="{{item.large_category}}"
+          bindtap="onContribRowDrill"
+          hover-class="an-row--pressed"
+          hover-stay-time="70"
+        >
+          <view class="an-row-bg" style="width: {{item._bgPct}}%;" />
+          <view class="an-row-inner an-row-inner--contrib">
+            <view class="an-c-top">
+              <text class="an-name an-c-top-name">{{item.large_category}}</text>
+              <text class="an-contrib-chev">›</text>
+            </view>
+            <view class="dual">
+              <view class="d-bar">
+                <view class="wp-progress-track d-track">
+                  <view
+                    class="wp-progress-fill d-fill-sales"
+                    style="width:{{item.sales_share*200}}%"
+                  />
+                </view>
+                <text class="d-lab">销</text>
+              </view>
+              <view class="d-bar">
+                <view class="wp-progress-track d-track">
+                  <view
+                    class="wp-progress-fill d-fill-profit"
+                    style="width:{{item.profit_share*200}}%"
+                  />
+                </view>
+                <text class="d-lab">利</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view class="an-card" wx:if="{{tab===3}}">
+      <view class="an-card-hd">品类下钻 · {{drillListTitle}}</view>
+      <text class="wp-muted an-drill-scope">与上方「数据范围」一致 · 按销额排序</text>
+      <view class="cat-bc" wx:if="{{drillBreadcrumb.length}}">
+        <block wx:for="{{drillBreadcrumb}}" wx:for-index="dbi" wx:key="tapIndex">
+          <text
+            class="cat-bc-item {{dbi<drillBreadcrumb.length-1?'cat-bc-item--link':''}}"
+            data-i="{{item.tapIndex}}"
+            catchtap="onDrillBreadcrumbTap"
+          >{{item.label}}</text>
+          <text wx:if="{{dbi < drillBreadcrumb.length - 1}}" class="cat-bc-sep">›</text>
+        </block>
+      </view>
+      <text class="wp-muted cat-hd-sub an-drill-hint" wx:if="{{drillPath.length >= 3}}">点行查看 SKU 详情</text>
+      <text class="wp-muted cat-hd-sub an-drill-hint" wx:else>点行继续下钻</text>
+
+      <view class="an-drill-list-wrap">
+        <view class="cat-local-loading" wx:if="{{drillLoading}}">
+          <text class="wp-muted">加载中…</text>
+        </view>
+        <view class="cat-empty-panel" wx:if="{{drillEmpty && !drillLoading}}">
+          <view class="cat-empty-ico" />
+          <text class="cat-empty-title">暂无数据</text>
+          <text class="wp-muted cat-empty-desc">{{drillEmptyHint}}</text>
+        </view>
+        <view class="da-list an-drill-list" wx:if="{{drillItems.length && !drillLoading}}">
+          <view
+            wx:for="{{drillItems}}"
+            wx:key="_wk"
+            wx:for-item="row"
+            wx:for-index="dix"
+            class="da-row cat-lrow"
+            data-idx="{{dix}}"
+            bindtap="onDrillRowTap"
+            hover-class="an-row--pressed"
+            hover-stay-time="70"
+          >
+            <view class="da-row-bg" style="width: {{row._bgPct}}%;" />
+            <view class="da-row-inner cat-lrow-inner">
+              <view
+                wx:if="{{row._rank<=3}}"
+                class="wp-rank {{row._rank===1?'wp-rank--1':''}} {{row._rank===2?'wp-rank--2':''}} {{row._rank===3?'wp-rank--3':''}}"
+              >{{row._rank}}</view>
+              <view wx:else class="da-rank-plain">{{row._rank}}</view>
+              <view class="cat-lrow-mid">
+                <text class="cat-lrow-name" wx:if="{{row.sku_code}}">{{row.name || row.sku_code}}</text>
+                <text class="cat-lrow-name" wx:elif="{{row.category_mid}}">{{row.category_mid}}</text>
+                <text class="cat-lrow-name" wx:elif="{{row.category_small}}">{{row.category_small}}</text>
+                <text class="cat-lrow-name" wx:elif="{{row.category_large}}">{{row.category_large}}</text>
+                <text class="cat-lrow-name" wx:else>—</text>
+                <text class="wp-muted cat-lrow-sub" wx:if="{{row.sku_code}}">SKU {{row.sku_code}}</text>
+                <text class="wp-muted cat-lrow-sub" wx:else>毛利 {{row.gross_profit}} · 毛利率 {{row.margin_pct}}% · 量 {{row.sale_qty}}</text>
+              </view>
+              <view class="cat-lrow-right">
+                <text class="wp-num cat-lrow-amt">{{row.sale_amount}}</text>
+                <text class="cat-lrow-chev">{{drillPath.length>=3?'⋯':'›'}}</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view class="an-drill-foot">
+        <text class="an-drill-link" bindtap="goTrend">趋势洞察</text>
+        <text class="an-drill-foot-sep">·</text>
+        <text class="an-drill-link" bindtap="goList">品类概览（近30天）</text>
+      </view>
+    </view>
+
+    <view class="an-card" wx:if="{{tab===4}}">
+      <view class="an-card-hd">销售额环比归因</view>
+      <text class="wp-muted an-tab-hint">大类对总销额增减的贡献 · 与上方「数据范围」一致</text>
+      <text class="wp-muted an-attr-range" wx:if="{{attrRangeNote}}">{{attrRangeNote}}</text>
+      <view class="cat-local-loading" wx:if="{{attrLoading}}">
+        <text class="wp-muted">加载中…</text>
+      </view>
+      <view class="cat-empty-panel" wx:elif="{{attrError}}">
+        <view class="cat-empty-ico" />
+        <text class="cat-empty-title">暂无法展示</text>
+        <text class="wp-muted cat-empty-desc">{{attrError}}</text>
+      </view>
+      <block wx:elif="{{attrSummary}}">
+        <view class="an-attr-kpi">
+          <view class="an-attr-kpi-cell">
+            <text class="an-attr-kpi-lab">上期销额(元)</text>
+            <text class="wp-num an-attr-kpi-val">{{attrSummary.prev_total}}</text>
+          </view>
+          <view class="an-attr-kpi-cell">
+            <text class="an-attr-kpi-lab">本期销额(元)</text>
+            <text class="wp-num an-attr-kpi-val">{{attrSummary.cur_total}}</text>
+          </view>
+          <view class="an-attr-kpi-cell">
+            <text class="an-attr-kpi-lab">总增量(元)</text>
+            <text class="wp-num an-attr-kpi-val {{(attrSummary.delta_total||0)>=0?'tr-up':'tr-down'}}">{{attrSummary.delta_total}}</text>
+          </view>
+          <view class="an-attr-kpi-cell" wx:if="{{attrSummary.delta_pct_prev != null}}">
+            <text class="an-attr-kpi-lab">环比%</text>
+            <text class="wp-num an-attr-kpi-val {{(attrSummary.delta_pct_prev||0)>=0?'tr-up':'tr-down'}}">{{attrSummary.delta_pct_prev}}%</text>
+          </view>
+        </view>
+        <view class="da-list an-attr-list" wx:if="{{attrRows.length}}">
+          <view
+            wx:for="{{attrRows}}"
+            wx:key="_k"
+            class="da-row an-attr-row"
+          >
+            <view class="da-row-bg" style="width: {{item._bgPct}}%;" />
+            <view class="da-row-inner an-attr-row-inner">
+              <view class="an-attr-row-mid">
+                <text class="an-attr-name">{{item.category_large || item.category_large_code}}</text>
+                <text class="wp-muted an-attr-sub">上期 {{item.sale_prev}} · 本期 {{item.sale_cur}}</text>
+              </view>
+              <view class="an-attr-row-right">
+                <text class="wp-num an-attr-delta {{item._deltaUp?'tr-up':''}} {{item._deltaDown?'tr-down':''}}">{{item._deltaDisplay}}</text>
+                <text class="wp-muted an-attr-share">{{item.share_of_total_delta_pct}}%</text>
+              </view>
+            </view>
+          </view>
+        </view>
+        <view class="cat-empty-panel" wx:else>
+          <text class="wp-muted cat-empty-desc">暂无大类增减数据</text>
+        </view>
+      </block>
+    </view>
+  </block>
+  <security-watermark />
+</view>

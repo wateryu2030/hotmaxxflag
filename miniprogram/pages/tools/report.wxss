@@ -1,0 +1,36 @@
+.wp-page--tool {
+  padding-bottom: calc(120rpx + env(safe-area-inset-bottom));
+}
+
+.rep-surface {
+  margin-bottom: 20rpx;
+}
+
+.rep-intro {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  line-height: 1.55;
+}
+
+.rep-card {
+  padding-bottom: 32rpx;
+}
+
+.rep-msg {
+  display: block;
+  margin-top: 20rpx;
+  padding: 20rpx;
+  background: #f6f8fa;
+  border-radius: 16rpx;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  font-size: 24rpx;
+  line-height: 1.5;
+  color: var(--text-secondary, #5c6370);
+  word-break: break-all;
+}
+
+.rep-btn {
+  margin-top: 28rpx;
+  width: 100%;
+}

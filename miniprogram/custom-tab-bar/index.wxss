@@ -1,0 +1,180 @@
+.tabbar-wrap {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  padding-bottom: env(safe-area-inset-bottom);
+  pointer-events: none;
+}
+
+.tabbar-glass {
+  pointer-events: auto;
+  margin: 0 16rpx 12rpx;
+  padding: 12rpx 8rpx 10rpx;
+  border-radius: 28rpx;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 12rpx 32rpx -8rpx rgba(201, 37, 57, 0.1), 0 4rpx 16rpx rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: space-around;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.tab-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 88rpx;
+  padding-bottom: 4rpx;
+  transition: transform 0.2s ease;
+}
+
+.tab-item--on {
+  transform: translateY(-4rpx);
+}
+
+.icon-slot {
+  width: 48rpx;
+  height: 48rpx;
+  position: relative;
+  margin-bottom: 4rpx;
+}
+
+/* 双色线性图标：未选中描边灰；选中品牌红填充 + 外发光 */
+.ico {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  box-sizing: border-box;
+}
+
+.ico-home {
+  width: 36rpx;
+  height: 28rpx;
+  border: 3rpx solid #bcc1cd;
+  border-radius: 6rpx 6rpx 2rpx 2rpx;
+  border-bottom-width: 4rpx;
+  background: transparent;
+}
+.ico-home.ico--fill {
+  border-color: #c92539;
+  background: linear-gradient(180deg, #d83d4f, #c92539);
+  box-shadow: 0 0 12rpx 4rpx rgba(201, 37, 57, 0.35);
+}
+
+.ico-cat {
+  width: 32rpx;
+  height: 32rpx;
+  border: 3rpx solid #bcc1cd;
+  border-radius: 50%;
+  border-right-color: transparent;
+  border-bottom-color: transparent;
+  transform: translate(-50%, -50%) rotate(-45deg);
+  background: transparent;
+}
+.ico-cat.ico--fill {
+  border-color: #c92539;
+  border-right-color: rgba(201, 37, 57, 0.25);
+  border-bottom-color: rgba(201, 37, 57, 0.25);
+  background: linear-gradient(135deg, #d83d4f, #c92539);
+  box-shadow: 0 0 12rpx 4rpx rgba(201, 37, 57, 0.4), 0 10rpx 20rpx -6rpx rgba(201, 37, 57, 0.35);
+}
+
+.ico-trend {
+  width: 34rpx;
+  height: 26rpx;
+  border-left: 3rpx solid #bcc1cd;
+  border-bottom: 3rpx solid #bcc1cd;
+  transform: translate(-50%, -58%) skewX(-8deg);
+  border-radius: 0 0 0 4rpx;
+}
+.ico-trend.ico--fill {
+  border-left-color: #c92539;
+  border-bottom-color: #c92539;
+  background: linear-gradient(to top right, rgba(201, 37, 57, 0.15), transparent 55%);
+  box-shadow: 0 0 12rpx 4rpx rgba(201, 37, 57, 0.35);
+}
+
+.ico-ops {
+  width: 30rpx;
+  height: 30rpx;
+  border: 3rpx solid #bcc1cd;
+  border-radius: 4rpx;
+  background: linear-gradient(
+      90deg,
+      transparent 0,
+      transparent calc(50% - 2rpx),
+      #bcc1cd calc(50% - 2rpx),
+      #bcc1cd calc(50% + 2rpx),
+      transparent calc(50% + 2rpx)
+    ),
+    linear-gradient(
+      0deg,
+      transparent 0,
+      transparent calc(50% - 2rpx),
+      #bcc1cd calc(50% - 2rpx),
+      #bcc1cd calc(50% + 2rpx),
+      transparent calc(50% + 2rpx)
+    );
+}
+.ico-ops.ico--fill {
+  border-color: #c92539;
+  background: linear-gradient(
+      90deg,
+      transparent 0,
+      transparent calc(50% - 2rpx),
+      #c92539 calc(50% - 2rpx),
+      #c92539 calc(50% + 2rpx),
+      transparent calc(50% + 2rpx)
+    ),
+    linear-gradient(
+      0deg,
+      transparent 0,
+      transparent calc(50% - 2rpx),
+      #c92539 calc(50% - 2rpx),
+      #c92539 calc(50% + 2rpx),
+      transparent calc(50% + 2rpx)
+    ),
+    linear-gradient(135deg, rgba(216, 61, 79, 0.2), rgba(201, 37, 57, 0.35));
+  box-shadow: 0 0 12rpx 4rpx rgba(201, 37, 57, 0.35);
+}
+
+.ico-me {
+  width: 30rpx;
+  height: 30rpx;
+  border: 3rpx solid #bcc1cd;
+  border-radius: 50%;
+  background: transparent;
+}
+.ico-me.ico--fill {
+  border-color: #c92539;
+  background: linear-gradient(145deg, #d83d4f, #c92539);
+  box-shadow: 0 0 12rpx 4rpx rgba(201, 37, 57, 0.35);
+}
+
+.tab-text {
+  font-size: 20rpx;
+  color: #bcc1cd;
+  line-height: 1.2;
+}
+
+.tab-item--on .tab-text {
+  color: #c92539;
+  font-weight: 600;
+}
+
+.tab-dot {
+  width: 8rpx;
+  height: 8rpx;
+  border-radius: 50%;
+  background: #c92539;
+  margin-top: 4rpx;
+  box-shadow: 0 0 8rpx rgba(201, 37, 57, 0.6);
+}

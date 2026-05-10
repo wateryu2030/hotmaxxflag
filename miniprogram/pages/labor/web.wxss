@@ -1,0 +1,3 @@
+.labor-web-fallback {
+  min-height: 60vh;
+}

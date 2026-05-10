@@ -1,0 +1,66 @@
+<view class="dash-root">
+  <view class="dash-header">
+    <view class="dash-header-inner">
+      <text class="dash-brand">好特卖超级仓</text>
+      <text class="dash-sub">B 端经营驾驶舱</text>
+    </view>
+    <view class="dash-header-arc" />
+  </view>
+
+  <view class="dash-float wp-card" wx:if="{{user}}">
+    <view class="dash-avatar">{{user._initial}}</view>
+    <view class="dash-user-meta">
+      <text class="dash-user-title">账号概览</text>
+      <text class="wp-muted dash-id">ID <text class="wp-num">{{user.id}}</text></text>
+    </view>
+    <view class="dash-tags">
+      <text class="dash-tag">{{user.role || '成员'}}</text>
+      <text class="dash-tag dash-tag--line">{{user.store_id ? '门店 '+user.store_id : '全部门店'}}</text>
+    </view>
+    <view class="dash-row-line">
+      <text class="wp-muted">手机</text>
+      <text class="wp-num-line">{{user.phone || '未绑定'}}</text>
+    </view>
+    <view class="dash-row-line">
+      <text class="wp-muted">飞书</text>
+      <text class="dash-mono">{{user.feishu_open_id || '未绑定'}}</text>
+    </view>
+  </view>
+
+  <view class="dash-section-title">功能矩阵</view>
+  <view class="dash-grid">
+    <view class="gcell gcell--gold" bindtap="goSku">
+      <view class="gcell-icon">搜</view>
+      <text>商品档案</text>
+    </view>
+    <view class="gcell gcell--blue" bindtap="goTax">
+      <view class="gcell-icon">税</view>
+      <text>税务摘要</text>
+    </view>
+    <view class="gcell gcell--coral" bindtap="goSel">
+      <view class="gcell-icon">选</view>
+      <text>红背篓选品</text>
+    </view>
+    <view class="gcell gcell--violet" bindtap="goAi">
+      <view class="gcell-icon">AI</view>
+      <text>经营建议</text>
+    </view>
+    <view class="gcell gcell--mint" bindtap="goReport">
+      <view class="gcell-icon">报</view>
+      <text>营销报告</text>
+    </view>
+    <view class="gcell gcell--sky" bindtap="bindPhone">
+      <view class="gcell-icon">机</view>
+      <text>绑定手机</text>
+    </view>
+    <view class="gcell gcell--slate" bindtap="bindFeishu">
+      <view class="gcell-icon">飞</view>
+      <text>绑定飞书</text>
+    </view>
+    <view class="gcell gcell--out" bindtap="logout">
+      <view class="gcell-icon gcell-icon--warn">退</view>
+      <text>退出登录</text>
+    </view>
+  </view>
+  <security-watermark />
+</view>

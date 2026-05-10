@@ -1,0 +1,45 @@
+{
+  "description": "好特卖看板 API 调试（https://htma.greatagain.com.cn）",
+  "miniprogramRoot": "./",
+  "compileType": "miniprogram",
+  "appid": "wx70848bef7dd74d99",
+  "projectname": "htma-miniprogram-debug",
+  "setting": {
+    "es6": true,
+    "enhance": true,
+    "minified": false,
+    "urlCheck": true,
+    "coverView": true,
+    "postcss": true,
+    "compileHotReLoad": true,
+    "compileWorklet": false,
+    "uglifyFileName": false,
+    "uploadWithSourceMap": true,
+    "packNpmManually": false,
+    "packNpmRelationList": [],
+    "minifyWXSS": true,
+    "minifyWXML": true,
+    "localPlugins": false,
+    "disableUseStrict": false,
+    "useCompilerPlugins": false,
+    "swc": false,
+    "disableSWC": true,
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    },
+    "condition": false
+  },
+  "condition": {},
+  "packOptions": {
+    "ignore": [],
+    "include": []
+  },
+  "editorSetting": {
+    "tabIndent": "insertSpaces",
+    "tabSize": 2
+  },
+  "libVersion": "3.7.12",
+  "simulatorPluginLibVersion": {}
+}

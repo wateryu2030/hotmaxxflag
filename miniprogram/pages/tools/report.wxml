@@ -1,0 +1,11 @@
+<view class="wp-page wp-page--tool">
+  <view class="da-filter-surface rep-surface">
+    <view class="wp-title">营销报告</view>
+    <text class="wp-muted rep-intro">生成后返回说明与看板链接（已尝试复制链接）</text>
+  </view>
+  <view class="da-card rep-card">
+    <text class="rep-msg" wx:if="{{msg}}">{{msg}}</text>
+    <button class="htma-btn-primary wp-btn-primary rep-btn" bindtap="gen">触发生成</button>
+  </view>
+  <security-watermark />
+</view>

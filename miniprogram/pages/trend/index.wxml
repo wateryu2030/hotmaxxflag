@@ -1,0 +1,72 @@
+<view class="wp-page wp-page--trend">
+  <view class="da-filter-surface">
+    <view class="da-capsule-wrap">
+      <view class="da-capsule">
+        <view
+          class="da-cap {{metric==='sale' ? 'da-cap--on' : ''}}"
+          data-m="sale"
+          bindtap="setMetric"
+        >销售额</view>
+        <view
+          class="da-cap {{metric==='profit' ? 'da-cap--on' : ''}}"
+          data-m="profit"
+          bindtap="setMetric"
+        >毛利</view>
+        <view
+          class="da-cap {{metric==='margin' ? 'da-cap--on' : ''}}"
+          data-m="margin"
+          bindtap="setMetric"
+        >毛利率</view>
+      </view>
+    </view>
+    <view class="da-capsule-wrap">
+      <view class="da-capsule">
+        <view
+          class="da-cap {{days===7 ? 'da-cap--on' : ''}}"
+          data-d="7"
+          bindtap="setDays"
+        >7天</view>
+        <view
+          class="da-cap {{days===30 ? 'da-cap--on' : ''}}"
+          data-d="30"
+          bindtap="setDays"
+        >30天</view>
+        <view
+          class="da-cap {{days===90 ? 'da-cap--on' : ''}}"
+          data-d="90"
+          bindtap="setDays"
+        >90天</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="da-card">
+    <text class="wp-muted">指标：{{labels[metric]}} · 近 {{days}} 天</text>
+    <canvas canvas-id="trendLine" class="trend-canvas" />
+  </view>
+
+  <view class="da-card" wx:if="{{dates.length}}">
+    <view class="wp-title" style="margin-bottom: 8rpx">最近数据点</view>
+    <text class="wp-muted trend-hint">下列为区间内最后至多 20 个点；行背景为相对刻度</text>
+    <view class="da-list" style="border-top: none; padding-top: 0; margin-top: 8rpx">
+      <view
+        wx:for="{{seriesRows}}"
+        wx:for-index="ridx"
+        wx:key="_rk"
+        class="da-row"
+      >
+        <view class="da-row-bg" style="width:{{item._bgPct}}%;" />
+        <view class="da-row-inner">
+          <view
+            wx:if="{{item._rank<=3}}"
+            class="wp-rank {{item._rank===1?'wp-rank--1':''}} {{item._rank===2?'wp-rank--2':''}} {{item._rank===3?'wp-rank--3':''}}"
+          >{{item._rank}}</view>
+          <view wx:else class="da-rank-plain">{{item._rank}}</view>
+          <text class="trend-dt">{{item.dt}}</text>
+          <text class="wp-num trend-val da-val">{{item.v}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+  <security-watermark />
+</view>

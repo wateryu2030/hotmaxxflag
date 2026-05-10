@@ -1,0 +1,4 @@
+{
+  "desc": "好特卖运营",
+  "rules": [{ "action": "allow", "page": "*" }]
+}

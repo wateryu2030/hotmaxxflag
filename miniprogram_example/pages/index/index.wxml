@@ -1,0 +1,7 @@
+<view class="wrap">
+  <text class="tip">后端：{{baseUrl}}</text>
+  <text class="tip sub">进入本页会自动：清旧 token → wx.login → 换 JWT → 拉 dashboard；下拉可重试。</text>
+  <button type="primary" bindtap="onLogin" loading="{{autoRunning}}" disabled="{{autoRunning}}">仅换 token（调试用）</button>
+  <button bindtap="onDash" disabled="{{!hasToken || autoRunning}}">仅拉 dashboard</button>
+  <view class="log" wx:if="{{log}}">{{log}}</view>
+</view>

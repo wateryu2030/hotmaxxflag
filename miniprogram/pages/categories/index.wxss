@@ -1,0 +1,156 @@
+.wp-page--cats {
+  padding-bottom: calc(140rpx + env(safe-area-inset-bottom));
+}
+
+.cat-loading {
+  text-align: center;
+  padding: 48rpx 24rpx;
+}
+
+.cat-head-surface {
+  margin-bottom: 20rpx;
+}
+
+.cat-hd-title {
+  font-size: 32rpx;
+  margin-bottom: 10rpx;
+}
+
+.cat-bc {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4rpx 8rpx;
+  margin: 4rpx 0 10rpx;
+}
+
+.cat-bc-item {
+  font-size: 24rpx;
+  color: #374151;
+  max-width: 100%;
+  word-break: break-all;
+}
+
+.cat-bc-item--link {
+  color: #c92539;
+  text-decoration: underline;
+  text-decoration-color: rgba(201, 37, 57, 0.35);
+}
+
+.cat-bc-sep {
+  font-size: 22rpx;
+  color: #bcc1cd;
+  margin: 0 2rpx;
+}
+
+.cat-hd-sub {
+  font-size: 24rpx;
+  line-height: 1.5;
+  display: block;
+}
+
+.cat-list-card {
+  position: relative;
+  min-height: 120rpx;
+}
+
+.cat-local-loading {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.72);
+  z-index: 3;
+  border-radius: 24rpx;
+}
+
+.cat-empty-panel {
+  padding: 56rpx 32rpx 64rpx;
+  text-align: center;
+}
+
+.cat-empty-ico {
+  width: 120rpx;
+  height: 120rpx;
+  margin: 0 auto 20rpx;
+  border-radius: 24rpx;
+  background: linear-gradient(145deg, #f0f2f5, #e4e7ec);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.cat-empty-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #5c6370;
+  display: block;
+  margin-bottom: 12rpx;
+}
+
+.cat-empty-desc {
+  font-size: 24rpx;
+  line-height: 1.55;
+  display: block;
+}
+
+.cat-list {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.cat-lrow-inner {
+  align-items: flex-start;
+  padding-top: 18rpx;
+  padding-bottom: 18rpx;
+}
+
+.cat-lrow-mid {
+  flex: 1;
+  min-width: 0;
+  margin-right: 12rpx;
+}
+
+.cat-lrow-name {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.cat-lrow-sub {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  line-height: 1.4;
+}
+
+.cat-lrow-right {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 8rpx;
+}
+
+.cat-lrow-amt {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #c92539;
+  text-align: right;
+}
+
+.cat-lrow-chev {
+  font-size: 28rpx;
+  color: #bcc1cd;
+  font-weight: 300;
+  line-height: 1;
+}
+
+.cat-lrow--hi {
+  box-shadow: 0 0 0 2rpx #c92539;
+  border-color: rgba(201, 37, 57, 0.35);
+}

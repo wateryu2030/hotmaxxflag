@@ -1,0 +1,8 @@
+.login-back-row {
+  margin: -8rpx 0 8rpx;
+}
+
+.login-back {
+  font-size: 26rpx;
+  text-decoration: underline;
+}

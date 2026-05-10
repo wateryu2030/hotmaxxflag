@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>大类中类下钻 - 好特卖运营看板</title>
+  <link rel="stylesheet" href="/static/css/mobile.css" />
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", sans-serif; background: #0f172a; color: #e2e8f0; padding: 20px; }
+    a { color: #38bdf8; }
+    table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+    th, td { border-bottom: 1px solid #334155; padding: 8px 10px; text-align: left; }
+    th { color: #94a3b8; }
+    .num { text-align: right; }
+    input[type="date"] { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; padding: 6px 10px; border-radius: 6px; }
+    button { background: #38bdf8; color: #0f172a; border: none; padding: 8px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; margin-left: 8px; }
+    .search { margin: 12px 0; }
+    .search input { width: 200px; max-width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; }
+  </style>
+</head>
+<body>
+  <p><a href="/">← 返回看板</a> · <a href="/#category">品类排行</a></p>
+  <h1 id="pageTitle">大类中类下钻</h1>
+  <p class="hint" style="color:#94a3b8;font-size:0.9rem;">阶段 B3：展示所选大类下各中类的销售额、毛利、毛利率及按销售额占比分摊的人力成本（近似）。</p>
+  <div>
+    <label>起</label>
+    <input type="date" id="startDate" />
+    <label>止</label>
+    <input type="date" id="endDate" />
+    <button type="button" id="btnReload">查询</button>
+  </div>
+  <div class="search">
+    <input type="text" id="filterMid" placeholder="搜索中类名称…" />
+  </div>
+  <div id="msg"></div>
+  <table>
+    <thead>
+      <tr>
+        <th class="sortable" data-k="category_mid">中类</th>
+        <th class="num sortable" data-k="sales_amount">销售额</th>
+        <th class="num sortable" data-k="gross_profit">毛利</th>
+        <th class="num sortable" data-k="margin_pct">毛利率%</th>
+        <th class="num sortable" data-k="labor_cost_allocated">分摊人力(元)</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+  <script>
+(function () {
+  var API = '';
+  function qs(name) {
+    var m = new RegExp('[?&]' + name + '=([^&]*)').exec(window.location.search);
+    return m ? decodeURIComponent(m[1].replace(/\+/g, ' ')) : '';
+  }
+  var large = qs('large') || qs('large_category') || '';
+  var items = [];
+  var sortKey = 'sales_amount';
+  var sortAsc = false;
+
+  function defaultDates() {
+    var t = new Date();
+    var e = t.toISOString().slice(0, 10);
+    t.setDate(t.getDate() - 29);
+    var s = t.toISOString().slice(0, 10);
+    var us = qs('start_date');
+    var ue = qs('end_date');
+    document.getElementById('startDate').value = us || s;
+    document.getElementById('endDate').value = ue || e;
+  }
+
+  function render() {
+    var kw = (document.getElementById('filterMid').value || '').trim().toLowerCase();
+    var list = items.filter(function (r) { return !kw || String(r.category_mid || '').toLowerCase().indexOf(kw) >= 0; });
+    list.sort(function (a, b) {
+      var va = Number(a[sortKey]) || 0;
+      var vb = Number(b[sortKey]) || 0;
+      return sortAsc ? va - vb : vb - va;
+    });
+    document.getElementById('tbody').innerHTML = list.length
+      ? list.map(function (r) {
+          return '<tr><td>' + String(r.category_mid || '').replace(/</g, '&lt;') + '</td><td class="num">' + Number(r.sales_amount || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2 }) + '</td><td class="num">' + Number(r.gross_profit || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2 }) + '</td><td class="num">' + (r.margin_pct != null ? r.margin_pct : 0) + '</td><td class="num">' + Number(r.labor_cost_allocated || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2 }) + '</td></tr>';
+        }).join('')
+      : '<tr><td colspan="5" style="color:#64748b;">暂无数据</td></tr>';
+  }
+
+  function load() {
+    var s = document.getElementById('startDate').value;
+    var e = document.getElementById('endDate').value;
+    if (!large) {
+      document.getElementById('msg').textContent = '缺少 URL 参数 large（大类代码或名称）';
+      return;
+    }
+    document.getElementById('msg').textContent = '加载中…';
+    var q = 'large_category=' + encodeURIComponent(large) + '&start_date=' + encodeURIComponent(s) + '&end_date=' + encodeURIComponent(e);
+    fetch((API || '') + '/api/category_drill?' + q, { credentials: 'include' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.success) {
+          document.getElementById('msg').textContent = d.message || '加载失败';
+          items = [];
+          render();
+          return;
+        }
+        document.getElementById('msg').textContent = '';
+        document.getElementById('pageTitle').textContent = '大类「' + (d.large_category || large).replace(/</g, '\u003c') + '」· 中类明细';
+        items = d.items || [];
+        render();
+      })
+      .catch(function () {
+        document.getElementById('msg').textContent = '网络错误';
+      });
+  }
+
+  defaultDates();
+  if (!qs('start_date')) {
+    var u = new URL(window.location.href);
+    u.searchParams.set('start_date', document.getElementById('startDate').value);
+    u.searchParams.set('end_date', document.getElementById('endDate').value);
+    window.history.replaceState({}, '', u.pathname + '?' + u.searchParams.toString());
+  }
+  document.getElementById('btnReload').onclick = load;
+  document.getElementById('filterMid').oninput = render;
+  document.querySelectorAll('th.sortable').forEach(function (th) {
+    th.style.cursor = 'pointer';
+    th.onclick = function () {
+      var k = th.getAttribute('data-k');
+      sortAsc = sortKey === k ? !sortAsc : false;
+      sortKey = k;
+      render();
+    };
+  });
+  load();
+})();
+  </script>
+</body>
+</html>

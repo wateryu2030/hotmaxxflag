@@ -1,0 +1,4 @@
+{
+  "desc": "调试示例",
+  "rules": [{ "action": "allow", "page": "*" }]
+}
