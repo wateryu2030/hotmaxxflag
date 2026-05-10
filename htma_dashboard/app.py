@@ -276,6 +276,8 @@ from serve_web.overview import overview_bp
 app.register_blueprint(overview_bp)
 from serve_web.pages_core import pages_core_bp
 app.register_blueprint(pages_core_bp)
+from serve_web.pages_modules import pages_modules_bp
+app.register_blueprint(pages_modules_bp)
 
 # Mobile routes (has its own before_request with JWT/auth check)
 from routes_mobile import register_mobile_routes
@@ -372,46 +374,6 @@ def _notify_feishu(text):
         pass  # 静默失败，不影响导入
 
 
-
-
-@app.route("/import")
-def import_page():
-    # 仅登录且拥有导入权限的用户可访问
-    if _auth_enabled() and not _is_logged_in():
-        return redirect("/login?next=" + (urllib.parse.quote(request.url) if request.url else "/"))
-    if _auth_enabled() and not _has_module_access("import"):
-        return Response("您无权访问数据导入模块，请联系管理员。", status=403)
-    return send_from_directory("static", "import.html")
-
-
-@app.route("/profit_share")
-def profit_share_page():
-    """收益评估（加盟商分账）页面，仅财务权限可访问"""
-    if _auth_enabled() and not _is_logged_in():
-        return redirect("/login?next=" + (urllib.parse.quote(request.url) if request.url else "/"))
-    if _auth_enabled() and not _has_module_access("profit_share"):
-        return Response("您无权访问收益评估模块，请联系管理员。", status=403)
-    return send_from_directory("static", "profit_share.html")
-
-
-@app.route("/tax_analysis")
-def tax_analysis_page():
-    """税务分析（发票比对、税负测算）页面，仅指定人员可访问"""
-    if _auth_enabled() and not _is_logged_in():
-        return redirect("/login?next=" + (urllib.parse.quote(request.url) if request.url else "/"))
-    if _auth_enabled() and not _has_module_access("tax_analysis"):
-        return Response("您无权访问税务分析模块，请联系管理员。", status=403)
-    return send_from_directory("static", "tax_analysis.html")
-
-
-@app.route("/hongbeilou")
-def hongbeilou_page():
-    """供销社「红背篓」选品：按品类筛选并导出 CSV（需 import 权限）"""
-    if _auth_enabled() and not _is_logged_in():
-        return redirect("/login?next=" + (urllib.parse.quote(request.url) if request.url else "/"))
-    if _auth_enabled() and not _has_module_access("import"):
-        return Response("您无权访问该模块，请联系管理员。", status=403)
-    return send_from_directory("static", "hongbeilou.html")
 
 
 # ---------- 税务分析（发票比对、税负测算）API ----------
@@ -558,14 +520,6 @@ def _parse_invoice_excel(excel_path, store_id="沈阳超级仓"):
 # ---------- 收益评估（加盟商分账）API ----------
 
 
-
-
-@app.route("/product_master")
-def page_product_master():
-    """分店商品档案页：深度分析看板（KPI、状态/品类/品牌/价格带/经销/供应商/属性/数据质量），数据由 /api/product_master_analysis 提供。"""
-    if _auth_enabled() and (not _is_logged_in() or not _has_module_access("product_master")):
-        return Response("您无权访问分店商品档案模块，请联系管理员。", status=403)
-    return send_from_directory("static", "product_master.html", mimetype="text/html; charset=utf-8")
 
 
 # 人力成本 position_type -> 前端展示类目名（与 12月薪资表 各 sheet 对应）
