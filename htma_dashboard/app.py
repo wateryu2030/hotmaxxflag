@@ -456,35 +456,6 @@ def login_page():
 
 
 
-@app.route("/api/feishu/bot/event", methods=["POST", "GET", "HEAD"])
-@app.route("/feishu/callback", methods=["POST", "GET", "HEAD"])
-def api_feishu_bot_event():
-    """飞书自建应用机器人事件订阅回调（群内 @ 机器人 / 私聊回复）。
-    可用路径（二选一，与开放平台配置一致即可）：
-    - /api/feishu/bot/event（推荐，与看板同端口 5002）
-    - /feishu/callback（与常见教程路径一致，反代需指向本服务 5002）
-    """
-    if request.method == "GET":
-        return jsonify({"ok": True, "service": "htma-feishu-bot", "method": "POST events here"}), 200
-    if request.method == "HEAD":
-        return Response("", status=200)
-    _ensure_env_loaded()
-    app_id = (app.config.get("FEISHU_APP_ID") or "").strip()
-    app_secret = (app.config.get("FEISHU_APP_SECRET") or "").strip()
-    if not app_id or not app_secret:
-        return jsonify({"msg": "未配置 FEISHU_APP_ID / FEISHU_APP_SECRET"}), 503
-    from feishu_bot import process_feishu_bot_http_request
-
-    payload, code = process_feishu_bot_http_request(
-        request.get_data(cache=False, as_text=False),
-        request.headers,
-        app_id,
-        app_secret,
-    )
-    return jsonify(payload), code
-
-
-
 
 @app.route("/pending")
 def pending_page():

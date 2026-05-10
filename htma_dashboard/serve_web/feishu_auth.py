@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """serve_web/feishu_auth：飞书认证授权 API（web 端登录、回调、审批）"""
 
-from flask import Blueprint, jsonify, request, session, redirect, url_for
+from flask import Response, Blueprint, jsonify, request, session, redirect, url_for
 from datetime import datetime, timedelta
 import os, pymysql, pymysql.cursors
 
@@ -49,7 +49,7 @@ def _feishu_callback_base_url():
 
 def _ensure_env_loaded():
     """请求时若飞书未配置则再次从 .env 注入。"""
-    from flask import current_app
+    from flask import Response, current_app
     from app import _auth_enabled, _read_feishu_from_project_env
     if not (current_app.config.get("FEISHU_APP_ID") or "").strip() and (os.environ.get("FEISHU_APP_ID") or "").strip():
         current_app.config["FEISHU_APP_ID"] = (os.environ.get("FEISHU_APP_ID") or "").strip()
@@ -353,3 +353,34 @@ def api_auth_logout():
     """退出登录"""
     session.clear()
     return redirect("/login")
+
+
+@feishu_web_bp.route("/api/feishu/bot/event", methods=["POST", "GET", "HEAD"])
+@feishu_web_bp.route("/feishu/callback", methods=["POST", "GET", "HEAD"])
+def api_feishu_bot_event():
+    """飞书自建应用机器人事件订阅回调（群内 @ 机器人 / 私聊回复）。
+    可用路径（二选一，与开放平台配置一致即可）：
+    - /api/feishu/bot/event（推荐，与看板同端口 5002）
+    - /feishu/callback（与常见教程路径一致，反代需指向本服务 5002）
+    """
+    if request.method == "GET":
+        return jsonify({"ok": True, "service": "htma-feishu-bot", "method": "POST events here"}), 200
+    if request.method == "HEAD":
+        return Response("", status=200)
+    _ensure_env_loaded()
+    app_id = (current_app.config.get("FEISHU_APP_ID") or "").strip()
+    app_secret = (current_app.config.get("FEISHU_APP_SECRET") or "").strip()
+    if not app_id or not app_secret:
+        return jsonify({"msg": "未配置 FEISHU_APP_ID / FEISHU_APP_SECRET"}), 503
+    from feishu_bot import process_feishu_bot_http_request
+
+    payload, code = process_feishu_bot_http_request(
+        request.get_data(cache=False, as_text=False),
+        request.headers,
+        app_id,
+        app_secret,
+    )
+    return jsonify(payload), code
+
+
+
