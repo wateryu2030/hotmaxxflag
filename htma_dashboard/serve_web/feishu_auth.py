@@ -7,21 +7,11 @@ import os, pymysql, pymysql.cursors
 
 from core.db import get_conn
 from core.utils import safe_str, safe_int
-from page_auth import _is_logged_in
+from page_auth import _is_logged_in, _has_module_access, _is_super_admin
 from auth import is_feishu_configured, get_feishu_authorize_url, feishu_exchange_code_and_user, _super_admin_open_id
 
 feishu_web_bp = Blueprint("feishu_web", __name__)
 
-
-
-def _is_super_admin():
-    """当前登录用户是否为超级管理员。"""
-    from auth import _super_admin_open_id
-    oid = (session.get("open_id") or session.get("user_id") or "").strip()
-    if not oid:
-        return False
-    admin = _super_admin_open_id()
-    return oid == admin or oid == admin.replace("ou_", "")
 
 
 def _feishu_callback_base_url():
@@ -271,14 +261,6 @@ def api_auth_feishu_callback():
     except Exception:
         pass
     return redirect(next_url or "/")
-def _is_super_admin():
-    """当前登录用户是否为超级管理员（余为军）"""
-    from auth import _super_admin_open_id
-    oid = (session.get("open_id") or session.get("user_id") or "").strip()
-    if not oid:
-        return False
-    admin = _super_admin_open_id()
-    return oid == admin or oid == admin.replace("ou_", "")
 
 
 @feishu_web_bp.route("/api/auth/pending_count")

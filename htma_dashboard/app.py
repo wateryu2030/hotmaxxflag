@@ -274,6 +274,8 @@ init_flask_caching(app)
 
 from serve_web.overview import overview_bp
 app.register_blueprint(overview_bp)
+from serve_web.pages_core import pages_core_bp
+app.register_blueprint(pages_core_bp)
 
 # Mobile routes (has its own before_request with JWT/auth check)
 from routes_mobile import register_mobile_routes
@@ -326,19 +328,6 @@ def add_cors_headers(response):
     return response
 
 
-
-
-
-
-
-
-
-
-
-
-    return jsonify({"success": False, "error": "format 仅支持 csv 或 pdf"}), 400
-
-
 @app.errorhandler(500)
 @app.errorhandler(413)
 def json_error(e):
@@ -383,77 +372,6 @@ def _notify_feishu(text):
         pass  # 静默失败，不影响导入
 
 
-@app.route("/")
-def index():
-    """根路径：未登录展示登录页，已登录展示运营看板（登录前置，必须登录后才能看详细数据）"""
-    if not _is_logged_in():
-        return send_from_directory("static", "login.html")
-    resp = send_from_directory("static", "index.html")
-    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-    resp.headers["Pragma"] = "no-cache"
-    return resp
-
-
-@app.route("/login")
-def login_page():
-    """登录页：已登录则跳转到看板首页；未登录则展示飞书/企微扫码"""
-    if _is_logged_in():
-        next_url = request.args.get("next", "").strip()
-        return redirect(next_url if next_url.startswith("/") and not next_url.startswith("//") else "/")
-    return send_from_directory("static", "login.html")
-
-
-
-
-
-
-
-
-
-@app.route("/pending")
-def pending_page():
-    """企业外用户提交申请后的等待页"""
-    return send_from_directory("static", "pending.html")
-
-
-@app.route("/approval")
-def approval_page():
-    """访问审批页（仅超级管理员余为军可见）"""
-    if _auth_enabled() and not _is_logged_in():
-        return redirect("/login?next=" + urllib.parse.quote(request.url or "/approval"))
-    if not _is_super_admin():
-        return redirect("/login?error=" + urllib.parse.quote("仅超级管理员可访问审批页"))
-    return send_from_directory("static", "approval.html")
-
-
-@app.route("/admin")
-def admin_reminder_page():
-    """超级管理员专用提醒页：待审批数量与快捷入口"""
-    if _auth_enabled() and not _is_logged_in():
-        return redirect("/login?next=" + urllib.parse.quote(request.url or "/admin"))
-    if not _is_super_admin():
-        return redirect("/login?error=" + urllib.parse.quote("仅超级管理员可访问"))
-    return send_from_directory("static", "admin.html")
-
-
-
-
-
-
-
-
-
-
-@app.route("/undefined")
-def catch_undefined():
-    """拦截 href=undefined 等错误请求"""
-    return "", 204
-
-
-@app.route("/.well-known/<path:_>")
-def catch_well_known(_):
-    """拦截 Chrome 扩展等对 .well-known 的请求"""
-    return "", 204
 
 
 @app.route("/import")

@@ -71,3 +71,22 @@ def _has_module_access(module, user_id=None):
 def _is_logged_in():
     """当前 session 是否有已登录用户。"""
     return bool(session.get("user_id") or session.get("open_id"))
+
+
+def _is_super_admin():
+    """当前登录用户是否为超级管理员（与 feishu_auth / 审批页逻辑一致，open_id 归一化比较）。"""
+    try:
+        from auth import _super_admin_open_id
+        oid = (session.get("open_id") or session.get("user_id") or "").strip()
+        if not oid:
+            return False
+        admin = (_super_admin_open_id() or "").strip()
+        if not admin:
+            return False
+
+        def _norm(o):
+            return (o or "").strip().replace("ou_", "").lower()
+
+        return _norm(oid) == _norm(admin)
+    except Exception:
+        return False
