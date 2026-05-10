@@ -14,6 +14,18 @@ from core.utils import safe_int, safe_float, safe_str
 
 overview_bp = Blueprint("overview", __name__)
 
+
+@overview_bp.route("/api/health")
+def api_health():
+    """健康检查"""
+    try:
+        conn = get_conn()
+        conn.close()
+        return jsonify({"status": "ok", "db": "connected"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @overview_bp.route("/api/date_range")
 def api_date_range():
     """返回自定义日期选择器的可选范围；起止默认值为库中有数据的最早/最晚日期（销售表）。缓存 60 秒。"""

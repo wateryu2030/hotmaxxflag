@@ -918,17 +918,6 @@ def _platforms_returned_from_items(items):
     return sorted(seen)
 
 
-@app.route("/api/health")
-def api_health():
-    """健康检查"""
-    try:
-        conn = get_conn()
-        conn.close()
-        return jsonify({"status": "ok", "db": "connected"})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5002"))
     app.run(host="0.0.0.0", port=port, debug=False)
