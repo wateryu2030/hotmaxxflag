@@ -163,35 +163,6 @@ def _cache_get(key):
 def _cache_set(key, value, ttl=None):
     _api_cache[key] = (value, time.time() + (ttl or _CACHE_TTL))
 
-app = Flask(__name__, static_folder="static", template_folder="templates")
-app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024  # 200MB，避免大 Excel 413
-app.config["PROJECT_ROOT"] = _project_root
-app.config["ENV_PATH"] = _env_path
-# 飞书登录：启动时从项目根 .env 直接读 + os.environ 写入 app.config（保证子进程未继承 env 时也能用）
-_direct_id, _direct_secret = _read_feishu_from_project_env()
-app.config["FEISHU_APP_ID"] = (_direct_id or (os.environ.get("FEISHU_APP_ID") or "").strip()).strip()
-app.config["FEISHU_APP_SECRET"] = (_direct_secret or (os.environ.get("FEISHU_APP_SECRET") or "").strip()).strip()
-if not app.config["FEISHU_APP_ID"]:
-    for _p in (_env_path, os.path.abspath(os.path.join(os.getcwd(), "..", ".env"))):
-        _load_env_from_file(_p)
-        app.config["FEISHU_APP_ID"] = (os.environ.get("FEISHU_APP_ID") or "").strip()
-        app.config["FEISHU_APP_SECRET"] = (os.environ.get("FEISHU_APP_SECRET") or "").strip()
-        if app.config["FEISHU_APP_ID"]:
-            break
-if not app.config["FEISHU_APP_ID"] and (os.environ.get("FEISHU_APP_ID") or "").strip():
-    app.config["FEISHU_APP_ID"] = (os.environ.get("FEISHU_APP_ID") or "").strip()
-    app.config["FEISHU_APP_SECRET"] = (os.environ.get("FEISHU_APP_SECRET") or "").strip()
-app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY") or os.environ.get("SECRET_KEY") or "htma-dev-secret-change-in-production"
-# 登录态：session cookie 同站有效，HTTPS 下可设 SESSION_COOKIE_SECURE=1
-app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-app.config["SESSION_COOKIE_HTTPONLY"] = True
-if os.environ.get("SESSION_COOKIE_SECURE", "").strip().lower() in ("1", "true", "yes"):
-    app.config["SESSION_COOKIE_SECURE"] = True
-else:
-    _pu = (os.environ.get("HTMA_PUBLIC_URL") or os.environ.get("PUBLIC_URL") or "").strip()
-    if _pu.lower().startswith("https://"):
-        app.config["SESSION_COOKIE_SECURE"] = True
-
 
 def _auth_enabled():
     """是否启用登录（配置了飞书应用则启用）；优先以 app.config 为准，避免进程未继承 shell 变量"""
@@ -217,137 +188,10 @@ def _is_logged_in():
     return _pa_is_logged_in()
 
 
-@app.before_request
-def _require_auth():
-    """未配置登录时放行；已配置则未登录用户只能访问登录页与 auth 接口，必须登录后才能看运营看板"""
-    # 测试模式直接放行
-    if (os.environ.get("HTMA_UNITTEST_DISABLE_AUTH") or "").strip().lower() in ("1", "true"):
-        return None
-    # CORS 预检：对 /api/* 的 OPTIONS 直接 204，避免 catch-all 路由导致 GET 等返回 405
-    if request.method == "OPTIONS" and request.path.startswith("/api/"):
-        return Response("", status=204)
-    # 从 app.config 回填飞书配置到 os.environ（解决启动时 .env 未加载到进程的情况）
-    for _k in ("FEISHU_APP_ID", "FEISHU_APP_SECRET"):
-        _v = (app.config.get(_k) or "").strip()
-        if _v and not (os.environ.get(_k) or "").strip():
-            os.environ[_k] = _v
-    if not _auth_enabled():
-        return None
-    path = request.path.rstrip("/") or "/"
-    # 放行：根路径（由路由内根据是否登录决定展示登录页或看板）、登录页、auth 回调、auth 接口、健康检查、静态资源
-    if path == "/":
-        return None
-    if path == "/login":
-        return None
-    if path.startswith("/api/auth/"):
-        return None
-    if path == "/api/health":
-        return None
-    if path == "/api/feishu/bot/event" or path == "/feishu/callback":
-        return None
-    if path == "/api/date_range":
-        return None
-    if path == "/labor" or path == "/labor_analysis":
-        return None
-    # 人力成本：状态与主数据接口未登录也可读，便于点击 Tab 后直接展示（数据为内部经营用）
-    if path == "/api/labor_cost_status" or path == "/api/labor_cost" or path == "/api/labor_cost_analysis":
-        return None
-    if path.startswith("/api/labor_analysis/"):
-        return None
-    if path.startswith("/static/") or (path != "/" and not path.startswith("/api/") and "." in path.split("/")[-1]):
-        return None
-    if _is_logged_in():
-        return None
-    # 未登录：页面请求重定向到登录页，API 返回 401
-    if path in ("/import", "/product_master", "/profit_share", "/tax_analysis", "/hongbeilou") or path.startswith("/api/"):
-        if request.path.startswith("/api/"):
-            return jsonify({"success": False, "message": "请先登录", "login_required": True}), 401
-        return redirect("/login?next=" + (urllib.parse.quote(request.url) if request.url else "/"))
-    return None
+from app_factory import create_app
 
+app = create_app()
 
-# --- Blueprint registrations ---
-
-# --- Initialize extensions ---
-from extensions import cache, init_flask_caching
-init_flask_caching(app)
-
-from serve_web.overview import overview_bp
-app.register_blueprint(overview_bp)
-from serve_web.pages_core import pages_core_bp
-app.register_blueprint(pages_core_bp)
-from serve_web.pages_modules import pages_modules_bp
-app.register_blueprint(pages_modules_bp)
-
-# Mobile routes (has its own before_request with JWT/auth check)
-from routes_mobile import register_mobile_routes
-register_mobile_routes(app)
-
-# Biz enhanced routes
-from routes_biz_enhanced import register_biz_routes
-register_biz_routes(app)
-
-# WeChat mini routes
-from wechat_api import register_wechat_mini_routes
-register_wechat_mini_routes(app)
-
-# Labor routes
-from labor_routes import register_labor_blueprints
-register_labor_blueprints(app)
-from serve_web.pages_labor import pages_labor_bp
-app.register_blueprint(pages_labor_bp)
-from serve_web.category_rank import cat_rank_bp
-app.register_blueprint(cat_rank_bp)
-from serve_web.profit import profit_bp
-app.register_blueprint(profit_bp)
-from serve_web.report import report_bp
-app.register_blueprint(report_bp)
-from serve_web.channel import channel_bp
-app.register_blueprint(channel_bp)
-from serve_web.sync import sync_bp
-app.register_blueprint(sync_bp)
-from serve_web.catalog import catalog_bp
-app.register_blueprint(catalog_bp)
-from serve_web.feishu_auth import feishu_web_bp
-app.register_blueprint(feishu_web_bp)
-from serve_web.import_api import import_api_bp
-app.register_blueprint(import_api_bp)
-from serve_web.content import content_bp
-app.register_blueprint(content_bp)
-from serve_web.tax import tax_bp
-app.register_blueprint(tax_bp)
-from serve_web.profit_share import profit_share_bp
-app.register_blueprint(profit_share_bp)
-from serve_web.product_master import product_bp
-app.register_blueprint(product_bp)
-from serve_web.price_compare import price_bp
-app.register_blueprint(price_bp)
-
-@app.after_request
-def add_cors_headers(response):
-    """允许跨域，便于 Cursor 预览、OpenClaw 等不同源访问"""
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
-    return response
-
-
-@app.errorhandler(500)
-@app.errorhandler(413)
-def json_error(e):
-    """API 请求返回 JSON；405 方法不允许时也返回 JSON 避免前端解析到 HTML"""
-    if request.path.startswith("/api/"):
-        code = getattr(e, "code", 500)
-        msg = str(e)
-        if code == 405:
-            msg = "请求方法不允许，请使用 GET 或 POST"
-        elif code == 413:
-            msg = "文件过大，请上传小于 200MB 的 Excel 文件"
-        return jsonify({"success": False, "message": msg}), code
-    code = getattr(e, "code", 500)
-    if code == 404:
-        return "Not Found", 404
-    raise
 
 # MySQL 配置由 db_config 统一从 .env 读取
 STORE_ID = "沈阳超级仓"
