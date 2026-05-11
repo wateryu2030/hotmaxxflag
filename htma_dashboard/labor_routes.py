@@ -287,6 +287,13 @@ def _labor_cost_analysis_response(month):
             FROM t_htma_labor_cost WHERE report_month = %s AND position_type = 'leader' ORDER BY COALESCE(total_cost, 0) DESC
         """, (month,))
         leaders = cur.fetchall()
+        # 如果 position_type='leader' 无数据，从 management 取数（部分月份组长被录入为管理岗）
+        if not leaders:
+            cur.execute("""
+                SELECT position_name, person_name, supplier_name, total_salary, pre_tax_pay, actual_salary, luxury_bonus, actual_income, company_cost, total_cost
+                FROM t_htma_labor_cost WHERE report_month = %s AND position_type = 'management' ORDER BY COALESCE(total_cost, 0) DESC
+            """, (month,))
+            leaders = cur.fetchall()
         cur.execute("""
             SELECT position_name, person_name, supplier_name, work_hours, base_salary, performance, position_allowance, total_salary, pre_tax_pay, luxury_amount, actual_income, company_cost, total_cost
             FROM t_htma_labor_cost WHERE report_month = %s AND position_type = 'fulltime' ORDER BY COALESCE(company_cost, 0) DESC
@@ -390,6 +397,9 @@ def _labor_cost_analysis_response(month):
             return None, [], [], {}
 
         # 构建 by_category：先全口径，再按固定顺序各类目
+        _show_management_separately = True
+        if ("leader" not in by_type or by_type["leader"]["position_count"] == 0) and "management" in by_type:
+            _show_management_separately = False  # management 将被合并到 leader，不单独显示管理岗行
         by_category = [{"name": "全口径", "total_wage": total_labor_cost, "position_count": total_positions}]
         type_to_name = LABOR_POSITION_TYPE_NAMES
         for display_name in LABOR_CATEGORY_ORDER:
@@ -397,6 +407,9 @@ def _labor_cost_analysis_response(month):
                 if dname != display_name:
                     continue
                 if ptype in by_type and (by_type[ptype]["position_count"] or by_type[ptype]["total_wage"]):
+                    # 如果没有 leader 行但有 management，把 management 合并到 leader 展示
+                    if ptype == "management" and not _show_management_separately:
+                        continue  # management 已被合并到 leader，不重复显示
                     by_category.append({
                         "name": display_name,
                         "total_wage": by_type[ptype]["total_wage"],
@@ -408,6 +421,10 @@ def _labor_cost_analysis_response(month):
         fulltime_total = by_type.get("fulltime", {}).get("total_wage", 0)
         leader_count = int(by_type.get("leader", {}).get("position_count", 0))
         fulltime_count = int(by_type.get("fulltime", {}).get("position_count", 0))
+        # 如果 leader 无数据但有 management，将 management 合并到 leader（部分月份组长被录入为管理岗）
+        if leader_count == 0 and leader_total == 0 and "management" in by_type:
+            leader_total = by_type["management"]["total_wage"]
+            leader_count = int(by_type["management"]["position_count"])
         parttime_count = int(by_type.get("parttime", {}).get("position_count", 0))
         hourly_count = int(by_type.get("hourly", {}).get("position_count", 0))
         cleaner_count = int(by_type.get("cleaner", {}).get("position_count", 0))
