@@ -6,6 +6,7 @@ import urllib.parse
 from flask import Blueprint, current_app, redirect, request, send_from_directory
 
 from page_auth import _auth_enabled, _is_logged_in, _is_super_admin
+import os
 
 pages_core_bp = Blueprint("pages_core", __name__)
 
@@ -13,9 +14,13 @@ pages_core_bp = Blueprint("pages_core", __name__)
 @pages_core_bp.route("/")
 def index():
     """根路径：未登录展示登录页，已登录展示运营看板（登录前置，必须登录后才能看详细数据）"""
-    if not _is_logged_in():
+    # 开发模式直接展示看板
+    if (os.environ.get("HTMA_UNITTEST_DISABLE_AUTH") or "").strip().lower() in ("1", "true"):
+        resp = send_from_directory(current_app.static_folder, "index.html")
+    elif not _is_logged_in():
         return send_from_directory(current_app.static_folder, "login.html")
-    resp = send_from_directory(current_app.static_folder, "index.html")
+    else:
+        resp = send_from_directory(current_app.static_folder, "index.html")
     resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     resp.headers["Pragma"] = "no-cache"
     return resp
