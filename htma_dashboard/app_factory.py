@@ -128,6 +128,8 @@ def create_app(config_overrides=None, *, project_root=None, env_path=None):
     from serve_web.profit_share import profit_share_bp
     from serve_web.product_master import product_bp
     from serve_web.price_compare import price_bp
+    from routes_sales import register_sales_routes
+    from routes_category import register_category_routes
 
     app.register_blueprint(overview_bp)
     app.register_blueprint(pages_core_bp)
@@ -150,6 +152,8 @@ def create_app(config_overrides=None, *, project_root=None, env_path=None):
     app.register_blueprint(profit_share_bp)
     app.register_blueprint(product_bp)
     app.register_blueprint(price_bp)
+    register_sales_routes(app)
+    register_category_routes(app)
 
     @app.after_request
     def add_cors_headers(response):

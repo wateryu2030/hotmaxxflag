@@ -3505,7 +3505,6 @@
 
           // 汇总摘要
           var totalWage = parseFloat(s.total_labor_cost) || 0;
-              }).join('') : '';
           document.getElementById('bizLaborSummaryBox').innerHTML = totalWage
             ? '<div class="kpi-row" style="margin-top:8px;"><div class="kpi-card"><div class="label">人力总成本</div><div class="value">' + fmtMoney(totalWage) + '</div></div></div>'
             : '';
@@ -3525,7 +3524,7 @@
                   return '<tr><td>' + String(row.position_name || '').replace(/</g,'&lt;') + '</td><td class="num">' + (row.work_hours != null ? fmtNum(row.work_hours) : '-') + '</td><td class="num">' + fmtMoney(row.base_salary) + '</td><td class="num">' + fmtMoney(row.performance) + '</td><td class="num">' + fmtMoney(row.position_allowance) + '</td><td class="num">' + fmtMoney(row.total_salary) + '</td><td class="num">' + fmtMoney(row.luxury_amount) + '</td><td class="num">' + fmtMoney(row.actual_income) + '</td><td class="num">' + fmtMoney(row.company_cost) + '</td></tr>';
                 }).join('');
           }
-        }
+        })
         .catch(function(e) {
           kpiEl.innerHTML = '<div class="error">加载失败</div>';
         });
@@ -3602,7 +3601,8 @@
         '</tbody></table></div></div>';
     };
 
-    /** 切换人力成本子Tab */
+    /** 经营页顶部：数据范围与条数（需 async：内部使用 await） */
+    async function loadBizDataStatus() {
       const bar = document.getElementById('bizDataStatusBar');
       if (!bar) return;
       bar.textContent = '加载中...';

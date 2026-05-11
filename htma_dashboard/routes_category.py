@@ -1,15 +1,14 @@
 # -*- coding: utf-8 -*-
-# 阶段 D1：品类下钻相关路由（B3）
-import sys
+# 阶段 D1：品类下钻相关路由（B3）— 在 app_factory 中注册
+import urllib.parse
 from datetime import date, timedelta
 
 from flask import Blueprint, jsonify, redirect, request, send_from_directory
 
+from core.context import _effective_store_id
+from db_config import get_conn
 from labor_routes import labor_analysis_by_category
-
-
-def _app():
-    return sys.modules.get("app")
+from page_auth import _auth_enabled, _is_logged_in
 
 
 category_ext_bp = Blueprint("category_ext", __name__)
@@ -22,9 +21,9 @@ def register_category_routes(app):
 @category_ext_bp.route("/category_drill")
 def page_category_drill():
     """大类→中类下钻页。"""
-    M = _app()
-    if M and M._auth_enabled() and not M._is_logged_in():
-        return redirect("/login?next=/category_drill")
+    if _auth_enabled() and not _is_logged_in():
+        next_path = request.full_path.rstrip("?") if request.full_path else "/category_drill"
+        return redirect("/login?next=" + urllib.parse.quote(next_path, safe=""))
     return send_from_directory("static", "category_drill.html")
 
 
@@ -33,8 +32,7 @@ def api_category_drill():
     """某大类下中类销售、毛利、毛利率；人力按大类内销售额占比分摊。"""
     if request.method == "OPTIONS":
         return "", 204
-    M = _app()
-    if M and M._auth_enabled() and not M._is_logged_in():
+    if _auth_enabled() and not _is_logged_in():
         return jsonify({"success": False, "login_required": True}), 401
     large = (request.args.get("large_category") or request.args.get("large") or "").strip()
     start_d = (request.args.get("start_date") or "").strip()[:10]
@@ -45,8 +43,8 @@ def api_category_drill():
     if not start_d or not end_d:
         end_d = date.today().isoformat()[:10]
         start_d = (date.today() - timedelta(days=29)).isoformat()[:10]
-    store_id = (M._effective_store_id() if M else "沈阳超级仓")
-    conn = M.get_conn()
+    store_id = _effective_store_id() or "沈阳超级仓"
+    conn = get_conn()
     labor_cost_large = 0.0
     try:
         cur = conn.cursor()

@@ -309,7 +309,7 @@ def api_trend_analysis():
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            curr_start, curr_end, prev_start, prev_end, curr_label, prev_label = _period_over_period_ranges(
+            curr_start, curr_end, prev_start, prev_end, curr_label, prev_label = period_over_period_ranges(
                 period, start_date or None, end_date or None
             )
             cat_params = tuple(params[1 + len(date_params):]) if len(params) > 1 + len(date_params) else ()

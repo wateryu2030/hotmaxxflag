@@ -1,17 +1,21 @@
 # -*- coding: utf-8 -*-
-# 阶段 D1：销售侧扩展 API（贡献结构、退货赠送、热力图、负毛利）— 由 app 末尾注册
+# 阶段 D1：销售侧扩展 API（贡献结构、退货赠送、热力图、负毛利）— 在 app_factory 中注册
 import csv
 import io
-import sys
 from datetime import date, timedelta
 
 from flask import Blueprint, Response, jsonify, request
 
+from core.context import _effective_store_id
+from db_config import get_conn
 from extensions import cache
+from page_auth import _auth_enabled, _is_logged_in
 
 
-def _app():
-    return sys.modules.get("app")
+def _sales_login_json():
+    if _auth_enabled() and not _is_logged_in():
+        return jsonify({"success": False, "login_required": True}), 401
+    return None
 
 
 sales_ext_bp = Blueprint("sales_ext", __name__, url_prefix="/api")
@@ -27,20 +31,20 @@ def api_contribution_structure():
     """阶段 B1：各大类销售额占比 vs 毛利额占比（t_htma_sale）。"""
     if request.method == "OPTIONS":
         return "", 204
-    M = _app()
-    if M and M._auth_enabled() and not M._is_logged_in():
-        return jsonify({"success": False, "login_required": True}), 401
+    gate = _sales_login_json()
+    if gate is not None:
+        return gate
     start_d = (request.args.get("start_date") or "").strip()[:10]
     end_d = (request.args.get("end_date") or "").strip()[:10]
     if not start_d or not end_d:
         end_d = date.today().isoformat()[:10]
         start_d = (date.today() - timedelta(days=29)).isoformat()[:10]
-    store_id = (M._effective_store_id() if M else "沈阳超级仓")
+    store_id = _effective_store_id() or "沈阳超级仓"
     ck = "contrib:v1:%s:%s:%s" % (store_id, start_d, end_d)
     hit = cache.get(ck)
     if hit is not None:
         return jsonify(hit)
-    conn = M.get_conn()
+    conn = get_conn()
     try:
         cur = conn.cursor()
         cur.execute(
@@ -82,18 +86,18 @@ def api_return_gift_share():
     """阶段 C1：按大类退货率、赠送率（依赖 return_amount/gift_amount 列）。"""
     if request.method == "OPTIONS":
         return "", 204
-    M = _app()
-    if M and M._auth_enabled() and not M._is_logged_in():
-        return jsonify({"success": False, "login_required": True}), 401
+    gate = _sales_login_json()
+    if gate is not None:
+        return gate
     start_d = (request.args.get("start_date") or "").strip()[:10]
     end_d = (request.args.get("end_date") or "").strip()[:10]
     if not start_d or not end_d:
         end_d = date.today().isoformat()[:10]
         start_d = (date.today() - timedelta(days=29)).isoformat()[:10]
-    store_id = (M._effective_store_id() if M else "沈阳超级仓")
+    store_id = _effective_store_id() or "沈阳超级仓"
     conn = None
     try:
-        conn = M.get_conn()
+        conn = get_conn()
         cur = conn.cursor()
         cur.execute(
             """
@@ -145,11 +149,11 @@ def api_category_trend_heatmap():
     """阶段 C4：最近 12 个月 × 大类毛利率矩阵。"""
     if request.method == "OPTIONS":
         return "", 204
-    M = _app()
-    if M and M._auth_enabled() and not M._is_logged_in():
-        return jsonify({"success": False, "login_required": True}), 401
-    store_id = (M._effective_store_id() if M else "沈阳超级仓")
-    conn = M.get_conn()
+    gate = _sales_login_json()
+    if gate is not None:
+        return gate
+    store_id = _effective_store_id() or "沈阳超级仓"
+    conn = get_conn()
     try:
         cur = conn.cursor()
         cur.execute(
@@ -192,15 +196,15 @@ def api_negative_margin_items():
     """阶段 C3：负毛利率 SKU 汇总；export=1 返回 CSV。"""
     if request.method == "OPTIONS":
         return "", 204
-    M = _app()
-    if M and M._auth_enabled() and not M._is_logged_in():
-        return jsonify({"success": False, "login_required": True}), 401
+    gate = _sales_login_json()
+    if gate is not None:
+        return gate
     start_d = (request.args.get("start_date") or "").strip()[:10]
     end_d = (request.args.get("end_date") or "").strip()[:10]
     if not start_d or not end_d:
         end_d = date.today().isoformat()[:10]
         start_d = (date.today() - timedelta(days=29)).isoformat()[:10]
-    store_id = (M._effective_store_id() if M else "沈阳超级仓")
+    store_id = _effective_store_id() or "沈阳超级仓"
     export = (request.args.get("export") or "").strip() == "1"
     try:
         lim = int((request.args.get("limit") or "500").strip() or "500")
@@ -216,7 +220,7 @@ def api_negative_margin_items():
     else:
         lim = max(1, min(lim, 500))
         off = max(0, off)
-    conn = M.get_conn()
+    conn = get_conn()
     try:
         cur = conn.cursor()
         cur.execute(
