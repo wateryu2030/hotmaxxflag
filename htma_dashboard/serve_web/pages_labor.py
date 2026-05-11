@@ -321,6 +321,33 @@ def _labor_cost_analysis_response(month):
         summary["detail_hourly"] = [_decimals(r) for r in hourly]
         summary["detail_cleaner"] = [_decimals(r) for r in cleaner]
         summary["detail_management"] = [_decimals(r) for r in management]
+        # 群组维度分析：按 position_name 聚合
+        cur.execute("""
+            SELECT position_name, COUNT(*) AS headcount,
+                   COALESCE(SUM(COALESCE(total_cost, company_cost, 0)), 0) AS total_cost,
+                   AVG(COALESCE(total_cost, company_cost, 0)) AS avg_cost,
+                   COUNT(DISTINCT supplier_name) AS supplier_count,
+                   GROUP_CONCAT(DISTINCT supplier_name SEPARATOR '、') AS suppliers
+            FROM t_htma_labor_cost WHERE report_month = %s
+            GROUP BY position_name ORDER BY total_cost DESC
+        """, (month,))
+        summary["group_analysis"] = cur.fetchall()
+        cur.execute("""
+            SELECT supplier_name, COUNT(*) AS headcount,
+                   COALESCE(SUM(COALESCE(total_cost, company_cost, 0)), 0) AS total_cost,
+                   COUNT(DISTINCT position_name) AS position_count,
+                   GROUP_CONCAT(DISTINCT position_name SEPARATOR '、') AS positions
+            FROM t_htma_labor_cost WHERE report_month = %s
+            GROUP BY supplier_name ORDER BY total_cost DESC
+        """, (month,))
+        summary["supplier_analysis"] = cur.fetchall()
+        cur.execute("""
+            SELECT COUNT(*) AS total,
+                   SUM(CASE WHEN join_date!='' AND join_date<=%s THEN 1 ELSE 0 END) AS joined,
+                   SUM(CASE WHEN leave_date!='' AND leave_date>=%s THEN 1 ELSE 0 END) AS left_count
+            FROM t_htma_labor_cost WHERE report_month = %s
+        """, (month, month, month))
+        summary["turnover_analysis"] = cur.fetchone()
         return month, [_decimals(r) for r in leaders], [_decimals(r) for r in fulltime], summary
     finally:
         conn.close()
@@ -518,6 +545,7 @@ def page_labor():
         ) % (base_css, month_links)
         return Response(html, mimetype="text/html; charset=utf-8")
     s = summary or {}
+
     by_cat = s.get("by_category") or []
     cat_ids = {"全口径": "quankoujing", "组长+组员": "leader-fulltime", "组长": "leader", "组员": "fulltime", "兼职": "parttime", "小时工": "hourly", "保洁": "cleaner", "管理岗": "management"}
     month_label = _month_label(report_month)
@@ -811,6 +839,73 @@ def page_labor():
         category_list_html,
     )
     month_nav_block = ""
+    # ---- 群组/供应商/人员稳定性分析区块 ----
+    _group_html = ""
+    _sup_html = ""
+    _to_html = ""
+    _ga = s.get("group_analysis") or []
+    if _ga:
+        _gr = "".join(
+            "<tr>"
+            "<td class='num'>%d</td>"
+            "<td>%s</td>"
+            "<td class='num'>%d 人</td>"
+            "<td class='num'>%s</td>"
+            "<td class='num'>%s</td>"
+            "<td>%s</td>"
+            "</tr>"
+            % (idx+1,
+               str(g.get("position_name","")).replace("<","&lt;"),
+               int(g.get("headcount",0)),
+               "{:,.2f}".format(float(g.get("total_cost",0))),
+               "{:,.2f}".format(float(g.get("avg_cost",0))),
+               str(g.get("suppliers","")).replace("<","&lt;"))
+            for idx, g in enumerate(_ga)
+        )
+        _group_html = (
+            "<div class='box' id='detail-group'><h3>群组/岗位维度人效</h3>"
+            "<p class='label'>按岗位群组聚合，展示各区域/品类的人员投入与人均成本</p>"
+            "<table><thead><tr><th>#</th><th>群组/区域</th><th class='num'>人数</th><th class='num'>总成本(元)</th><th class='num'>人均成本(元)</th><th>供应商</th></tr></thead><tbody>%s</tbody></table></div>"
+        ) % _gr
+    _sup_html = ""
+    _sa = s.get("supplier_analysis") or []
+    if _sa:
+        _sr = "".join(
+            "<tr>"
+            "<td class='num'>%d</td>"
+            "<td>%s</td>"
+            "<td class='num'>%d 人</td>"
+            "<td class='num'>%s</td>"
+            "<td class='num'>%d 岗</td>"
+            "<td>%s</td>"
+            "</tr>"
+            % (idx+1,
+               str(r.get("supplier_name","")).replace("<","&lt;"),
+               int(r.get("headcount",0)),
+               "{:,.2f}".format(float(r.get("total_cost",0))),
+               int(r.get("position_count",0)),
+               str(r.get("positions","")).replace("<","&lt;"))
+            for idx, r in enumerate(_sa)
+        )
+        _sup_html = (
+            "<div class='box'><h3>供应商维度</h3>"
+            "<p class='label'>各供应商提供的岗位数与费用分布</p>"
+            "<table><thead><tr><th>#</th><th>供应商</th><th class='num'>人数</th><th class='num'>总成本(元)</th><th class='num'>岗位数</th><th>覆盖岗位</th></tr></thead><tbody>%s</tbody></table></div>"
+        ) % _sr
+    _to_html = ""
+    _to = s.get("turnover_analysis") or {}
+    if _to and int(_to.get("total",0)) > 0:
+        _tt = int(_to["total"])
+        _joined = int(_to.get("joined",0))
+        _left = int(_to.get("left_count",0))
+        _jr = round(_joined / _tt * 100, 1)
+        _lr = round(_left / _tt * 100, 1)
+        _retention = round(100 - _lr, 1)
+        _to_html = (
+            "<div class='box'><h3>人员稳定性</h3>"
+            "<p class='label'>总人数 %d 人 · 新入职 %d 人(%s%%) · 离职 %d 人(%s%%) · 留存率 %s%%</p></div>"
+        ) % (_tt, _joined, _jr, _left, _lr, _retention)
+
     html = (
         "<!DOCTYPE html><html><head><meta charset='utf-8'/><title>人力成本 · 全口径与类目 · %s</title><style>%s</style></head><body>"
         "%s"
@@ -822,6 +917,7 @@ def page_labor():
         "<div class='box' id='detail-hourly'><h3>小时工明细（%s）</h3>%s</div>"
         "<div class='box' id='detail-cleaner'><h3>保洁明细（%s）</h3>%s</div>"
         "<div class='box' id='detail-management'><h3>管理岗明细（%s）</h3>%s</div>"
+        "%s%s%s"
         "<p class='label' style='margin-top:8px;'>人力成本基本固定，可作为经营分析的成本基准；全口径 = 组长+组员+兼职+小时工+保洁+管理岗。各类目下表均为<strong>到人明细</strong>，便于追踪人员变动与稳定情况。与「开票金额/总成本」汇总表口径一致（如沈阳 斗米全职+管理组+兼职、中锐/快聘小时工、保洁 合计约 53.25 万）。</p>"
         "<p><a href='/'>返回看板</a> | <a href='/import'>数据导入</a> | <a href='/labor_analysis'>人力分析</a> | <a href='/labor'>刷新</a> | <button type='button' id='btnLaborClear' style='margin-left:8px;padding:6px 12px;background:#64748b;color:#e2e8f0;border:1px solid #475569;border-radius:6px;cursor:pointer;font-size:0.9rem;'>清空人力数据</button></p>"
     "<script>"
@@ -845,6 +941,9 @@ def page_labor():
         month_label.replace("<", "&lt;"), (_simple_cost_table(hourly_detail) or "").replace("%", "%%"),
         month_label.replace("<", "&lt;"), (_simple_cost_table(cleaner_detail) or "").replace("%", "%%"),
         month_label.replace("<", "&lt;"), (_simple_cost_table(management_detail) or "").replace("%", "%%"),
+        (_group_html or "").replace("%", "%%"),
+        (_sup_html or "").replace("%", "%%"),
+        (_to_html or "").replace("%", "%%"),
     )
     return Response(html, mimetype="text/html; charset=utf-8")
 

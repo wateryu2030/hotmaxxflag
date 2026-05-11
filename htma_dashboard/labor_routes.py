@@ -494,6 +494,45 @@ def _labor_cost_analysis_response(month):
         summary["fulltime_by_position"] = list(fulltime_by_pos.values())
         for g in summary["fulltime_by_position"]:
             g["total_cost"] = round(g["total_cost"], 2)
+        # 群组维度分析：按 position_name 聚合人员、成本、供应商分布
+        cur.execute("""
+            SELECT position_name,
+                   COUNT(*) AS headcount,
+                   COALESCE(SUM(COALESCE(total_cost, company_cost, 0)), 0) AS total_cost,
+                   COUNT(DISTINCT supplier_name) AS supplier_count,
+                   GROUP_CONCAT(DISTINCT supplier_name SEPARATOR '、') AS suppliers,
+                   MIN(COALESCE(total_cost, company_cost, 0)) AS min_cost,
+                   MAX(COALESCE(total_cost, company_cost, 0)) AS max_cost,
+                   AVG(COALESCE(total_cost, company_cost, 0)) AS avg_cost
+            FROM t_htma_labor_cost
+            WHERE report_month = %s
+            GROUP BY position_name
+            ORDER BY total_cost DESC
+        """, (month,))
+        summary["group_analysis"] = cur.fetchall()
+        # 供应商维度分析
+        cur.execute("""
+            SELECT supplier_name,
+                   COUNT(*) AS headcount,
+                   COALESCE(SUM(COALESCE(total_cost, company_cost, 0)), 0) AS total_cost,
+                   COUNT(DISTINCT position_name) AS position_count,
+                   GROUP_CONCAT(DISTINCT position_name SEPARATOR '、') AS positions
+            FROM t_htma_labor_cost
+            WHERE report_month = %s
+            GROUP BY supplier_name
+            ORDER BY total_cost DESC
+        """, (month,))
+        summary["supplier_analysis"] = cur.fetchall()
+        # 新入离职分析
+        cur.execute("""
+            SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN join_date IS NOT NULL AND join_date != '' AND join_date <= %s THEN 1 ELSE 0 END) AS joined,
+                SUM(CASE WHEN leave_date IS NOT NULL AND leave_date != '' AND leave_date >= %s THEN 1 ELSE 0 END) AS left_count
+            FROM t_htma_labor_cost
+            WHERE report_month = %s
+        """, (month, month, month))
+        summary["turnover_analysis"] = cur.fetchone()
         summary["detail_hourly"] = [_decimals(r) for r in hourly]
         summary["detail_cleaner"] = [_decimals(r) for r in cleaner]
         summary["detail_management"] = [_decimals(r) for r in management]
