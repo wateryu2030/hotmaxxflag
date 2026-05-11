@@ -36,8 +36,7 @@ def _feishu_callback_base_url():
 
 def _ensure_env_loaded():
     """请求时若飞书未配置则再次从 .env 注入。"""
-    from flask import Response, current_app
-    from app import _auth_enabled, _read_feishu_from_project_env
+    from page_auth import _auth_enabled
     if not (current_app.config.get("FEISHU_APP_ID") or "").strip() and (os.environ.get("FEISHU_APP_ID") or "").strip():
         current_app.config["FEISHU_APP_ID"] = (os.environ.get("FEISHU_APP_ID") or "").strip()
         current_app.config["FEISHU_APP_SECRET"] = (os.environ.get("FEISHU_APP_SECRET") or "").strip()
@@ -93,26 +92,30 @@ def _feishu_callback_base_url():
 
 def _ensure_env_loaded():
     """请求时若飞书未配置则再次从 .env 注入，并写入 app.config 供后续请求使用"""
-    if not (app.config.get("FEISHU_APP_ID") or "").strip() and (os.environ.get("FEISHU_APP_ID") or "").strip():
-        app.config["FEISHU_APP_ID"] = (os.environ.get("FEISHU_APP_ID") or "").strip()
-        app.config["FEISHU_APP_SECRET"] = (os.environ.get("FEISHU_APP_SECRET") or "").strip()
-    if not (app.config.get("FEISHU_APP_ID") or "").strip():
-        direct_id, direct_secret = _read_feishu_from_project_env()
+    from flask import current_app
+    from app_factory import _get_app_module
+    _app_mod = _get_app_module()
+    if not (current_app.config.get("FEISHU_APP_ID") or "").strip() and (os.environ.get("FEISHU_APP_ID") or "").strip():
+        current_app.config["FEISHU_APP_ID"] = (os.environ.get("FEISHU_APP_ID") or "").strip()
+        current_app.config["FEISHU_APP_SECRET"] = (os.environ.get("FEISHU_APP_SECRET") or "").strip()
+    if not (current_app.config.get("FEISHU_APP_ID") or "").strip():
+        direct_id, direct_secret = _app_mod._read_feishu_from_project_env()
         if direct_id and direct_secret:
-            app.config["FEISHU_APP_ID"] = direct_id
-            app.config["FEISHU_APP_SECRET"] = direct_secret
+            current_app.config["FEISHU_APP_ID"] = direct_id
+            current_app.config["FEISHU_APP_SECRET"] = direct_secret
+    from page_auth import _auth_enabled
     if _auth_enabled():
         return True
-    root = app.config.get("PROJECT_ROOT") or _project_root
+    root = current_app.config.get("PROJECT_ROOT") or _app_mod._project_root
     candidates = [
-        app.config.get("ENV_PATH"),
+        current_app.config.get("ENV_PATH"),
         os.path.join(root, ".env") if root else None,
         os.path.join(os.getcwd(), ".env"),
         os.path.abspath(os.path.join(os.getcwd(), "..", ".env")),
     ]
     for path in candidates:
         if path:
-            _load_env_from_file(
+            _app_mod._load_env_from_file(
                 path,
                 force_keys=(
                     "FEISHU_APP_ID",
@@ -128,9 +131,9 @@ def _ensure_env_loaded():
                     "FEISHU_BOT_DB_REQUIRE_ALLOWLIST",
                 ),
             )
-        if not (app.config.get("FEISHU_APP_ID") or "").strip() and (os.environ.get("FEISHU_APP_ID") or "").strip():
-            app.config["FEISHU_APP_ID"] = (os.environ.get("FEISHU_APP_ID") or "").strip()
-            app.config["FEISHU_APP_SECRET"] = (os.environ.get("FEISHU_APP_SECRET") or "").strip()
+        if not (current_app.config.get("FEISHU_APP_ID") or "").strip() and (os.environ.get("FEISHU_APP_ID") or "").strip():
+            current_app.config["FEISHU_APP_ID"] = (os.environ.get("FEISHU_APP_ID") or "").strip()
+            current_app.config["FEISHU_APP_SECRET"] = (os.environ.get("FEISHU_APP_SECRET") or "").strip()
         if _auth_enabled():
             return True
     return False
@@ -138,15 +141,17 @@ def _ensure_env_loaded():
 @feishu_web_bp.route("/api/auth/feishu_url")
 def api_auth_feishu_url():
     """获取飞书授权 URL，前端跳转后用户扫码授权"""
+    from flask import current_app
     _ensure_env_loaded()
-    env_path = app.config.get("ENV_PATH", "")
+    env_path = current_app.config.get("ENV_PATH", "")
     if env_path:
-        direct_id, direct_secret = _read_feishu_from_env_file(env_path)
+        _mod = __import__('app_factory')._get_app_module()
+        direct_id, direct_secret = _mod._read_feishu_from_env_file(env_path)
         if direct_id and direct_secret:
-            app.config["FEISHU_APP_ID"] = direct_id
-            app.config["FEISHU_APP_SECRET"] = direct_secret
-    feishu_id = (app.config.get("FEISHU_APP_ID") or "").strip()
-    feishu_secret = (app.config.get("FEISHU_APP_SECRET") or "").strip()
+            current_app.config["FEISHU_APP_ID"] = direct_id
+            current_app.config["FEISHU_APP_SECRET"] = direct_secret
+    feishu_id = (current_app.config.get("FEISHU_APP_ID") or "").strip()
+    feishu_secret = (current_app.config.get("FEISHU_APP_SECRET") or "").strip()
     if not feishu_id or not feishu_secret:
         return jsonify({
             "success": False,
@@ -169,6 +174,7 @@ def api_auth_feishu_url():
 @feishu_web_bp.route("/api/auth/feishu_callback")
 def api_auth_feishu_callback():
     """飞书授权回调：企业内直接登录；企业外需审批通过后才可访问。"""
+    from flask import current_app
     from auth import feishu_exchange_code_and_user, _super_admin_open_id
     code = request.args.get("code")
     if not code:
@@ -178,8 +184,8 @@ def api_auth_feishu_callback():
     user, err = feishu_exchange_code_and_user(
         code,
         redirect_uri,
-        app_id=app.config.get("FEISHU_APP_ID"),
-        app_secret=app.config.get("FEISHU_APP_SECRET"),
+        app_id=current_app.config.get("FEISHU_APP_ID"),
+        app_secret=current_app.config.get("FEISHU_APP_SECRET"),
     )
     if err:
         return redirect("/login?error=" + urllib.parse.quote(err))

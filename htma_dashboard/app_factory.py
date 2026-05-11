@@ -9,9 +9,20 @@ import urllib.parse
 from flask import Flask, Response, jsonify, redirect, request, session
 
 
+def _get_app_module():
+    """返回 app 模块。在 python app.py（__main__）和 from app import app 两种模式下都能工作。"""
+    import sys
+    mod = sys.modules.get("app")
+    if mod is not None:
+        return mod
+    # app.py 被当作 __main__ 执行时，sys.modules['app'] 不存在
+    import __main__
+    return __main__
+
+
 def create_app(config_overrides=None, *, project_root=None, env_path=None):
     """创建并返回 Flask 应用实例。默认从已部分初始化的 app 模块读取路径与飞书辅助函数。"""
-    import app as app_mod
+    app_mod = _get_app_module()
 
     if project_root is None:
         project_root = app_mod._project_root

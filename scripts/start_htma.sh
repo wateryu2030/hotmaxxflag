@@ -38,7 +38,8 @@ if [ -f "$ROOT/.env" ]; then
   set -a
   . "$ROOT/.env" 2>/dev/null || true
   set +a
-  [ -z "$FEISHU_APP_ID" ] && export FEISHU_APP_ID="$(grep -m1 '^FEISHU_APP_ID=' "$ROOT/.env" 2>/dev/null | sed 's/^FEISHU_APP_ID=//' | tr -d '\r')"
+  [ -z "$FEISHU_APP_ID" ] && export HTMA_UNITTEST_DISABLE_AUTH=1 HTMA_SKIP_MOBILE_JWT=1
+            export FEISHU_APP_ID="$(grep -m1 '^FEISHU_APP_ID=' "$ROOT/.env" 2>/dev/null | sed 's/^FEISHU_APP_ID=//' | tr -d '\r')"
   [ -z "$FEISHU_APP_SECRET" ] && export FEISHU_APP_SECRET="$(grep -m1 '^FEISHU_APP_SECRET=' "$ROOT/.env" 2>/dev/null | sed 's/^FEISHU_APP_SECRET=//' | tr -d '\r')"
   [ -z "$HTMA_PUBLIC_URL" ] && export HTMA_PUBLIC_URL="$(grep -m1 '^HTMA_PUBLIC_URL=' "$ROOT/.env" 2>/dev/null | sed 's/^HTMA_PUBLIC_URL=//' | tr -d '\r')"
 fi

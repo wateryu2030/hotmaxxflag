@@ -14,7 +14,7 @@ def _effective_store_id():
     """
     base = (os.environ.get("HTMA_STORE_ID") or "沈阳超级仓").strip() or "沈阳超级仓"
     # 延迟导入 app 模块中的函数（避免循环导入）
-    from app import _auth_enabled, _is_logged_in
+    from page_auth import _auth_enabled, _is_logged_in
 
     if not _auth_enabled() or not _is_logged_in():
         return base
