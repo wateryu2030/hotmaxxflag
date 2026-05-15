@@ -12,6 +12,7 @@ from core.context import (
 )
 from core.cache import _cache_get, _cache_set
 from core.utils import safe_int, safe_float, safe_str
+from page_auth import _auth_enabled, _has_module_access, _is_logged_in
 
 report_bp = Blueprint("report", __name__)
 

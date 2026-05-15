@@ -1,1 +1,5 @@
-{ "navigationBarTitleText": "人力摘要", "enablePullDownRefresh": true }
+{
+  "navigationBarTitleText": "人力明细",
+  "enablePullDownRefresh": true,
+  "usingComponents": {}
+}

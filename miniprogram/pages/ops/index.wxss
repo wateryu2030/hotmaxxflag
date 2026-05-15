@@ -1,3 +1,229 @@
+.ops-top-surface {
+  padding-bottom: 28rpx;
+}
+.ops-eyebrow {
+  font-size: 22rpx;
+  color: #8c93a1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 8rpx;
+}
+.ops-range-main {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1a1a1a;
+  line-height: 1.35;
+}
+.ops-range-sub {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #6b7280;
+}
+
+.ops-dash-card .ops-narr {
+  margin-top: 20rpx;
+  padding-top: 20rpx;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  font-size: 24rpx;
+  line-height: 1.55;
+  color: #5c6370;
+}
+
+.ops-card-head {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8rpx;
+}
+.ops-pill {
+  font-size: 20rpx;
+  padding: 6rpx 16rpx;
+  border-radius: 999rpx;
+  background: rgba(201, 37, 57, 0.08);
+  color: #c92539;
+  font-weight: 600;
+}
+.ops-pill--muted {
+  background: #f0f2f5;
+  color: #6b7280;
+}
+
+.ops-kpi-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16rpx;
+  margin-top: 16rpx;
+}
+.ops-kpi-tile {
+  background: linear-gradient(165deg, #fafbfc 0%, #f4f6f8 100%);
+  border-radius: 20rpx;
+  padding: 20rpx 18rpx 18rpx;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  box-sizing: border-box;
+}
+.ops-kpi-lab {
+  font-size: 22rpx;
+  color: #6b7280;
+  display: block;
+}
+.ops-kpi-val {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #111827;
+  letter-spacing: -0.02em;
+}
+.ops-kpi-foot {
+  display: block;
+  margin-top: 10rpx;
+  font-size: 20rpx;
+  color: #9ca3af;
+}
+.ops-chip {
+  display: inline-block;
+  margin-top: 8rpx;
+  font-size: 20rpx;
+  font-weight: 600;
+  padding: 2rpx 0;
+}
+.ops-chip--up {
+  color: #16a34a;
+}
+.ops-chip--down {
+  color: #ea580c;
+}
+
+.ops-chart-hint {
+  display: block;
+  font-size: 22rpx;
+  color: #8c93a1;
+  line-height: 1.45;
+  margin-bottom: 12rpx;
+}
+
+.ops-chart-box {
+  height: 440rpx;
+  margin-top: 8rpx;
+}
+
+.ops-chart-empty .wp-muted {
+  margin-top: 12rpx;
+  display: block;
+  line-height: 1.5;
+}
+
+.ops-risk-row {
+  position: relative;
+  margin-top: 12rpx;
+  border-radius: 16rpx;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  min-height: 88rpx;
+}
+.ops-risk-bg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, rgba(201, 37, 57, 0.12), rgba(201, 37, 57, 0.02));
+  border-radius: 16rpx;
+  max-width: 100%;
+  z-index: 0;
+}
+.ops-risk-inner {
+  position: relative;
+  z-index: 1;
+  padding: 18rpx 20rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+.ops-risk-name {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1f2937;
+}
+.ops-risk-meta {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+.ops-risk-tag {
+  font-size: 22rpx;
+  color: #c92539;
+  font-weight: 600;
+}
+.ops-risk-tag--muted {
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.ops-sec-head {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+.ops-sec-head-txt {
+  flex: 1;
+  min-width: 0;
+}
+.ops-inv-hero {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #111827;
+}
+.ops-inv-note {
+  margin-top: 12rpx;
+  line-height: 1.45;
+}
+.ops-quad-hint {
+  margin-top: 12rpx;
+  font-size: 24rpx;
+  line-height: 1.45;
+}
+.ops-chev {
+  flex-shrink: 0;
+  font-size: 24rpx;
+  color: #c92539;
+  font-weight: 600;
+  padding-top: 4rpx;
+}
+
+.ops-list-fallback {
+  margin-top: 16rpx;
+  padding-top: 12rpx;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.ops-inv-card {
+  margin-bottom: 16rpx;
+}
+
+.ops-actions {
+  padding: 8rpx 0 calc(32rpx + env(safe-area-inset-bottom));
+}
+.ops-btn-main {
+  width: 100%;
+  margin-bottom: 16rpx;
+}
+.ops-actions-row {
+  display: flex;
+  flex-direction: row;
+  gap: 16rpx;
+}
+.ops-btn-half {
+  flex: 1;
+  margin: 0;
+  font-size: 26rpx;
+}
+
 .ops-kv {
   display: flex;
   flex-direction: row;
@@ -35,17 +261,6 @@
   padding: 8rpx 16rpx;
 }
 
-.inv-row {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  margin-top: 16rpx;
-  padding: 16rpx 20rpx;
-  background: rgba(250, 173, 20, 0.06);
-  border-radius: 16rpx;
-  border: 1px solid rgba(0, 0, 0, 0.04);
-}
-
 .inv-mark {
   width: 8rpx;
   align-self: stretch;
@@ -72,7 +287,7 @@
   flex-direction: row;
   flex-wrap: wrap;
   gap: 8rpx;
-  margin: 0 0 4rpx;
+  margin: 16rpx 0 4rpx;
 }
 .ops-heat-cell {
   width: calc(33.33% - 6rpx);
@@ -123,11 +338,4 @@
 }
 .wp-page--ops {
   padding-bottom: calc(200rpx + env(safe-area-inset-bottom));
-}
-
-.htma-row-btns.wp-ops-btns {
-  padding: 8rpx 0 32rpx;
-  display: flex;
-  flex-direction: column;
-  gap: 20rpx;
 }

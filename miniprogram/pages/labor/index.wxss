@@ -1,52 +1,246 @@
-.lab-row {
-  margin-top: 16rpx;
+/* 与全局 .wp-page 左右留白对齐略收紧，避免双 padding */
+.labor-page.wp-page {
+  padding-top: 16rpx;
+  padding-bottom: 32rpx;
+}
+.wp-loading,
+.wp-error {
+  text-align: center;
+  padding: 60rpx;
+  color: var(--text-secondary, #5c6370);
+  font-size: 26rpx;
+}
+.wp-error {
+  color: #e74c3c;
 }
 
-.lab-val {
-  font-size: 28rpx;
+/* 月份选择器 */
+.wp-period-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16rpx;
+}
+.wp-period-text {
+  font-size: 30rpx;
   font-weight: 600;
 }
-
-.wp-muted-label {
-  font-size: 26rpx;
+.wp-period-hint {
+  font-size: 22rpx;
   color: var(--text-secondary, #5c6370);
 }
 
-.idx-section {
-  padding: 16rpx 0 16rpx;
-  font-size: 30rpx;
-}
-
-.lab-cat-title {
-  display: block;
-  font-size: 28rpx;
-  font-weight: 600;
+/* KPI 卡片 */
+.wp-kpi-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12rpx;
   margin-bottom: 16rpx;
 }
-
-.lab-metric {
-  margin-top: 12rpx;
+.wp-kpi {
+  background: #fff;
+  border-radius: 12rpx;
+  padding: 16rpx;
+  text-align: center;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
 }
-
-.lab-track {
-  margin-top: 8rpx;
-  height: 10rpx;
-}
-
-.lab-fill-margin {
-  background: linear-gradient(90deg, #faad14, #d48806);
-}
-
-.lab-fill-labor {
-  background: linear-gradient(90deg, #d83d4f, #c92539);
-}
-
-.lab-foot {
-  padding: 24rpx 0 16rpx;
-}
-
-.lab-note {
-  padding: 0 0 48rpx;
+.wp-kpi--purple { border-top: 4rpx solid #667eea; }
+.wp-kpi--orange { border-top: 4rpx solid #f39c12; }
+.wp-kpi--blue { border-top: 4rpx solid #3498db; }
+.wp-kpi--green { border-top: 4rpx solid #2ecc71; }
+.wp-kpi-label {
   font-size: 22rpx;
-  line-height: 1.5;
+  color: var(--text-secondary, #5c6370);
+  display: block;
+  margin-bottom: 6rpx;
+}
+.wp-kpi-val {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #333;
+}
+
+/* 经营成果 */
+.lab-card {
+  margin-bottom: 16rpx;
+}
+.lab-grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12rpx;
+}
+.lab-item {
+  border-radius: 10rpx;
+  padding: 14rpx;
+}
+.lab-item--sale { background: rgba(52, 152, 219, 0.08); }
+.lab-item--profit { background: rgba(46, 204, 113, 0.08); }
+.lab-item--labor { background: rgba(231, 76, 60, 0.08); }
+.lab-item--net { background: rgba(251, 191, 36, 0.08); }
+.lab-item-label {
+  font-size: 22rpx;
+  color: var(--text-secondary, #5c6370);
+  display: block;
+}
+.lab-item-val {
+  font-size: 30rpx;
+  font-weight: 700;
+  display: block;
+  margin-top: 4rpx;
+}
+.lab-item-muted {
+  font-size: 20rpx;
+  color: var(--text-secondary, #5c6370);
+  display: block;
+  margin-top: 2rpx;
+}
+
+/* 3列小指标 */
+.lab-grid3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8rpx;
+}
+.lab-mini-item {
+  text-align: center;
+  background: rgba(0,0,0,0.02);
+  border-radius: 8rpx;
+  padding: 10rpx;
+}
+.lab-mini-val {
+  font-size: 26rpx;
+  font-weight: 700;
+  display: block;
+  margin-top: 4rpx;
+}
+
+/* 人力结构条 */
+.lab-type-list {
+  margin-top: 8rpx;
+}
+.lab-type-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 12rpx;
+}
+.lab-type-name {
+  min-width: 100rpx;
+  max-width: 140rpx;
+  font-size: 24rpx;
+  color: #333;
+  flex-shrink: 0;
+}
+.lab-type-bar-bg {
+  flex: 1;
+  height: 16rpx;
+  background: #f0f0f0;
+  border-radius: 8rpx;
+  overflow: hidden;
+}
+.lab-type-bar-fill {
+  height: 100%;
+  min-width: 4rpx;
+  border-radius: 8rpx;
+}
+
+/* 近月成本条 */
+.lab-trend-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-top: 14rpx;
+}
+.lab-trend-m {
+  width: 120rpx;
+  font-size: 22rpx;
+  color: var(--text-secondary, #5c6370);
+  flex-shrink: 0;
+}
+.lab-trend-bar-bg {
+  flex: 1;
+  height: 14rpx;
+  background: #f0f0f0;
+  border-radius: 7rpx;
+  overflow: hidden;
+}
+.lab-trend-bar-fill {
+  height: 100%;
+  min-width: 2rpx;
+  border-radius: 7rpx;
+  background: linear-gradient(90deg, #c92539, #d83d4f);
+}
+.lab-trend-num {
+  width: 140rpx;
+  text-align: right;
+  font-size: 22rpx;
+  flex-shrink: 0;
+}
+.lab-type-num {
+  width: 160rpx;
+  text-align: right;
+  font-size: 22rpx;
+  color: var(--text-secondary, #5c6370);
+  flex-shrink: 0;
+}
+
+/* 人员卡片列表 */
+.lab-section-title {
+  padding: 16rpx 0;
+  font-size: 28rpx;
+}
+.lab-person-card {
+  margin-bottom: 12rpx;
+}
+.lab-person-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.lab-person-left {
+  flex: 1;
+}
+.lab-person-name {
+  font-size: 28rpx;
+  font-weight: 600;
+  display: block;
+}
+.lab-person-pos {
+  font-size: 22rpx;
+  color: var(--text-secondary, #5c6370);
+  display: block;
+  margin-top: 4rpx;
+}
+.lab-person-tag {
+  display: inline-block;
+  font-size: 20rpx;
+  padding: 2rpx 10rpx;
+  border-radius: 6rpx;
+  margin-top: 6rpx;
+}
+.lab-tag-direct { background: #e3f2fd; color: #1565c0; }
+.lab-tag-shared { background: #fff3e0; color: #e65100; }
+.lab-tag-management { background: #f3e5f5; color: #7b1fa2; }
+.lab-person-right {
+  text-align: right;
+  flex-shrink: 0;
+  margin-left: 16rpx;
+}
+.lab-person-stat {
+  display: flex;
+  justify-content: space-between;
+  gap: 12rpx;
+  font-size: 22rpx;
+  margin-top: 4rpx;
+}
+
+.lab-person-pay {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8rpx 16rpx;
+  margin-top: 12rpx;
+  padding-top: 12rpx;
+  border-top: 1px solid var(--hairline, rgba(0, 0, 0, 0.05));
+  font-size: 22rpx;
 }

@@ -128,6 +128,8 @@ def create_app(config_overrides=None, *, project_root=None, env_path=None):
     from serve_web.profit_share import profit_share_bp
     from serve_web.product_master import product_bp
     from serve_web.price_compare import price_bp
+    from serve_web.labor_report import labor_report_bp
+    from serve_web.pages_labor_report import pages_labor_report_bp
     from routes_sales import register_sales_routes
     from routes_category import register_category_routes
 
@@ -152,6 +154,8 @@ def create_app(config_overrides=None, *, project_root=None, env_path=None):
     app.register_blueprint(profit_share_bp)
     app.register_blueprint(product_bp)
     app.register_blueprint(price_bp)
+    app.register_blueprint(labor_report_bp)
+    app.register_blueprint(pages_labor_report_bp)
     register_sales_routes(app)
     register_category_routes(app)
 

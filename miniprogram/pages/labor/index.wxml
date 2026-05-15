@@ -1,46 +1,130 @@
-<view class="wp-page">
-  <view class="htma-card" wx:if="{{summary}}">
-    <view class="htma-title">人力摘要</view>
-    <view class="htma-row lab-row">
-      <text class="wp-muted-label">总人力成本</text>
-      <text class="wp-num lab-val">{{summary.total_labor_cost}}</text>
-    </view>
-    <view class="htma-row lab-row">
-      <text class="wp-muted-label">总销售额 / 总毛利</text>
-      <text class="wp-num lab-val">{{summary.total_sales}} / {{summary.total_gross_profit}}</text>
-    </view>
-    <view class="htma-row lab-row">
-      <text class="wp-muted-label">毛利/人力</text>
-      <text class="wp-num wp-success lab-val">{{summary.profit_cost_ratio}}</text>
-    </view>
-    <view class="htma-muted" style="margin-top:20rpx;line-height:1.55;">{{summary.quadrant_summary}}</view>
+<wxs src="./fmt.wxs" module="fmt" />
+<view class="wp-page labor-page">
+  <!-- 月份选择器 -->
+  <view class="htma-card wp-period-bar">
+    <picker mode="selector" range="{{months}}" value="{{monthIdx}}" bindchange="onMonthChange">
+      <view class="wp-period-text">📅 {{currentMonth || '选择月份'}} ▾</view>
+    </picker>
+    <view class="wp-period-hint">共 {{months.length}} 个月数据</view>
   </view>
 
-  <view class="htma-title idx-section">低毛利 · 高人力 大类</view>
-  <view
-    class="htma-card"
-    wx:for="{{(summary && summary.low_margin_high_labor_categories) || []}}"
-    wx:key="_k"
-  >
-    <text class="lab-cat-title">{{item.category}}</text>
-    <view class="lab-metric">
-      <text class="htma-muted">毛利率 {{item.margin_pct}}%</text>
-      <view class="wp-progress-track lab-track">
-        <view class="wp-progress-fill lab-fill-margin" style="width:{{item._marginBar}}%;"></view>
-      </view>
-    </view>
-    <view class="lab-metric">
-      <text class="htma-muted">人力强度 {{item.labor_intensity}}</text>
-      <view class="wp-progress-track lab-track">
-        <view class="wp-progress-fill lab-fill-labor" style="width:{{item._laborBar}}%;"></view>
-      </view>
-    </view>
-  </view>
-  <view wx:if="{{summary && !summary.low_margin_high_labor_categories.length}}" class="htma-card htma-muted">无样本或暂无该类目</view>
+  <!-- 加载 -->
+  <view wx:if="{{loading}}" class="wp-loading">加载中...</view>
 
-  <view class="lab-foot">
-    <button class="htma-btn-primary wp-btn-primary" type="default" bindtap="openWeb">Web 详细人力分析</button>
-  </view>
-  <view class="htma-muted lab-note">说明：H5 仍使用看板飞书/会话登录，小程序 token 仅拼在 URL 中供联调，生产需做对应适配。</view>
+  <!-- 错误 -->
+  <view wx:if="{{error}}" class="wp-error">{{error}}</view>
+
+  <!-- 数据区 -->
+  <block wx:if="{{summary}}">
+    <!-- KPI卡片 -->
+    <view class="wp-kpi-row">
+      <view class="wp-kpi wp-kpi--purple">
+        <text class="wp-kpi-label">👥 人数</text>
+        <text class="wp-kpi-val">{{summary.headcount}}</text>
+      </view>
+      <view class="wp-kpi wp-kpi--orange">
+        <text class="wp-kpi-label">💰 总成本</text>
+        <text class="wp-kpi-val">{{fmt.fmtNum(summary.total_cost)}}</text>
+      </view>
+      <view class="wp-kpi wp-kpi--blue">
+        <text class="wp-kpi-label">⏱ 总工时</text>
+        <text class="wp-kpi-val">{{fmt.fmtNum(summary.total_hours)}}</text>
+      </view>
+      <view class="wp-kpi wp-kpi--green">
+        <text class="wp-kpi-label">📈 人效(销/人)</text>
+        <text class="wp-kpi-val">{{fmt.fmtNum(summary.sale_per_capita)}}</text>
+      </view>
+    </view>
+
+    <!-- 近月成本条（trends 已有数据） -->
+    <view class="htma-card" wx:if="{{trendRows && trendRows.length}}">
+      <view class="htma-title">近月人力成本</view>
+      <view wx:for="{{trendRows}}" wx:key="month" class="lab-trend-row">
+        <text class="lab-trend-m">{{item.month}}</text>
+        <view class="lab-trend-bar-bg">
+          <view class="lab-trend-bar-fill" style="width: {{item._costPct}}%;" />
+        </view>
+        <text class="lab-trend-num wp-num">{{fmt.fmtNum(item.total_cost)}}</text>
+      </view>
+    </view>
+
+    <!-- 经营成果 -->
+    <view class="htma-card lab-card">
+      <view class="htma-title">经营成果</view>
+      <view class="lab-grid2">
+        <view class="lab-item lab-item--sale">
+          <text class="lab-item-label">销售额</text>
+          <text class="lab-item-val">{{fmt.fmtNum(summary.sale)}}</text>
+        </view>
+        <view class="lab-item lab-item--profit">
+          <text class="lab-item-label">毛利</text>
+          <text class="lab-item-val">{{fmt.fmtNum(summary.profit)}}</text>
+          <text class="lab-item-muted">人工/销 {{fmt.fmtFixed1(summary.labor_sale_ratio)}}%</text>
+        </view>
+        <view class="lab-item lab-item--labor">
+          <text class="lab-item-label">人力成本</text>
+          <text class="lab-item-val {{summary.labor_profit_ratio > 25 ? 'wp-warning' : ''}}">{{fmt.fmtNum(summary.total_cost)}}</text>
+          <text class="lab-item-muted">人工/毛利 {{fmt.fmtFixed1(summary.labor_profit_ratio)}}%</text>
+        </view>
+        <view class="lab-item lab-item--net">
+          <text class="lab-item-label">净利润(扣人力)</text>
+          <text class="lab-item-val {{summary.net_profit >= 0 ? 'wp-success' : 'wp-warning'}}">{{fmt.fmtNum(summary.net_profit)}}</text>
+        </view>
+      </view>
+      <view class="lab-grid3" style="margin-top:12rpx">
+        <view class="lab-mini-item">
+          <text class="lab-item-muted">每工时销售额</text>
+          <text class="lab-mini-val">{{fmt.fmtFixed1(summary.per_hour_sale)}}</text>
+        </view>
+        <view class="lab-mini-item">
+          <text class="lab-item-muted">每工时毛利</text>
+          <text class="lab-mini-val">{{fmt.fmtFixed1(summary.per_hour_profit)}}</text>
+        </view>
+        <view class="lab-mini-item">
+          <text class="lab-item-muted">时薪成本</text>
+          <text class="lab-mini-val">{{fmt.fmtFixed1(summary.per_hour_cost)}}</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 人力结构 -->
+    <view class="htma-card">
+      <view class="htma-title">人力结构</view>
+      <view wx:if="{{byTypeArr && byTypeArr.length}}" class="lab-type-list">
+        <view wx:for="{{byTypeArr}}" wx:key="name" class="lab-type-row">
+          <text class="lab-type-name">{{item.label}}</text>
+          <view class="lab-type-bar-bg">
+            <view class="lab-type-bar-fill" style="width: {{item.pct}}%; background: {{item.color}};" />
+          </view>
+          <text class="lab-type-num">{{item.cnt}}人 · {{fmt.fmtNum(item.cost)}}</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 人员明细列表 -->
+    <view class="htma-title lab-section-title">人员明细</view>
+    <view wx:for="{{displayList}}" wx:for-index="idx" wx:key="idx" class="htma-card lab-person-card">
+      <view class="lab-person-row">
+        <view class="lab-person-left">
+          <text class="lab-person-name">{{item.name}}</text>
+          <text class="lab-person-pos">{{item.position}}</text>
+          <text class="lab-person-tag lab-tag-{{item.typeLabelClass}}">{{item.type_label}}</text>
+        </view>
+        <view class="lab-person-right">
+          <view class="lab-person-stat"><text class="wp-muted">工时</text><text>{{item.hours}}h</text></view>
+          <view class="lab-person-stat"><text class="wp-muted">成本</text><text class="wp-num">{{fmt.fmtNum(item.total_cost)}}</text></view>
+          <view class="lab-person-stat"><text class="wp-muted">时薪</text><text class="wp-num">{{fmt.fmtFixed2(item.hourly_rate)}}</text></view>
+        </view>
+      </view>
+      <view class="lab-person-pay">
+        <text><text class="wp-muted">基本</text> {{fmt.fmtNum(item.base_salary)}}</text>
+        <text><text class="wp-muted">绩效</text> {{fmt.fmtNum(item.performance)}}</text>
+        <text><text class="wp-muted">应发</text> {{fmt.fmtNum(item.total_pay)}}</text>
+      </view>
+    </view>
+    <view wx:if="{{displayList && !displayList.length}}" class="htma-card htma-muted" style="text-align:center;padding:30rpx">暂无人员明细</view>
+  </block>
+
+  <view wx:if="{{!loading && !error && !summary}}" class="htma-card htma-muted" style="text-align:center;padding:30rpx">暂无数据</view>
   <security-watermark />
 </view>

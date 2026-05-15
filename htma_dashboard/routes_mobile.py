@@ -912,3 +912,107 @@ def api_mobile_labor_summary():
     except Exception:
         pass
     return mobile_ok(data)
+
+
+@mobile_bp.route("/labor_detail", methods=["GET", "OPTIONS"])
+@mobile_cached
+def api_mobile_labor_detail():
+    """小程序人力明细：按月返回考勤×薪金×人效完整数据"""
+    if request.method == "OPTIONS":
+        return "", 204
+    month = (request.args.get("month") or "").strip()
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        if not month:
+            cur.execute("SELECT MAX(report_month) FROM t_htma_labor_cost")
+            r = cur.fetchone()
+            month = (list(r.values())[0] if isinstance(r, dict) else r[0]) or ""
+            if not month:
+                return mobile_ok({"month": None, "persons": [], "summary": {}, "trends": []})
+        cur.close()
+
+        # 1. 逐人明细
+        from serve_web.labor_report import _get_labor_by_month, _get_sale_profit_by_month, STORE_ID
+        labor = _get_labor_by_month(conn, month)
+        sale, profit = _get_sale_profit_by_month(conn, month)
+        sale_f, profit_f = float(sale or 0), float(profit or 0)
+        total_hours = sum(float(p.get("work_hours") or 0) for p in labor["persons"])
+
+        persons_out = []
+        for p in labor["persons"]:
+            wh = float(p.get("work_hours") or 0)
+            persons_out.append({
+                "name": p.get("person_name", ""),
+                "position": p.get("position_name", ""),
+                "type_label": p.get("cost_type_label", ""),
+                "hours": round(wh, 1),
+                "days": round(wh / 10.5, 0),
+                "base_salary": float(p.get("base_salary") or 0),
+                "performance": float(p.get("performance") or 0),
+                "total_pay": round(float(p.get("base_salary") or 0) + float(p.get("performance") or 0), 2),
+                "total_cost": float(p.get("total_cost") or 0),
+                "hourly_rate": round(float(p.get("total_cost") or 0) / (wh or 1), 2),
+            })
+
+        # 2. 月度趋势（所有月份）
+        cur = conn.cursor()
+        cur.execute("SELECT MIN(report_month) min_m, MAX(report_month) max_m FROM t_htma_labor_cost")
+        r = cur.fetchone()
+        min_m, max_m = (list(r.values())[0] if isinstance(r, dict) else r[0]), (list(r.values())[1] if isinstance(r, dict) else r[1])
+        from serve_web.labor_report import _months_between
+        months = _months_between(min_m, max_m) if min_m and max_m else []
+        cur.close()
+
+        trends = []
+        for m in months:
+            lb = _get_labor_by_month(conn, m)
+            s, p = _get_sale_profit_by_month(conn, m)
+            sf, pf = float(s or 0), float(p or 0)
+            tc = float(lb["total_cost"])
+            hc = lb["total_headcount"]
+            trends.append({
+                "month": m,
+                "headcount": hc,
+                "total_cost": round(tc, 2),
+                "direct_cost": round(lb["direct_cost"], 2),
+                "shared_cost": round(lb["shared_cost"], 2),
+                "management_cost": round(lb["management_cost"], 2),
+                "sale": round(sf, 2),
+                "profit": round(pf, 2),
+                "labor_sale_ratio": round(tc / sf * 100, 2) if sf else 0,
+                "labor_profit_ratio": round(tc / pf * 100, 2) if pf else 0,
+                "sale_per_capita": round(sf / hc, 2) if hc else 0,
+            })
+
+        # 3. 当月摘要
+        hc = labor["total_headcount"] or 0
+        summary = {
+            "month": month,
+            "headcount": labor["total_headcount"],
+            "total_cost": labor["total_cost"],
+            "management_cost": labor["management_cost"],
+            "direct_cost": labor["direct_cost"],
+            "shared_cost": labor["shared_cost"],
+            "total_hours": round(total_hours, 1),
+            "avg_hours": round(total_hours / max(labor["total_headcount"], 1), 1),
+            "sale": sale_f,
+            "profit": profit_f,
+            "sale_per_capita": round(sale_f / hc, 2) if hc else 0,
+            "labor_sale_ratio": round(labor["total_cost"] / sale_f * 100, 2) if sale_f else 0,
+            "labor_profit_ratio": round(labor["total_cost"] / profit_f * 100, 2) if profit_f else 0,
+            "net_profit": round(profit_f - labor["total_cost"], 2),
+            "per_hour_sale": round(sale_f / total_hours, 2) if total_hours else 0,
+            "per_hour_profit": round(profit_f / total_hours, 2) if total_hours else 0,
+            "per_hour_cost": round(labor["total_cost"] / total_hours, 2) if total_hours else 0,
+        }
+
+        return mobile_ok({
+            "month": month,
+            "summary": summary,
+            "persons": persons_out,
+            "trends": trends,
+            "by_type": labor["by_position_type"],
+        })
+    except Exception as e:
+        return mobile_err(str(e), http=500)

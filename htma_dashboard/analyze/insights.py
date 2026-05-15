@@ -263,6 +263,12 @@ def build_insights(conn, store_id="沈阳超级仓", drill_context=None):
     except Exception:
         pass
 
+    # ---------- 人力成本分析 ----------
+    try:
+        _add_labor_insights(conn, store_id, insights)
+    except Exception:
+        pass
+
     cur.close()
     return insights
 
@@ -341,3 +347,181 @@ def build_enhanced_insights(conn, store_id="沈阳超级仓", period_days=30, ca
         except Exception:
             pass
         raise
+
+
+def _add_labor_insights(conn, store_id, insights):
+    """人力成本分析：月度趋势、人效、人力/销售比、岗位分布"""
+    import os
+    cur = conn.cursor()
+    
+    # 获取最新月份（假设当前是4月或5月，取最新2个月做对比）
+    cur.execute("""
+        SELECT DISTINCT report_month FROM t_htma_labor_cost 
+        WHERE total_cost > 0 ORDER BY report_month DESC LIMIT 2
+    """)
+    months = [r["report_month"] for r in cur.fetchall()]
+    if len(months) < 1:
+        cur.close()
+        return
+    
+    # 解析月份对应的销售起止日期
+    def _month_sale_dates(m):
+        y, mth = m.split("-")
+        start = f"{y}-{mth}-01"
+        if mth == "12":
+            end = f"{y}-12-31"
+        else:
+            next_m = int(mth) + 1
+            end = f"{y}-{next_m:02d}-01"
+        return start, end
+    
+    labor_data = []
+    for m in months:
+        cur.execute("""
+            SELECT position_type, COUNT(*) as cnt,
+                   ROUND(SUM(total_cost),2) as total_cost,
+                   ROUND(AVG(work_hours),1) as avg_hours,
+                   ROUND(SUM(work_hours),1) as total_hours
+            FROM t_htma_labor_cost
+            WHERE report_month=%s AND total_cost > 0
+            GROUP BY position_type ORDER BY position_type
+        """, (m,))
+        by_type = cur.fetchall()
+        
+        cur.execute("""
+            SELECT COUNT(*) as cnt, ROUND(SUM(total_cost),2) as total
+            FROM t_htma_labor_cost WHERE report_month=%s AND total_cost > 0
+        """, (m,))
+        summary = cur.fetchone()
+        cnt = summary["cnt"] or 0
+        labor_total = float(summary["total"] or 0)
+        
+        start_d, end_d = _month_sale_dates(m)
+        cur.execute("""
+            SELECT COALESCE(SUM(sale_amount),0) as sale,
+                   COALESCE(SUM(COALESCE(gross_profit,0)),0) as profit
+            FROM t_htma_sale
+            WHERE store_id=%s AND data_date>=%s AND data_date<=%s
+        """, (store_id, start_d, end_d))
+        sale_row = cur.fetchone()
+        sale_amt = float(sale_row["sale"] or 0)
+        profit_amt = float(sale_row["profit"] or 0)
+        
+        labor_data.append({
+            "month": m,
+            "headcount": cnt,
+            "labor_total": labor_total,
+            "sale": sale_amt,
+            "profit": profit_amt,
+            "by_type": by_type,
+        })
+    
+    cur.close()
+    
+    if not labor_data:
+        return
+    
+    latest = labor_data[0]
+    
+    # 人力成本占比分析
+    sale_amt = latest["sale"]
+    profit_amt = latest["profit"]
+    labor_total = latest["labor_total"]
+    headcount = latest["headcount"]
+    labor_sale_ratio = labor_total / sale_amt * 100 if sale_amt else 0
+    labor_profit_ratio = labor_total / profit_amt * 100 if profit_amt else 0
+    per_person_sale = sale_amt / headcount if headcount else 0
+    
+    if labor_profit_ratio > 25:
+        insights.append({
+            "type": "warning", "title": "人力成本占比偏高",
+            "desc": f"{latest['month']} 人力成本占毛利 {labor_profit_ratio:.1f}%（人力{labor_total:.0f}元/毛利{profit_amt:.0f}元），每赚1元毛利需花{labor_profit_ratio/100:.2f}元在人力上。",
+            "action": "建议优化排班降低低峰期冗余，或调整绩效考核提升人效",
+            "sources": ["1. 出处：t_htma_labor_cost 月总和 vs t_htma_sale 月毛利汇总。",
+                        "2. 口径：人力成本/毛利额×100%；>25% 提示偏高。"]
+        })
+    elif labor_profit_ratio > 15:
+        insights.append({
+            "type": "info", "title": "人力成本占比中等",
+            "desc": f"{latest['month']} 人力成本占毛利 {labor_profit_ratio:.1f}%（人力{labor_total:.0f}元），需持续关注趋势变化。",
+            "action": "建议每月监控人力/毛利比，设定预警线",
+            "sources": ["1. 出处：t_htma_labor_cost 月总和 vs t_htma_sale 月毛利。"]
+        })
+    
+    # 人效趋势（如果有两个月数据对比）
+    if len(labor_data) >= 2:
+        prev = labor_data[1]
+        pct_hc = (latest["headcount"] - prev["headcount"]) / prev["headcount"] * 100 if prev["headcount"] else 0
+        pct_sale = (sale_amt - prev["sale"]) / prev["sale"] * 100 if prev["sale"] else 0
+        prev_pps = prev["sale"] / prev["headcount"] if prev["headcount"] else 0
+        pct_pps = (per_person_sale - prev_pps) / prev_pps * 100 if prev_pps else 0
+        
+        insight_desc = (
+            f"对比{prev['month']}→{latest['month']}：人员{prev['headcount']}→{headcount}人（{pct_hc:+.1f}%），"
+            f"销售额{prev['sale']:.0f}→{sale_amt:.0f}（{pct_sale:+.1f}%），"
+            f"人均销售{prev_pps:.0f}→{per_person_sale:.0f}（{pct_pps:+.1f}%）。"
+        )
+        
+        if pct_pps > 10:
+            insights.append({
+                "type": "success", "title": "人效显著提升",
+                "desc": insight_desc,
+                "action": "人员精简效果明显，建议保持并关注服务质量与员工满意度",
+                "sources": ["1. 出处：t_htma_labor_cost 人数 vs t_htma_sale 月总额。",
+                            "2. 口径：人均销售 = 月销售额/人数。"]
+            })
+        elif pct_pps < -5:
+            insights.append({
+                "type": "warning", "title": "人效下滑需关注",
+                "desc": insight_desc,
+                "action": "建议排查是否因人员扩张过快或销售疲软，优化排班与激励",
+                "sources": ["1. 出处：t_htma_labor_cost 人数 vs t_htma_sale 月总额。"]
+            })
+        else:
+            insights.append({
+                "type": "info", "title": "人效趋势分析",
+                "desc": insight_desc,
+                "action": "可结合品类结构与岗位分布进一步分析提升空间",
+                "sources": ["1. 出处：t_htma_labor_cost 人数 vs t_htma_sale 月总额。"]
+            })
+    
+    # 人力成本结构分析（最新月）
+    by_type = latest.get("by_type", [])
+    if by_type:
+        type_parts = []
+        for t in by_type:
+            tp = t["position_type"]
+            cnt = t["cnt"]
+            tc = float(t["total_cost"])
+            pct = tc / labor_total * 100 if labor_total else 0
+            label = {"fulltime": "组员", "leader": "组长", "management": "管理", "cleaner": "保洁"}.get(tp, tp)
+            type_parts.append(f"{label}{cnt}人({pct:.0f}%)")
+        insights.append({
+            "type": "info", "title": "人力成本结构",
+            "desc": f"{latest['month']} 人力结构：" + "、".join(type_parts) + f"。总成本约{labor_total:.0f}元，人均{latest['labor_total']/headcount:.0f}元/月。",
+            "action": "管理岗占比较高时可考虑职能合并或扁平化",
+            "sources": ["1. 出处：t_htma_labor_cost 按 position_type 汇总。",
+                        "2. 口径：管理岗占比=管理岗成本/总人力成本×100%。"]
+        })
+
+    # 人力成本月份趋势（输入完整月度数据）
+    try:
+        cur2 = conn.cursor()
+        cur2.execute("""
+            SELECT report_month, COUNT(*) as cnt, ROUND(SUM(total_cost),2) as t
+            FROM t_htma_labor_cost WHERE total_cost > 0
+            GROUP BY report_month ORDER BY report_month
+        """)
+        all_months = cur2.fetchall()
+        cur2.close()
+        if len(all_months) >= 2:
+            trend_parts = [f"{r['report_month']}={r['cnt']}人({r['t']:.0f}元)" for r in all_months[-6:]]
+            insights.append({
+                "type": "info", "title": "月度人力成本趋势",
+                "desc": "近6个月人力变化：" + " → ".join(trend_parts),
+                "action": "可在「人力分析报告」页面查看详细趋势图",
+                "sources": ["1. 出处：t_htma_labor_cost 按月汇总。",
+                            "2. 口径：当月总人力成本（不含离职和成本为0的记录）。"]
+            })
+    except Exception:
+        pass

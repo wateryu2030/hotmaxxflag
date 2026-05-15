@@ -1,0 +1,58 @@
+/* 与 index.js 中 fmtNum 语义对齐；WXML 不可直接调用 Page 方法，故用 WXS */
+function _digits(s) {
+  var intPart = s;
+  var out = "";
+  var len = intPart.length;
+  var i = 0;
+  for (i = 0; i < len; i++) {
+    var c = intPart.charAt(len - 1 - i);
+    out = c + out;
+    if ((i + 1) % 3 === 0 && i !== len - 1) {
+      out = "," + out;
+    }
+  }
+  return out;
+}
+
+function fmtNum(v) {
+  if (v === null || v === undefined || v === "") {
+    return "0";
+  }
+  var n = parseFloat(v);
+  if (isNaN(n)) {
+    return "0";
+  }
+  if (n === 0) {
+    return "0";
+  }
+  if (n <= -10000 || n >= 10000) {
+    return (n / 10000).toFixed(1) + "万";
+  }
+  var neg = n < 0;
+  if (neg) {
+    n = -n;
+  }
+  var s = n % 1 === 0 ? String(parseInt(n)) : n.toFixed(2);
+  var parts = s.split(".");
+  var head = _digits(parts[0]);
+  var tail = parts.length > 1 ? "." + parts[1] : "";
+  return (neg ? "-" : "") + head + tail;
+}
+
+function fmtFixed1(v) {
+  var n = parseFloat(v);
+  if (isNaN(n)) {
+    return "0.0";
+  }
+  return n.toFixed(1);
+}
+
+function fmtFixed2(v) {
+  var n = parseFloat(v);
+  if (isNaN(n)) {
+    return "0.00";
+  }
+  return n.toFixed(2);
+}
+
+module.exports = { fmtNum: fmtNum, fmtFixed1: fmtFixed1, fmtFixed2: fmtFixed2 };

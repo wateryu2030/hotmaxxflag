@@ -1,108 +1,211 @@
 <view class="wp-page wp-page--ops">
-  <view class="da-card" wx:if="{{labor}}">
-    <view class="wp-title">人力摘要</view>
-    <view class="wp-muted" style="margin-top: 8rpx; margin-bottom: 8rpx">人效与四象限摘要</view>
-    <view class="ops-kv">
-      <text class="wp-muted">总人力成本</text>
-      <text class="wp-num ops-val">{{labor.total_labor_cost}}</text>
-    </view>
-    <view class="ops-kv">
-      <text class="wp-muted">人效(销/人)环比</text>
-      <text
-        class="wp-num ops-val {{(labor.sales_per_capita_link_ratio||0)>=0?'wp-success':'wp-warning'}}"
-      >{{labor.sales_per_capita_link_ratio!=null?labor.sales_per_capita_link_ratio+'%':'—'}}</text>
-    </view>
-    <view class="wp-muted" style="margin-top: 16rpx; line-height: 1.5">{{labor.quadrant_summary}}</view>
-  </view>
+  <view wx:if="{{loading}}" class="htma-center wp-muted">加载中…</view>
 
-  <view class="da-card" wx:if="{{quad && quadHeat.length}}">
-    <view class="wp-title" style="margin-bottom: 8rpx">低毛利 × 高人力</view>
-    <text class="wp-muted" style="display: block; margin-bottom: 16rpx; font-size: 24rpx"
-    >色深表示毛利偏低风险越高；点方块或列表行进入「品类下钻」</text>
-    <view class="ops-heat-mx">
-      <view
-        wx:for="{{quadHeat}}"
-        wx:for-index="hi"
-        wx:key="_k"
-        class="ops-heat-cell"
-        style="{{item._heatStyle}}"
-        data-i="{{hi}}"
-        bindtap="onQuadHeatCell"
-      >
-        <text class="ops-heat-lab">{{item.category}}</text>
-        <text class="ops-heat-pct wp-num">{{item.margin_pct}}%</text>
-      </view>
+  <block wx:else>
+    <!-- 区间与口径 -->
+    <view class="da-filter-surface ops-top-surface">
+      <view class="ops-eyebrow">人力 · 类目风险 · 库存</view>
+      <view class="ops-range-main">统计区间 {{laborRangeLabel}}</view>
+      <view wx:if="{{labor && labor.stats_as_of}}" class="ops-range-sub">数据截止 {{labor.stats_as_of}}</view>
     </view>
-    <view
-      class="ops-list-fallback da-list"
-      style="border-top: 1px solid rgba(0,0,0,0.06); margin-top: 16rpx; padding-top: 12rpx"
-    >
-      <view
-        wx:for="{{quadHeat}}"
-        wx:for-index="qi"
-        wx:key="_k"
-        class="da-row"
-        data-i="{{qi}}"
-        bindtap="onQuadListDrill"
-      >
-        <view class="da-row-bg" style="width: {{item._bgPct}}%;" />
-        <view class="da-row-inner">
+
+    <view class="da-card" wx:if="{{!laborDash}}">
+      <view class="wp-title">近30天总览</view>
+      <text class="wp-muted">人力摘要暂不可用，请下拉刷新或检查登录与接口</text>
+    </view>
+
+    <!-- 近30天总览 KPI -->
+    <view class="da-card ops-dash-card" wx:if="{{laborDash}}">
+      <view class="ops-card-head">
+        <view class="wp-title">近30天总览</view>
+        <text class="ops-pill">滚动区间</text>
+      </view>
+      <view class="ops-kpi-grid">
+        <view class="ops-kpi-tile">
+          <text class="ops-kpi-lab">总人力成本</text>
+          <text class="ops-kpi-val wp-num">{{laborDash.cost}}</text>
+          <text wx:if="{{laborDash.costMom}}" class="ops-chip {{laborDash.costMomClass}}">{{laborDash.costMom}}</text>
+          <text class="ops-kpi-foot">人工/销 {{laborDash.laborToSale}}</text>
+        </view>
+        <view class="ops-kpi-tile">
+          <text class="ops-kpi-lab">总销售额</text>
+          <text class="ops-kpi-val wp-num">{{laborDash.sales}}</text>
+          <text wx:if="{{laborDash.salesMom}}" class="ops-chip {{laborDash.salesMomClass}}">{{laborDash.salesMom}}</text>
+        </view>
+        <view class="ops-kpi-tile">
+          <text class="ops-kpi-lab">总毛利</text>
+          <text class="ops-kpi-val wp-num">{{laborDash.profit}}</text>
+        </view>
+        <view class="ops-kpi-tile">
+          <text class="ops-kpi-lab">人效(销/人)</text>
+          <text class="ops-kpi-val wp-num">{{laborDash.spc}}</text>
+          <text wx:if="{{laborDash.spcMom}}" class="ops-chip {{laborDash.spcMomClass}}">{{laborDash.spcMom}}</text>
+        </view>
+      </view>
+      <view wx:if="{{labor && labor.quadrant_summary}}" class="ops-narr">{{labor.quadrant_summary}}</view>
+    </view>
+
+    <!-- 月度走势（labor_detail.trends） -->
+    <view class="da-card ops-chart-card" wx:if="{{laborTrends.length}}">
+      <view class="ops-card-head">
+        <view class="wp-title">按月走势</view>
+        <text class="ops-pill ops-pill--muted">最近 {{laborTrends.length}} 月</text>
+      </view>
+      <text class="ops-chart-hint">人力成本、人效与人工占销比 · 与「月度人力明细」同源</text>
+      <view class="da-capsule-wrap">
+        <view class="da-capsule">
           <view
-            wx:if="{{qi<3}}"
-            class="wp-rank {{qi===0?'wp-rank--1':''}} {{qi===1?'wp-rank--2':''}} {{qi===2?'wp-rank--3':''}}"
-          >{{qi+1}}</view>
-          <view wx:else class="da-rank-plain">{{qi+1}}</view>
-          <view class="ops-list-mid">
-            <text class="ops-cat-name">{{item.category}}</text>
-          </view>
-          <text class="ops-list-pct wp-num da-val">{{item.margin_pct}}%</text>
+            class="da-cap {{chartTab===0?'da-cap--on':''}}"
+            data-i="0"
+            bindtap="setChartTab"
+          >人力成本</view>
+          <view
+            class="da-cap {{chartTab===1?'da-cap--on':''}}"
+            data-i="1"
+            bindtap="setChartTab"
+          >人效</view>
+          <view
+            class="da-cap {{chartTab===2?'da-cap--on':''}}"
+            data-i="2"
+            bindtap="setChartTab"
+          >人工占比</view>
         </view>
       </view>
-    </view>
-    <view class="wp-muted" style="margin-top: 12rpx; font-size: 24rpx">{{quad.hint}}</view>
-  </view>
-
-  <view class="da-card" wx:elif="{{quad && !(quadHeat && quadHeat.length)}}">
-    <view class="wp-title">低毛利高人力</view>
-    <view class="wp-muted">当前区间无符合条件的类目</view>
-  </view>
-
-  <view class="da-card" wx:if="{{inv}}">
-    <view class="wp-title">库存</view>
-    <view class="ops-kv">
-      <text class="wp-muted">总库存额</text>
-      <text class="wp-num ops-val">{{inv.inventory_total}}</text>
-    </view>
-    <view class="wp-muted" style="margin-top: 8rpx; font-size: 24rpx">{{inv.note}}</view>
-    <block wx:if="{{inv.low_stock_items && inv.low_stock_items.length}}">
-      <view class="inv-head">
-        <text class="wp-muted">低库存 SKU（qty&lt;5）</text>
-        <text
-          wx:if="{{inv.low_stock_items.length > 3}}"
-          class="inv-toggle"
-          bindtap="toggleInv"
-        >{{invExpanded ? '收起' : '查看全部'}}</text>
+      <view class="chart-box ops-chart-box">
+        <ec-canvas id="ops-trend" canvas-id="ops-trend" ec="{{ ec }}"></ec-canvas>
       </view>
+    </view>
+    <view class="da-card ops-chart-empty" wx:elif="{{!loading}}">
+      <view class="wp-title">按月走势</view>
+      <text class="wp-muted">暂无月度考勤/薪资序列，请稍后再试或检查数据表</text>
+    </view>
+
+    <!-- 风险类目（四象限象限内大类） -->
+    <view class="da-card" wx:if="{{riskCats.length}}">
+      <view class="ops-card-head">
+        <view class="wp-title">关注类目</view>
+        <text class="ops-pill">低毛利×高人力</text>
+      </view>
+      <text class="ops-chart-hint">点击行进入「品类」大类下钻</text>
       <view
-        wx:for="{{invDisplayItems}}"
+        wx:for="{{riskCats}}"
+        wx:for-index="ri"
         wx:key="_k"
-        class="da-row"
+        class="ops-risk-row"
+        data-i="{{ri}}"
+        bindtap="onRiskCatTap"
       >
-        <view class="da-row-bg" style="width: {{item._bgPct}}%;" />
-        <view class="da-row-inner inv-d-row">
-          <view class="inv-mark" />
-          <view class="inv-row-txt">
-            <text class="wp-num">{{item.sku_code}}</text>
-            <text class="wp-muted"> · 库存 {{item.stock_qty}}</text>
+        <view class="ops-risk-bg" style="width: {{item._barPct}}%;" />
+        <view class="ops-risk-inner">
+          <text class="ops-risk-name">{{item.category}}</text>
+          <view class="ops-risk-meta">
+            <text class="ops-risk-tag">毛利 {{item.margin_pct}}%</text>
+            <text class="ops-risk-tag ops-risk-tag--muted">强度 {{item.labor_intensity}}</text>
           </view>
         </view>
       </view>
-    </block>
-  </view>
+    </view>
 
-  <view class="htma-row-btns wp-ops-btns">
-    <button class="htma-btn-primary wp-btn-primary" bindtap="goAlerts">预警中心与订阅</button>
-    <button class="wp-btn-ghost" bindtap="goLaborWeb">完整人力分析 (Web)</button>
-  </view>
+    <!-- 四象限矩阵 -->
+    <view class="da-card" wx:if="{{quad && quadHeat.length}}">
+      <view class="ops-sec-head" bindtap="toggleQuad">
+        <view class="ops-sec-head-txt">
+          <view class="wp-title">低毛利 × 高人力</view>
+          <text class="ops-chart-hint">{{quadHeat.length}} 个大类 · 色深≈风险 · 点格/列表下钻</text>
+        </view>
+        <text class="ops-chev">{{quadExpanded ? '收起' : '展开'}}</text>
+      </view>
+      <block wx:if="{{quadExpanded}}">
+        <view class="ops-heat-mx">
+          <view
+            wx:for="{{quadHeat}}"
+            wx:for-index="hi"
+            wx:key="_k"
+            class="ops-heat-cell"
+            style="{{item._heatStyle}}"
+            data-i="{{hi}}"
+            bindtap="onQuadHeatCell"
+          >
+            <text class="ops-heat-lab">{{item.category}}</text>
+            <text class="ops-heat-pct wp-num">{{item.margin_pct}}%</text>
+          </view>
+        </view>
+        <view class="ops-list-fallback da-list">
+          <view
+            wx:for="{{quadHeat}}"
+            wx:for-index="qi"
+            wx:key="_k"
+            class="da-row"
+            data-i="{{qi}}"
+            bindtap="onQuadListDrill"
+          >
+            <view class="da-row-bg" style="width: {{item._bgPct}}%;" />
+            <view class="da-row-inner">
+              <view
+                wx:if="{{qi<3}}"
+                class="wp-rank {{qi===0?'wp-rank--1':''}} {{qi===1?'wp-rank--2':''}} {{qi===2?'wp-rank--3':''}}"
+              >{{qi+1}}</view>
+              <view wx:else class="da-rank-plain">{{qi+1}}</view>
+              <view class="ops-list-mid">
+                <text class="ops-cat-name">{{item.category}}</text>
+              </view>
+              <text class="ops-list-pct wp-num da-val">{{item.margin_pct}}%</text>
+            </view>
+          </view>
+        </view>
+        <view wx:if="{{quad.hint}}" class="wp-muted ops-quad-hint">{{quad.hint}}</view>
+      </block>
+    </view>
+
+    <view class="da-card" wx:elif="{{quad && !(quadHeat && quadHeat.length)}}">
+      <view class="wp-title">低毛利 × 高人力</view>
+      <text class="wp-muted">当前区间无符合条件的类目</text>
+    </view>
+
+    <!-- 库存（默认折叠） -->
+    <view class="da-card ops-inv-card" wx:if="{{inv}}">
+      <view class="ops-sec-head" bindtap="toggleInvCollapse">
+        <view class="ops-sec-head-txt">
+          <view class="wp-title">库存</view>
+          <text wx:if="{{invSummary}}" class="ops-inv-hero wp-num">{{invSummary.totalStr}}</text>
+          <text wx:if="{{invSummary}}" class="ops-chart-hint">低库存 SKU {{invSummary.lowCnt}} 条</text>
+        </view>
+        <text class="ops-chev">{{invCollapsed ? '展开' : '收起'}}</text>
+      </view>
+      <block wx:if="{{!invCollapsed}}">
+        <view class="wp-muted ops-inv-note">{{inv.note}}</view>
+        <block wx:if="{{inv.low_stock_items && inv.low_stock_items.length}}">
+          <view class="inv-head">
+            <text class="wp-muted">低库存 SKU（qty&lt;5）</text>
+            <text
+              wx:if="{{inv.low_stock_items.length > 3}}"
+              class="inv-toggle"
+              catchtap="toggleInv"
+            >{{invExpanded ? '收起' : '查看全部'}}</text>
+          </view>
+          <view wx:for="{{invDisplayItems}}" wx:key="_k" class="da-row">
+            <view class="da-row-bg" style="width: {{item._bgPct}}%;" />
+            <view class="da-row-inner inv-d-row">
+              <view class="inv-mark" />
+              <view class="inv-row-txt">
+                <text class="wp-num">{{item.sku_code}}</text>
+                <text class="wp-muted"> · 库存 {{item.stock_qty}}</text>
+              </view>
+            </view>
+          </view>
+        </block>
+      </block>
+    </view>
+
+    <!-- 快捷入口 -->
+    <view class="ops-actions">
+      <button class="htma-btn-primary wp-btn-primary ops-btn-main" bindtap="goAlerts">预警中心与订阅</button>
+      <view class="ops-actions-row">
+        <button class="wp-btn-ghost ops-btn-half" bindtap="goLaborDetail">月度人力明细</button>
+        <button class="wp-btn-ghost ops-btn-half" bindtap="goLaborWeb">完整人力分析</button>
+      </view>
+    </view>
+  </block>
+
   <security-watermark />
 </view>
